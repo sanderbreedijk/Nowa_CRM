@@ -1,0 +1,57 @@
+name: Test en bouw NOWA CRM
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-en-bouw:
+    runs-on: windows-latest
+    steps:
+      - name: Broncode ophalen
+        uses: actions/checkout@v4
+
+      - name: Python installeren
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Afhankelijkheden installeren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pyinstaller
+
+      - name: Tests uitvoeren
+        run: python -m pytest -q
+
+      - name: Windows-app bouwen
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --onedir `
+            --name NOWA_CRM --paths src src/nowa_crm/app.py
+          $forbidden = Get-ChildItem -Recurse dist/NOWA_CRM -File |
+            Where-Object { $_.Name -match '\.(sqlite3|db)$' -or $_.Name -eq 'vault.key' }
+          if ($forbidden) { throw 'Release bevat gebruikersdata of een kluissleutel.' }
+          Compress-Archive -Path dist/NOWA_CRM -DestinationPath NOWA_CRM-Windows.zip
+
+      - name: Build beschikbaar maken
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOWA-CRM-Windows
+          path: NOWA_CRM-Windows.zip
+
+      - name: GitHub Release publiceren
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: gh release create "${{ github.ref_name }}" NOWA_CRM-Windows.zip --generate-notes --title "NOWA CRM ${{ github.ref_name }}"
