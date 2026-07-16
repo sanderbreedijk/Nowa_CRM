@@ -11,6 +11,7 @@ from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.ui.dialogs import CustomerDialog, VaultDialog
+from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
@@ -50,7 +51,7 @@ class MainWindow(QMainWindow):
         self.customer_table=QTableWidget(0,6); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Plaats","ID"]); self.customer_table.setColumnHidden(5,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(add); box.addLayout(row)
-        self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); box.addWidget(self.proposal_table,1); return page
+        self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); self.proposal_table.doubleClicked.connect(self.edit_proposal); box.addWidget(self.proposal_table,1); return page
     def _vault_page(self):
         page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; geheimen blijven standaard verborgen."); row=QHBoxLayout(); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, nummer, account, gebruikersnaam of domein…"); self.vault_search.textChanged.connect(self.refresh_vault); reveal=QPushButton("Tonen en kopiëren"); reveal.clicked.connect(self.reveal_secret); add=QPushButton("Nieuw kluisitem"); add.setObjectName("Primary"); add.clicked.connect(self.add_vault); row.addWidget(self.vault_search,1); row.addWidget(reveal); row.addWidget(add); box.addLayout(row)
         self.vault_table=QTableWidget(0,7); self.vault_table.setHorizontalHeaderLabels(["Klant","Klantnr.","Categorie","Omschrijving","Gebruikersnaam","URL","ID"]); self.vault_table.setColumnHidden(6,True); self.vault_table.horizontalHeader().setStretchLastSection(True); self.vault_table.doubleClicked.connect(self.reveal_secret); box.addWidget(self.vault_table,1); return page
@@ -75,8 +76,12 @@ class MainWindow(QMainWindow):
         if not ok:return
         title,ok=QInputDialog.getText(self,"Nieuwe offerte","Titel")
         if ok:
-            try:self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all()
+            try:
+                proposal_id=self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all(); ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
             except Exception as e: QMessageBox.critical(self,"Offerte",str(e))
+    def edit_proposal(self,*_):
+        proposal_id=self._selected_id(self.proposal_table,6)
+        if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
     def add_vault(self):
         customers=self.customers.search()
         if not customers: QMessageBox.information(self,"IT Kluis","Voeg eerst een klant toe."); return
