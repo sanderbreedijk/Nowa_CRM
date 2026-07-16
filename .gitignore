@@ -1,0 +1,29 @@
+# Python en bouwresultaten
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+build/
+dist/
+*.spec
+
+# NOWA gebruikersdata en geheimen — nooit committen
+*.sqlite3
+*.sqlite3-*
+*.db
+vault.key
+backups/
+exports/
+logs/
+test-data/
+smoke-data/
+.env
+*.pem
+*.pfx
+
+# Lokale hulpmiddelen
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
