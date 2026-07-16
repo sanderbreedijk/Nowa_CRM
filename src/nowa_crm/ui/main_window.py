@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
                                QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
                                QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem,
@@ -10,6 +11,8 @@ from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.ui.dialogs import CustomerDialog, VaultDialog
+from nowa_crm.core.updater import RELEASES_URL, UpdateService
+from nowa_crm import __version__
 
 
 class MainWindow(QMainWindow):
@@ -18,7 +21,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("NOWA CRM"); self.resize(1380,860)
         root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); sidebar=QFrame(); sidebar.setObjectName("Sidebar"); sidebar.setFixedWidth(230); nav=QVBoxLayout(sidebar)
         brand=QLabel("NOWA CRM"); brand.setObjectName("Brand"); nav.addWidget(brand); self.stack=QStackedWidget()
-        pages=[("Overzicht",self._dashboard()),("Klanten",self._customer_page()),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self._placeholder("Mail","Klantmails en sjablonen worden hier als zelfstandige module aangesloten.")),("Telefonie",self._placeholder("Coligo telefonie","Inkomende nummers worden hier straks direct aan klanten gekoppeld."))]
+        pages=[("Overzicht",self._dashboard()),("Klanten",self._customer_page()),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self._placeholder("Mail","Klantmails en sjablonen worden hier als zelfstandige module aangesloten.")),("Telefonie",self._placeholder("Coligo telefonie","Inkomende nummers worden hier straks direct aan klanten gekoppeld.")),("Updates",self._update_page())]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for i,(title,page) in enumerate(pages):
             b=QPushButton(title); b.setObjectName("Nav"); b.setCheckable(True); b.setChecked(i==0); self.nav_group.addButton(b,i); b.clicked.connect(lambda _,x=i:self._show(x)); nav.addWidget(b); self.stack.addWidget(page)
@@ -31,6 +34,11 @@ class MainWindow(QMainWindow):
         return page,box
     def _placeholder(self,title,text):
         page,box=self._page(title,text); box.addStretch(); return page
+    def _update_page(self):
+        page,box=self._page("Updates",f"Geïnstalleerde versie: {__version__}")
+        card=QFrame(); card.setObjectName("Card"); content=QVBoxLayout(card)
+        self.update_status=QLabel("Controleer GitHub Releases op een nieuwe, geteste Windows-versie."); self.update_status.setWordWrap(True); content.addWidget(self.update_status)
+        row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.setObjectName("Primary"); check.clicked.connect(self.check_for_updates); releases=QPushButton("Releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL))); row.addWidget(check); row.addWidget(releases); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
     def _dashboard(self):
         page,box=self._page("Goedemiddag","Uw centrale werkplek voor klanten, offertes en veilige service."); grid=QGridLayout(); self.kpis=[]
         for i,title in enumerate(("Klanten","Open offertes","Kluisitems")):
@@ -87,6 +95,23 @@ class MainWindow(QMainWindow):
         except Exception as e: QMessageBox.warning(self,"IT Kluis",str(e))
     def _clear_clipboard(self,secret):
         if QApplication.clipboard().text()==secret: QApplication.clipboard().clear()
+    def check_for_updates(self):
+        self.update_status.setText("GitHub wordt gecontroleerd…"); QApplication.processEvents()
+        try:
+            release=UpdateService().latest()
+            if not release:
+                self.update_status.setText("Er is nog geen GitHub Release gepubliceerd."); return
+            if not release.is_newer:
+                self.update_status.setText(f"Versie {__version__} is actueel. Nieuwste release: {release.version}."); return
+            if not release.asset_url:
+                self.update_status.setText(f"Release {release.version} heeft nog geen Windows-pakket."); return
+            answer=QMessageBox.question(self,"NOWA CRM bijwerken",f"Versie {release.version} is beschikbaar. Nu downloaden en installeren?\n\nKlantgegevens blijven lokaal behouden.")
+            if answer!=QMessageBox.Yes:return
+            self.update_status.setText(f"Versie {release.version} wordt gedownload…"); QApplication.processEvents()
+            package=UpdateService().download(release); UpdateService().install_after_exit(package)
+            QMessageBox.information(self,"Update gereed","NOWA CRM sluit nu af en start automatisch opnieuw met de nieuwe versie."); QApplication.quit()
+        except Exception as exc:
+            self.update_status.setText(f"Updatecontrole mislukt: {exc}")
     def refresh_all(self):
         self.refresh_customers(); self.refresh_proposals(); self.refresh_vault(); self.kpis[0].setText(str(self.customers.count())); self.kpis[1].setText(str(self.proposals.count_open())); self.kpis[2].setText(str(self.vault.count()))
     def refresh_customers(self,*_):
