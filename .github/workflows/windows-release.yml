@@ -21,10 +21,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Broncode ophalen
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Python installeren
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -49,7 +49,7 @@ jobs:
           Compress-Archive -Path dist/NOWA_CRM -DestinationPath NOWA_CRM-Windows.zip
 
       - name: Build beschikbaar maken
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NOWA-CRM-Windows
           path: NOWA_CRM-Windows.zip
@@ -66,3 +66,4 @@ jobs:
             gh release create $tag --generate-notes --title "NOWA CRM $tag"
           }
           gh release upload $tag NOWA_CRM-Windows.zip --clobber
+
