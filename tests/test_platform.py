@@ -6,6 +6,7 @@ from nowa_crm.core.events import EventBus
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
+from nowa_crm.core.updater import ReleaseInfo, _version_tuple
 
 
 def test_customer_and_vault_roundtrip(tmp_path: Path):
@@ -28,3 +29,5 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert vault.reveal(entry_id, "Klant telefonisch geverifieerd") == "heel-geheim"
     with db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 2
+    assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
+    assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
