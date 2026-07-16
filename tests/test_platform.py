@@ -23,6 +23,10 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     proposals = ProposalService(db)
     proposal_id = proposals.create(customer_id, "Modernisering werkplekken")
     assert proposals.list("Modernisering")[0].id == proposal_id
+    proposals.add_line(proposal_id, "uren", "Implementatie", 10, 12500)
+    proposals.add_line(proposal_id, "licentie", "Microsoft 365", 5, 2060)
+    assert proposals.get(proposal_id).total_cents == 135300
+    assert proposals.totals(proposal_id) == {"subtotal_cents": 135300, "vat_cents": 28413, "total_cents": 163713}
     vault = VaultService(db, tmp_path / "vault.key", "beheerder", session)
     entry_id = vault.add(customer_id, "Microsoft 365 beheer", "admin@example.nl", "heel-geheim")
     assert vault.search(customer_id, "Microsoft")[0]["id"] == entry_id
