@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
                                QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
                                QVBoxLayout)
 
 from nowa_crm.modules.proposals.service import ProposalService
+from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 
 
 def money(cents: int) -> str:
@@ -20,7 +23,10 @@ class ProposalDialog(QDialog):
         self.table=QTableWidget(0,6); self.table.setHorizontalHeaderLabels(["Soort","Omschrijving","Aantal","Prijs","Regeltotaal","ID"]); self.table.setColumnHidden(5,True); self.table.horizontalHeader().setStretchLastSection(True); box.addWidget(self.table,1)
         form=QFormLayout(); self.kind=QComboBox(); self.kind.addItems(["dienst","uren","licentie","hardware","korting"]); self.description=QLineEdit(); self.quantity=QDoubleSpinBox(); self.quantity.setRange(.01,99999); self.quantity.setDecimals(2); self.quantity.setValue(1); self.price=QDoubleSpinBox(); self.price.setRange(0,9999999); self.price.setDecimals(2); self.price.setPrefix("€ ")
         form.addRow("Soort",self.kind); form.addRow("Omschrijving",self.description); form.addRow("Aantal",self.quantity); form.addRow("Eenheidsprijs excl. btw",self.price); box.addLayout(form)
-        actions=QHBoxLayout(); add=QPushButton("Regel toevoegen"); add.setObjectName("Primary"); add.clicked.connect(self._add); delete=QPushButton("Geselecteerde regel verwijderen"); delete.clicked.connect(self._delete); actions.addWidget(add); actions.addWidget(delete); actions.addStretch(); box.addLayout(actions)
+        actions=QHBoxLayout(); add=QPushButton("Regel toevoegen"); add.setObjectName("Primary"); add.clicked.connect(self._add); delete=QPushButton("Geselecteerde regel verwijderen"); delete.clicked.connect(self._delete)
+        self.template=QComboBox(); self.template.addItem("Kies offertesjabloon…",None); [self.template.addItem(x["name"],x["id"]) for x in service.templates()]
+        apply=QPushButton("Sjabloon toepassen"); apply.clicked.connect(self._apply_template); pdf=QPushButton("Professionele PDF"); pdf.clicked.connect(self._pdf)
+        actions.addWidget(add); actions.addWidget(delete); actions.addStretch(); actions.addWidget(self.template); actions.addWidget(apply); actions.addWidget(pdf); box.addLayout(actions)
         self.total=QLabel(); self.total.setStyleSheet("font-size:18px;font-weight:700;color:#0B2342"); box.addWidget(self.total)
         buttons=QDialogButtonBox(QDialogButtonBox.Close); buttons.rejected.connect(self.reject); box.addWidget(buttons); self.refresh()
     def refresh(self):
@@ -39,3 +45,13 @@ class ProposalDialog(QDialog):
         row=self.table.currentRow(); item=self.table.item(row,5) if row>=0 else None
         if item:self.service.delete_line(int(item.text())); self.refresh()
     def _status_changed(self,status):self.service.set_status(self.proposal_id,status); self.refresh()
+    def _apply_template(self):
+        template_id=self.template.currentData()
+        if not template_id:return
+        try:self.service.apply_template(self.proposal_id,template_id); self.refresh()
+        except Exception as e:QMessageBox.warning(self,"Offertesjabloon",str(e))
+    def _pdf(self):
+        try:
+            path=export_proposal_pdf(self.service,self.proposal_id)
+            if QMessageBox.question(self,"Offerte gereed",f"PDF opgeslagen:\n{path}\n\nNu openen?")==QMessageBox.Yes:QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        except Exception as e:QMessageBox.warning(self,"PDF export",str(e))
