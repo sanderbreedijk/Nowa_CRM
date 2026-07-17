@@ -158,4 +158,42 @@ CREATE TABLE IF NOT EXISTS login_events (
 );
 """
 
-MIGRATIONS: tuple[tuple[int, str], ...] = ((1, SCHEMA), (2, AUTH_SCHEMA))
+CRM_050_SCHEMA = """
+ALTER TABLE vault_entries ADD COLUMN group_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE vault_entries ADD COLUMN host TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_contacts_customer ON contacts(customer_id, name COLLATE NOCASE);
+CREATE TABLE IF NOT EXISTS proposal_templates (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS proposal_template_lines (
+    id INTEGER PRIMARY KEY,
+    template_id INTEGER NOT NULL REFERENCES proposal_templates(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'dienst',
+    description TEXT NOT NULL,
+    quantity REAL NOT NULL DEFAULT 1,
+    unit_price_cents INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO proposal_templates(name, description) VALUES
+ ('Microsoft 365 migratie', 'Basisopzet voor een Microsoft 365 migratie'),
+ ('Nieuwe werkplek', 'Werkplek, installatie en oplevering'),
+ ('Netwerkproject', 'Netwerkonderzoek, inrichting en documentatie');
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Inventarisatie en technisch ontwerp',4,9400,10 FROM proposal_templates WHERE name='Microsoft 365 migratie'
+AND NOT EXISTS(SELECT 1 FROM proposal_template_lines);
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Migratie en inrichting per gebruiker',1,9400,20 FROM proposal_templates WHERE name='Microsoft 365 migratie';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'hardware','Zakelijke werkplek',1,0,10 FROM proposal_templates WHERE name='Nieuwe werkplek';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Installatie, configuratie en overdracht',2,9400,20 FROM proposal_templates WHERE name='Nieuwe werkplek';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Netwerkinventarisatie en ontwerp',4,9400,10 FROM proposal_templates WHERE name='Netwerkproject';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Inrichting, testen en documentatie',8,9400,20 FROM proposal_templates WHERE name='Netwerkproject';
+"""
+
+MIGRATIONS: tuple[tuple[int, str], ...] = ((1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA))
