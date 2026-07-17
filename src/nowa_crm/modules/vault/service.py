@@ -58,13 +58,16 @@ class VaultService:
     def search_all(self, query: str = "") -> list[dict]:
         if self.session: self.session.require("vault.read")
         term = f"%{query.strip()}%"
+        phone_digits = "".join(ch for ch in query if ch.isdigit())
         with self.db.transaction() as conn:
             rows = conn.execute(
                 """SELECT v.id,v.customer_id,c.name customer_name,c.customer_number,c.phone customer_phone,v.category,v.label,v.username,v.url,v.group_path,v.host,v.notes,v.updated_at
                    FROM vault_entries v JOIN customers c ON c.id=v.customer_id
-                   WHERE ?='' OR c.name LIKE ? OR c.customer_number LIKE ? OR REPLACE(REPLACE(REPLACE(c.phone,' ',''),'-',''),'(', '') LIKE ? OR v.label LIKE ? OR v.username LIKE ? OR v.url LIKE ? OR v.group_path LIKE ? OR v.host LIKE ?
+                   WHERE ?='' OR c.name LIKE ? OR c.customer_number LIKE ? OR
+                   (?!='' AND REPLACE(REPLACE(REPLACE(REPLACE(c.phone,' ',''),'-',''),'(', ''),')','') LIKE ?) OR
+                   v.label LIKE ? OR v.username LIKE ? OR v.url LIKE ? OR v.group_path LIKE ? OR v.host LIKE ?
                    ORDER BY c.name,v.category,v.label LIMIT 300""",
-                (query.strip(), term, term, f"%{''.join(ch for ch in query if ch.isdigit())}%", term, term, term, term, term),
+                (query.strip(), term, term, phone_digits, f"%{phone_digits}%", term, term, term, term, term),
             ).fetchall()
         return [dict(row) for row in rows]
 
