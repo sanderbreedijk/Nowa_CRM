@@ -112,3 +112,16 @@ class ProposalService:
     def count_open(self) -> int:
         with self.db.transaction() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM proposals WHERE status IN ('concept','verzonden')").fetchone()[0])
+
+    def templates(self) -> list[dict]:
+        with self.db.transaction() as conn:
+            return [dict(row) for row in conn.execute("SELECT id,name,description FROM proposal_templates ORDER BY name COLLATE NOCASE")]
+
+    def apply_template(self, proposal_id: int, template_id: int) -> None:
+        with self.db.transaction() as conn:
+            rows = conn.execute("SELECT kind,description,quantity,unit_price_cents,sort_order FROM proposal_template_lines WHERE template_id=? ORDER BY sort_order,id", (template_id,)).fetchall()
+            if not rows: raise ValueError("Dit offertesjabloon bevat geen regels")
+            start = int(conn.execute("SELECT COALESCE(MAX(sort_order),0) FROM proposal_lines WHERE proposal_id=?", (proposal_id,)).fetchone()[0])
+            conn.executemany("INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order) VALUES(?,?,?,?,?,?)",
+                             [(proposal_id, row["kind"], row["description"], row["quantity"], row["unit_price_cents"], start + row["sort_order"]) for row in rows])
+            self._recalculate(conn, proposal_id)

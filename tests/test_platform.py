@@ -18,8 +18,11 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert session and session.can("vault.read")
     assert auth.authenticate("beheerder", "verkeerd") is None
     customers = CustomerService(db, EventBus())
-    customer_id = customers.create("K-001", "Voorbeeld BV", "info@example.nl", "0101234567", "Rotterdam")
+    customer_id = customers.create("K-001", "Voorbeeld BV", "info@example.nl", "0101234567", "Coolsingel 1", "3012 AA", "Rotterdam", "Belangrijke klant")
     assert customers.search("010123")[0].id == customer_id
+    contact_id = customers.save_contact(customer_id, "Sander", "Directeur", "sander@example.nl", "0612345678")
+    assert customers.search("Sander")[0].id == customer_id
+    assert customers.contacts(customer_id)[0].id == contact_id
     proposals = ProposalService(db)
     proposal_id = proposals.create(customer_id, "Modernisering werkplekken")
     assert proposals.list("Modernisering")[0].id == proposal_id
@@ -27,10 +30,17 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     proposals.add_line(proposal_id, "licentie", "Microsoft 365", 5, 2060)
     assert proposals.get(proposal_id).total_cents == 135300
     assert proposals.totals(proposal_id) == {"subtotal_cents": 135300, "vat_cents": 28413, "total_cents": 163713}
+    template = proposals.templates()[0]
+    proposals.apply_template(proposal_id, template["id"])
+    assert len(proposals.lines(proposal_id)) > 2
     vault = VaultService(db, tmp_path / "vault.key", "beheerder", session)
     entry_id = vault.add(customer_id, "Microsoft 365 beheer", "admin@example.nl", "heel-geheim")
     assert vault.search(customer_id, "Microsoft")[0]["id"] == entry_id
     assert vault.reveal(entry_id, "Klant telefonisch geverifieerd") == "heel-geheim"
+    keepass = tmp_path / "keepass.csv"
+    keepass.write_text("Title,Username,Password,URL,Notes,Group\nRouter,admin,router-geheim,https://192.168.1.1,Lokaal,Netwerk\n", encoding="utf-8")
+    assert vault.import_keepass_csv(customer_id, keepass) == 1
+    assert vault.search_all("Router")[0]["category"] == "Netwerk"
     with db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 2
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
