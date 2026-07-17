@@ -42,6 +42,6 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert vault.import_keepass_csv(customer_id, keepass) == 1
     assert vault.search_all("Router")[0]["category"] == "Netwerk"
     with db.transaction() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
     assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
