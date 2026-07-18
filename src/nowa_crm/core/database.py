@@ -296,7 +296,51 @@ CREATE TABLE IF NOT EXISTS customer_commercial_settings (
 );
 """
 
+MAIL_080_SCHEMA = """
+CREATE TABLE IF NOT EXISTS mail_templates (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    subject_template TEXT NOT NULL DEFAULT '',
+    body_template TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'Algemeen',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS mail_messages (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+    contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    direction TEXT NOT NULL DEFAULT 'uitgaand' CHECK(direction IN ('inkomend','uitgaand')),
+    status TEXT NOT NULL DEFAULT 'concept',
+    sender TEXT NOT NULL DEFAULT '',
+    recipients TEXT NOT NULL DEFAULT '',
+    cc TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    external_id TEXT NOT NULL DEFAULT '',
+    occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mail_messages_customer ON mail_messages(customer_id, occurred_at DESC);
+CREATE TABLE IF NOT EXISTS mail_attachments (
+    id INTEGER PRIMARY KEY,
+    message_id INTEGER NOT NULL REFERENCES mail_messages(id) ON DELETE CASCADE,
+    original_name TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO mail_templates(name,subject_template,body_template,category) VALUES
+('Algemene klantmail','Betreft: {klantnaam}','Beste {contactnaam},\n\n\n\nMet vriendelijke groet,\nNOWA Solutions','Algemeen'),
+('Offerte verzenden','Offerte {offertenummer} – {offertetitel}','Beste {contactnaam},\n\nIn de bijlage ontvangt u onze offerte {offertenummer} voor {offertetitel}.\n\nHeeft u vragen, dan lichten wij de offerte graag toe.\n\nMet vriendelijke groet,\nNOWA Solutions','Offerte'),
+('Voortgang project','Voortgang IT-project {klantnaam}','Beste {contactnaam},\n\nHierbij ontvangt u de actuele voortgang van het IT-project.\n\n{voortgang}\n\nMet vriendelijke groet,\nNOWA Solutions','Project');
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
-    (5, WORKSPACE_070_SCHEMA)
+    (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA)
 )
