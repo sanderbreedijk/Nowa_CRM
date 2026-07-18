@@ -11,15 +11,17 @@ from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
+from nowa_crm.modules.assets.service import CustomerAssetsService
 
 
 class LegacyImportService:
-    TABLES=("customers","contacts","customer_users","licenses","hardware_items","project_tasks","notes","proposals","secrets")
+    TABLES=("customers","contacts","customer_users","licenses","hardware_items","project_tasks","notes","proposals","secrets","locations","third_party_software","documents")
 
     def __init__(self, db: Database, customers: CustomerService, proposals: ProposalService, vault: VaultService,
-                 operations: OperationsService, workspace: WorkspaceService):
+                 operations: OperationsService, workspace: WorkspaceService, assets: CustomerAssetsService | None = None):
         self.db,self.customers,self.proposals,self.vault=db,customers,proposals,vault
         self.operations,self.workspace=operations,workspace
+        self.assets=assets or CustomerAssetsService(db)
 
     def preview(self, source: Path, key_file: Path | None = None) -> dict:
         self._validate(source)
@@ -43,6 +45,7 @@ class LegacyImportService:
             self._notes(legacy,customer_map,report)
             self._proposals(legacy,customer_map,report)
             self._secrets(legacy,customer_map,key_file,report)
+            self._assets(legacy,customer_map,source.parent,report)
         finally:legacy.close()
         return report
 
@@ -119,6 +122,32 @@ class LegacyImportService:
             if duplicate:report["skipped"]["secrets"]+=1
             elif customer_id:self.vault.add(customer_id,row["label"] or "Kluisitem",row["username"] or "",secret,row["category"] or "Account",row["url"] or "",row["vault_path"] or "",row["host"] or "",row["notes"] or ""); report["created"]["secrets"]+=1
             else:report["skipped"]["secrets"]+=1
+
+    def _assets(self,conn,mapping,source_folder,report):
+        for row in self._rows(conn,"locations"):
+            customer_id=mapping.get(row["customer_id"])
+            before={x["id"] for x in self.assets.list("locations",customer_id)} if customer_id else set()
+            if customer_id:
+                item=self.assets.add_location(customer_id,row["name"] or "Locatie",row["address"] or "",row["city"] or "",row["notes"] or "")
+                report["skipped" if item in before else "created"]["locations"]+=1
+            else:report["skipped"]["locations"]+=1
+        for row in self._rows(conn,"third_party_software"):
+            customer_id=mapping.get(row["customer_id"])
+            before={x["id"] for x in self.assets.list("software",customer_id)} if customer_id else set()
+            if customer_id:
+                item=self.assets.add_software(customer_id,row["name"] or "Applicatie",row["vendor"] or "",support_scope=row["support_scope"] or "")
+                report["skipped" if item in before else "created"]["third_party_software"]+=1
+            else:report["skipped"]["third_party_software"]+=1
+        for row in self._rows(conn,"documents"):
+            customer_id=mapping.get(row["customer_id"]); candidate=Path(row["file_path"] or "")
+            if not candidate.is_absolute():candidate=source_folder/candidate
+            if customer_id and candidate.is_file():
+                before={x["id"] for x in self.assets.list("documents",customer_id)}
+                item=self.assets.add_document(customer_id,row["title"] or candidate.stem,candidate,row["document_type"] or "Algemeen",row["notes"] or "")
+                report["skipped" if item in before else "created"]["documents"]+=1
+            else:
+                report["skipped"]["documents"]+=1
+                if row["file_path"]:report["warnings"].append(f"Document niet gevonden: {row['file_path']}")
 
     @staticmethod
     def _rows(conn,table):

@@ -16,7 +16,7 @@ class Customer360Page(QWidget):
         vault=QPushButton("Open IT-kluis"); vault.clicked.connect(self._vault); top.addWidget(self.customer,1); top.addWidget(vault); root.addLayout(top)
         self.identity=QLabel(); self.identity.setWordWrap(True); self.identity.setStyleSheet("font-size:16px;font-weight:700;color:#0B2342"); root.addWidget(self.identity)
         grid=QGridLayout(); self.kpis=[]
-        for i,name in enumerate(("Contacten","Offertes","Kluisitems","Gebruikers","Licenties","Hardware","Open acties","Gesprekken","E-mails")):
+        for i,name in enumerate(("Contacten","Offertes","Kluisitems","Gebruikers","Licenties","Hardware","Open acties","Gesprekken","E-mails","Locaties","Software","Documenten")):
             card=QFrame(); card.setObjectName("Card"); box=QVBoxLayout(card); value=QLabel("0"); value.setObjectName("Kpi"); box.addWidget(value); box.addWidget(QLabel(name)); grid.addWidget(card,i//5,i%5); self.kpis.append(value)
         root.addLayout(grid); self.warning=QLabel(); self.warning.setWordWrap(True); self.warning.setStyleSheet("color:#9A3412;font-weight:700"); root.addWidget(self.warning)
         self.timeline=QTableWidget(0,4); self.timeline.setHorizontalHeaderLabels(["Datum","Soort","Onderwerp","Status / detail"]); self.timeline.horizontalHeader().setStretchLastSection(True); root.addWidget(self.timeline,1)
@@ -42,7 +42,8 @@ class Customer360Page(QWidget):
         self.identity.setText(f"{c.name} · {c.customer_number}\n{c.phone} · {c.email} · {c.city}")
         values=(len(data["contacts"]),len(data["proposals"]),len(data["vault"]),len(data["users"]),
                 sum(int(x["quantity"]) for x in data["licenses"]),sum(int(x["quantity"]) for x in data["hardware"]),
-                len([x for x in data["actions"] if x["status"] not in ("Gereed","Geannuleerd")]),len(data["calls"]),len(data["mail"]))
+                len([x for x in data["actions"] if x["status"] not in ("Gereed","Geannuleerd")]),len(data["calls"]),len(data["mail"]),
+                len(data["locations"]),len(data["software"]),len(data["documents"]))
         for label,value in zip(self.kpis,values):label.setText(str(value))
         self.warning.setText("  ·  ".join(data["warnings"]))
         rows=self.service.timeline(customer_id); self.timeline.setRowCount(len(rows))
