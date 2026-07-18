@@ -9,6 +9,9 @@ from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.modules.mail.service import MailService
+from nowa_crm.modules.telephony.service import TelephonyService, normalize_phone
+from nowa_crm.integrations.coligo import ColigoAdapter
+from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
 
 
@@ -80,7 +83,24 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     incoming_id = mail.record_incoming("sander@example.nl", "info@nowa.nl", "Akkoord", "Offerte is akkoord")
     assert mail.get(incoming_id)["customer_id"] == customer_id
     assert {item["status"] for item in mail.list_messages(customer_id)} == {"verzonden", "ontvangen"}
+    telephony = TelephonyService(db, workspace, "beheerder")
+    assert normalize_phone("+31 6 12345678") == "0612345678"
+    match = telephony.recognize("06-12345678")
+    assert match["customer"]["id"] == customer_id
+    assert match["contact"]["id"] == contact_id
+    call_id = telephony.register_call("+31 6 12345678", external_id="coligo-test-1")
+    telephony.finish_call(call_id, "Servicevraag", "Klant telefonisch geholpen", "Informatie verstrekt", True, "2026-08-02")
+    assert telephony.get(call_id)["status"] == "afgerond"
+    assert telephony.history(customer_id)[0]["id"] == call_id
+    assert workspace.actions(customer_id)[0]["title"].startswith("Terugbellen:")
+    calls = []
+    coligo = ColigoAdapter(); coligo.start(calls.append)
+    coligo.ingest("0612345678", "coligo-test-2", "Sander")
+    assert calls[0].external_id == "coligo-test-2"
+    assert _startup_phone(["--phone", "0101234567"]) == "0101234567"
+    assert _startup_phone(["tel:+31612345678"]) == "+31612345678"
     with db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
     assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
+
