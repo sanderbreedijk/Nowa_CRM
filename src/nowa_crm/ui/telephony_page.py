@@ -13,7 +13,7 @@ class TelephonyPage(QWidget):
         super().__init__(parent); self.customers=customers; self.service=service; self.open_customer=open_customer; self.open_vault=open_vault; self.call_id=None
         root=QVBoxLayout(self); title=QLabel("Telefonie en Coligo"); title.setObjectName("Title"); root.addWidget(title)
         sub=QLabel("Herken inkomende nummers, open direct het klantdossier of de IT-kluis en registreer het gesprek."); sub.setObjectName("Subtitle"); root.addWidget(sub)
-        lookup=QHBoxLayout(); self.phone=QLineEdit(); self.phone.setPlaceholderText("Telefoonnummer uit Coligo of handmatigâ€¦"); self.phone.returnPressed.connect(self.incoming_call)
+        lookup=QHBoxLayout(); self.phone=QLineEdit(); self.phone.setPlaceholderText("Telefoonnummer uit Coligo of handmatig…"); self.phone.returnPressed.connect(self.incoming_call)
         incoming=QPushButton("Inkomend gesprek"); incoming.setObjectName("Primary"); incoming.clicked.connect(self.incoming_call)
         outgoing=QPushButton("Uitgaand gesprek"); outgoing.clicked.connect(lambda:self.start_call("uitgaand"))
         lookup.addWidget(self.phone,1); lookup.addWidget(incoming); lookup.addWidget(outgoing); root.addLayout(lookup)
@@ -24,13 +24,13 @@ class TelephonyPage(QWidget):
         self.callback=QCheckBox("Terugbelactie maken"); self.callback_due=QLineEdit(); self.callback_due.setPlaceholderText("jjjj-mm-dd")
         form.addRow("Onderwerp",self.subject); form.addRow("Gespreksnotitie",self.notes); form.addRow("Resultaat",self.outcome); form.addRow("",self.callback); form.addRow("Terugbeldatum",self.callback_due)
         finish=QPushButton("Gesprek afronden"); finish.setObjectName("Primary"); finish.clicked.connect(self.finish); form.addRow("",finish)
-        historybox=QWidget(); hl=QVBoxLayout(historybox); searchrow=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek gesprekkenâ€¦"); self.search.textChanged.connect(self.refresh_history); self.filter_customer=QComboBox(); self.filter_customer.currentIndexChanged.connect(self.refresh_history); searchrow.addWidget(self.search,1); searchrow.addWidget(self.filter_customer); hl.addLayout(searchrow)
+        historybox=QWidget(); hl=QVBoxLayout(historybox); searchrow=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek gesprekken…"); self.search.textChanged.connect(self.refresh_history); self.filter_customer=QComboBox(); self.filter_customer.currentIndexChanged.connect(self.refresh_history); searchrow.addWidget(self.search,1); searchrow.addWidget(self.filter_customer); hl.addLayout(searchrow)
         self.table=QTableWidget(0,8); self.table.setHorizontalHeaderLabels(["Datum","Klant","Contact","Richting","Nummer","Onderwerp","Resultaat","ID"]); self.table.setColumnHidden(7,True); self.table.horizontalHeader().setStretchLastSection(True); self.table.doubleClicked.connect(self.load_selected); hl.addWidget(self.table)
         split.addWidget(formbox); split.addWidget(historybox); split.setSizes([430,850]); root.addWidget(split,1); self.reload_customers()
 
     def reload_customers(self):
         current=self.filter_customer.currentData(); self.filter_customer.blockSignals(True); self.filter_customer.clear(); self.filter_customer.addItem("Alle klanten",None)
-        for customer in self.customers.search():self.filter_customer.addItem(f"{customer.customer_number} â€” {customer.name}",customer.id)
+        for customer in self.customers.search():self.filter_customer.addItem(f"{customer.customer_number} — {customer.name}",customer.id)
         if current:
             index=self.filter_customer.findData(current)
             if index>=0:self.filter_customer.setCurrentIndex(index)
@@ -42,7 +42,7 @@ class TelephonyPage(QWidget):
         if not self.phone.text().strip():return
         try:
             self.call_id=self.service.register_call(self.phone.text(),direction); call=self.service.get(self.call_id)
-            contact=f" Â· {call['contact_name']}" if call["contact_name"] else ""
+            contact=f" · {call['contact_name']}" if call["contact_name"] else ""
             self.match.setText(f"{call['customer_name']}{contact}\n{call['phone_number']}")
             self.subject.clear(); self.notes.clear(); self.callback.setChecked(False); self.refresh_history()
         except Exception as exc:QMessageBox.warning(self,"Telefonie",str(exc))
@@ -56,7 +56,7 @@ class TelephonyPage(QWidget):
 
     def link_customer(self):
         if not self.call_id:return
-        customers=self.customers.search(); labels=[f"{x.customer_number} â€” {x.name}" for x in customers]
+        customers=self.customers.search(); labels=[f"{x.customer_number} — {x.name}" for x in customers]
         if not customers:QMessageBox.information(self,"Gesprek koppelen","Er zijn nog geen klanten om te koppelen."); return
         label,ok=QInputDialog.getItem(self,"Gesprek koppelen","Klant",labels,0,False)
         if ok:
@@ -72,7 +72,7 @@ class TelephonyPage(QWidget):
         row=self.table.currentRow(); item=self.table.item(row,7) if row>=0 else None
         if not item:return
         self.call_id=int(item.text()); call=self.service.get(self.call_id); self.phone.setText(call["phone_number"]); self.subject.setText(call["subject"]); self.notes.setPlainText(call["notes"]); self.outcome.setCurrentText(call["outcome"] or "Beantwoord")
-        self.match.setText(f"{call['customer_name']} Â· {call['contact_name']}\n{call['phone_number']}")
+        self.match.setText(f"{call['customer_name']} · {call['contact_name']}\n{call['phone_number']}")
 
     def _open_customer(self):
         call=self.service.get(self.call_id) if self.call_id else None
@@ -80,4 +80,3 @@ class TelephonyPage(QWidget):
 
     def _open_vault(self):
         if self.phone.text().strip():self.open_vault(self.phone.text())
-

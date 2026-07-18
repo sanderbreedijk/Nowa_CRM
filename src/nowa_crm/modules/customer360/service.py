@@ -35,6 +35,5 @@ class Customer360Service:
         for x in data["calls"]:rows.append({"date":x["started_at"],"kind":"Gesprek","title":x["subject"] or x["phone_number"],"detail":x["outcome"]})
         for x in data["mail"]:rows.append({"date":x["occurred_at"],"kind":"E-mail","title":x["subject"],"detail":x["status"]})
         for x in data["actions"]:rows.append({"date":x["due_date"],"kind":"Actie","title":x["title"],"detail":x["status"]})
-        for x in data["proposals"]:rows.append({"date":"","kind":"Offerte","title":f"{x.number} Â· {x.title}","detail":x.status})
+        for x in data["proposals"]:rows.append({"date":"","kind":"Offerte","title":f"{x.number} · {x.title}","detail":x.status})
         return sorted(rows,key=lambda x:(x["date"] or "",x["title"]),reverse=True)
-

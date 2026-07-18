@@ -17,6 +17,12 @@ from nowa_crm.core.updater import ReleaseInfo, _version_tuple
 
 
 def test_customer_and_vault_roundtrip(tmp_path: Path):
+    source_root = Path(__file__).parents[1] / "src"
+    for source in source_root.rglob("*.py"):
+        text = source.read_text(encoding="utf-8")
+        assert not any(marker in text for marker in ("Ã", "Â", "â€")), f"Beschadigde UTF-8-tekst in {source}"
+    dossier_ui = (source_root / "nowa_crm" / "ui" / "customer360_page.py").read_text(encoding="utf-8")
+    assert "360° klantdossier" in dossier_ui and "commerciële" in dossier_ui and "één klant" in dossier_ui
     db = Database(tmp_path / "test.sqlite3"); db.migrate()
     assert (tmp_path / "backups").exists()
     auth = AuthService(db)
@@ -113,4 +119,3 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
     assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
-
