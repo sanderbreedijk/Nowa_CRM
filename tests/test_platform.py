@@ -18,6 +18,7 @@ from nowa_crm.modules.migration.service import LegacyImportService
 from nowa_crm.modules.assets.service import CustomerAssetsService
 from nowa_crm.modules.servicedesk.service import ServiceDeskService
 from nowa_crm.modules.reporting.service import ReportingService
+from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -70,6 +71,16 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert operations.dashboard() == {"users": 1, "licenses": 1, "hardware": 1, "open_tasks": 1}
     assert operations.license_warnings(customer_id) == ["1 actieve gebruikers hebben nog geen MFA-registratie."]
     assert operations.intake(customer_id)["teams_count"] == 1
+    planning=PlanningService(db,tmp_path/"planning")
+    task=planning.list(customer_id)[0]
+    planning.save(customer_id,task["phase"],task["task_name"],"Sander","2026-07-01","2026-07-02","Klantgegevens","Gereed","Afgerond",task["id"])
+    second_task=planning.save(customer_id,"Migratie","Mailboxmigratie","NOWA","2026-07-03","2026-07-04","Technische intake","Wacht op klant")
+    stats=planning.stats(customer_id)
+    assert stats["total"] == 2 and stats["done"] == 1 and stats["waiting"] == 1 and stats["progress"] == 50
+    assert planning.export_csv(customer_id).read_text(encoding="utf-8-sig").startswith("Fase;Taak;")
+    assert planning.export_pdf(customer_id).read_bytes().startswith(b"%PDF")
+    planning.delete(second_task)
+    assert planning.stats(customer_id)["progress"] == 100
     workspace = WorkspaceService(db, proposals, "beheerder", tmp_path)
     workspace.add_note(customer_id, "Afspraak", "Migratie gefaseerd uitvoeren")
     action_id = workspace.add_action(customer_id, "DNS controleren", "Sander", "2026-08-01", "Hoog")
@@ -144,9 +155,9 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     report=reporting.compose(customer_id,"Sander")
     assert "Voortgangsupdate IT-project" in report["subject"]
     assert "Printer niet bereikbaar" in report["body"]
-    assert report["progress"] == 0
+    assert report["progress"] == 100
     report_id=reporting.save(customer_id,"Sander")
-    assert reporting.get(report_id)["progress_percent"] == 0
+    assert reporting.get(report_id)["progress_percent"] == 100
     report_path=reporting.export_text(customer_id,"Sander")
     assert report_path.exists() and "Acties en aandachtspunten" in report_path.read_text(encoding="utf-8")
     report_mail=reporting.create_mail_draft(customer_id,contact_id,"Sander")
