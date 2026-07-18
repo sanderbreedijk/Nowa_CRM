@@ -22,6 +22,7 @@ from nowa_crm.modules.assets.service import CustomerAssetsService
 from nowa_crm.modules.servicedesk.service import ServiceDeskService
 from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.modules.planning.service import PlanningService
+from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
@@ -34,6 +35,7 @@ from nowa_crm.ui.assets_page import CustomerAssetsPage
 from nowa_crm.ui.servicedesk_page import ServiceDeskPage
 from nowa_crm.ui.reporting_page import ReportingPage
 from nowa_crm.ui.planning_page import PlanningPage
+from nowa_crm.ui.security_page import SecurityPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
@@ -57,8 +59,10 @@ class MainWindow(QMainWindow):
         self.reporting_page=ReportingPage(customers,self.reporting_service,self.open_mail_message,self)
         self.planning_service=PlanningService(customers.db)
         self.planning_page=PlanningPage(customers,self.planning_service,self)
+        self.security_service=SecurityService(customers.db)
+        self.security_page=SecurityPage(customers,self.security_service,self)
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page())]
+        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page())]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for i,(title,page) in enumerate(pages):
             b=QPushButton(title); b.setObjectName("Nav"); b.setCheckable(True); b.setChecked(i==0); self.nav_group.addButton(b,i); b.clicked.connect(lambda _,x=i:self._show(x)); nav.addWidget(b); self.stack.addWidget(page)
@@ -198,6 +202,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,"servicedesk_page"):self.servicedesk_page.reload_customers()
         if hasattr(self,"reporting_page"):self.reporting_page.reload_customers()
         if hasattr(self,"planning_page"):self.planning_page.reload_customers()
+        if hasattr(self,"security_page"):self.security_page.reload_customers()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
