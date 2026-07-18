@@ -39,6 +39,23 @@ QPushButton#Nav:checked {
     color: #FFFFFF;
     border-left: 4px solid #45A3FF;
 }
+QPushButton#NavSection {
+    background-color: transparent;
+    color: #8FA8C5;
+    text-align: left;
+    padding: 10px 14px 7px 14px;
+    border: none;
+    border-radius: 0px;
+    font-size: 12px;
+    font-weight: 700;
+}
+QPushButton#NavSection:hover {
+    background-color: #18385F;
+    color: #FFFFFF;
+}
+QWidget#NavSectionContent {
+    background-color: transparent;
+}
 QLabel#Title {
     color: #0B2342;
     font-size: 30px;

@@ -64,11 +64,38 @@ class MainWindow(QMainWindow):
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
         pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page())]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
-        for i,(title,page) in enumerate(pages):
-            b=QPushButton(title); b.setObjectName("Nav"); b.setCheckable(True); b.setChecked(i==0); self.nav_group.addButton(b,i); b.clicked.connect(lambda _,x=i:self._show(x)); nav.addWidget(b); self.stack.addWidget(page)
+        for _,page in pages:self.stack.addWidget(page)
+        self._build_navigation(nav,pages)
         nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root); self.refresh_all()
 
-    def _show(self,index): self.stack.setCurrentIndex(index); self.refresh_all()
+    def _build_navigation(self,nav,pages):
+        groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,)),
+                ("Service",(6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(7,14,15)))
+        self.nav_sections={};self.page_sections={};self.nav_buttons={}
+        for section,indices in groups:
+            header=QPushButton(f"›  {section}");header.setObjectName("NavSection");nav.addWidget(header)
+            content=QWidget();content.setObjectName("NavSectionContent");box=QVBoxLayout(content)
+            box.setContentsMargins(0,0,0,4);box.setSpacing(0);nav.addWidget(content)
+            self.nav_sections[section]=(header,content)
+            header.clicked.connect(lambda _,name=section:self._open_nav_section(name))
+            for index in indices:
+                title=pages[index][0];button=QPushButton(title);button.setObjectName("Nav")
+                button.setCheckable(True);button.setChecked(index==0);self.nav_group.addButton(button,index)
+                button.clicked.connect(lambda _,x=index:self._show(x));box.addWidget(button)
+                self.page_sections[index]=section;self.nav_buttons[index]=button
+        self._open_nav_section("Start")
+
+    def _open_nav_section(self,name):
+        for section,(header,content) in self.nav_sections.items():
+            active=section==name;content.setVisible(active);header.setText(f"{'⌄' if active else '›'}  {section}")
+
+    def _show(self,index):
+        self.stack.setCurrentIndex(index)
+        section=self.page_sections.get(index)
+        if section:self._open_nav_section(section)
+        button=self.nav_buttons.get(index)
+        if button:button.setChecked(True)
+        self.refresh_all()
     def _page(self,title,subtitle=""):
         page=QWidget(); box=QVBoxLayout(page); head=QLabel(title); head.setObjectName("Title"); box.addWidget(head)
         if subtitle: sub=QLabel(subtitle); sub.setObjectName("Subtitle"); box.addWidget(sub)
