@@ -363,7 +363,44 @@ CREATE INDEX IF NOT EXISTS idx_call_events_phone ON call_events(normalized_numbe
 CREATE INDEX IF NOT EXISTS idx_call_events_customer ON call_events(customer_id, started_at DESC);
 """
 
+ASSETS_120_SCHEMA = """
+CREATE TABLE IF NOT EXISTS customer_locations (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    address TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_customer_locations_customer ON customer_locations(customer_id,name);
+CREATE TABLE IF NOT EXISTS customer_software (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    vendor TEXT NOT NULL DEFAULT '',
+    version TEXT NOT NULL DEFAULT '',
+    support_scope TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_customer_software_customer ON customer_software(customer_id,name);
+CREATE TABLE IF NOT EXISTS customer_documents (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    document_type TEXT NOT NULL DEFAULT 'Algemeen',
+    original_name TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_customer_documents_customer ON customer_documents(customer_id,created_at DESC);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
-    (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA)
+    (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
+    (8, ASSETS_120_SCHEMA)
 )
