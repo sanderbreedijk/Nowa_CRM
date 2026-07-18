@@ -399,8 +399,45 @@ CREATE TABLE IF NOT EXISTS customer_documents (
 CREATE INDEX IF NOT EXISTS idx_customer_documents_customer ON customer_documents(customer_id,created_at DESC);
 """
 
+SERVICEDESK_130_SCHEMA = """
+CREATE TABLE IF NOT EXISTS service_tickets (
+    id INTEGER PRIMARY KEY,
+    number TEXT NOT NULL UNIQUE,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    subject TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'Support',
+    priority TEXT NOT NULL DEFAULT 'Normaal',
+    status TEXT NOT NULL DEFAULT 'Open',
+    owner TEXT NOT NULL DEFAULT 'NOWA',
+    sla_due_at TEXT NOT NULL DEFAULT '',
+    resolution TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_service_tickets_customer ON service_tickets(customer_id,status,priority);
+CREATE TABLE IF NOT EXISTS ticket_updates (
+    id INTEGER PRIMARY KEY,
+    ticket_id INTEGER NOT NULL REFERENCES service_tickets(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS ticket_time_entries (
+    id INTEGER PRIMARY KEY,
+    ticket_id INTEGER NOT NULL REFERENCES service_tickets(id) ON DELETE CASCADE,
+    minutes INTEGER NOT NULL CHECK(minutes>0),
+    description TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
-    (8, ASSETS_120_SCHEMA)
+    (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA)
 )
