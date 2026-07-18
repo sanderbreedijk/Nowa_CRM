@@ -15,25 +15,28 @@ from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.modules.mail.service import MailService
+from nowa_crm.modules.telephony.service import TelephonyService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
 from nowa_crm.ui.workspace_page import WorkspacePage
 from nowa_crm.ui.mail_page import MailPage
+from nowa_crm.ui.telephony_page import TelephonyPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService, operations: OperationsService, workspace: WorkspaceService, mail: MailService):
-        super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault; self.operations=operations; self.workspace=workspace; self.mail=mail
+    def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService, operations: OperationsService, workspace: WorkspaceService, mail: MailService, telephony: TelephonyService):
+        super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault; self.operations=operations; self.workspace=workspace; self.mail=mail; self.telephony=telephony
         self.setWindowTitle("NOWA CRM"); self.resize(1380,860)
         root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); sidebar=QFrame(); sidebar.setObjectName("Sidebar"); sidebar.setFixedWidth(230); nav=QVBoxLayout(sidebar)
         brand=QLabel("NOWA CRM"); brand.setObjectName("Brand"); nav.addWidget(brand); self.stack=QStackedWidget()
         self.operations_page=OperationsPage(customers,operations,self)
         self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self)
         self.mail_page=MailPage(customers,mail,workspace,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self._placeholder("Coligo telefonie","Inkomende nummers worden hier straks direct aan klanten gekoppeld.")),("Updates",self._update_page())]
+        self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
+        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Updates",self._update_page())]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for i,(title,page) in enumerate(pages):
             b=QPushButton(title); b.setObjectName("Nav"); b.setCheckable(True); b.setChecked(i==0); self.nav_group.addButton(b,i); b.clicked.connect(lambda _,x=i:self._show(x)); nav.addWidget(b); self.stack.addWidget(page)
@@ -47,7 +50,7 @@ class MainWindow(QMainWindow):
     def _placeholder(self,title,text):
         page,box=self._page(title,text); box.addStretch(); return page
     def _update_page(self):
-        page,box=self._page("Updates",f"Geïnstalleerde versie: {__version__}")
+        page,box=self._page("Updates",f"GeÃ¯nstalleerde versie: {__version__}")
         card=QFrame(); card.setObjectName("Card"); content=QVBoxLayout(card)
         self.update_status=QLabel("Controleer GitHub Releases op een nieuwe, geteste Windows-versie."); self.update_status.setWordWrap(True); content.addWidget(self.update_status)
         row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.setObjectName("Primary"); check.clicked.connect(self.check_for_updates); releases=QPushButton("Releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL))); row.addWidget(check); row.addWidget(releases); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
@@ -57,14 +60,14 @@ class MainWindow(QMainWindow):
             card=QFrame(); card.setObjectName("Card"); c=QVBoxLayout(card); value=QLabel("0"); value.setObjectName("Kpi"); c.addWidget(value); c.addWidget(QLabel(title)); grid.addWidget(card,i//4,i%4); self.kpis.append(value)
         box.addLayout(grid); hint=QFrame(); hint.setObjectName("Card"); h=QVBoxLayout(hint); h.addWidget(QLabel("Slim voorbereid op groei")); h.addWidget(QLabel("Mail en Coligo-nummerherkenning worden via losse koppelingen toegevoegd zonder de CRM-kern te wijzigen.")); box.addWidget(hint); box.addStretch(); return page
     def _customer_page(self):
-        page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
+        page,box=self._page("Klanten","EÃ©n betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaatsâ€¦"); self.customer_search.textChanged.connect(self.refresh_customers)
         add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts); row.addWidget(self.customer_search,1); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
         self.customer_table=QTableWidget(0,6); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Plaats","ID"]); self.customer_table.setColumnHidden(5,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
-        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(add); box.addLayout(row)
+        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klantâ€¦"); self.proposal_search.textChanged.connect(self.refresh_proposals); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(add); box.addLayout(row)
         self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); self.proposal_table.doubleClicked.connect(self.edit_proposal); box.addWidget(self.proposal_table,1); return page
     def _vault_page(self):
-        page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; zoek ook rechtstreeks op telefoonnummer."); row=QHBoxLayout(); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, telefoon, account, host, gebruikersnaam of domein…"); self.vault_search.textChanged.connect(self.refresh_vault); reveal=QPushButton("Toon wachtwoord"); reveal.clicked.connect(self.reveal_secret); import_btn=QPushButton("KeePass CSV import"); import_btn.clicked.connect(self.import_keepass); add=QPushButton("Nieuw kluisitem"); add.setObjectName("Primary"); add.clicked.connect(self.add_vault); row.addWidget(self.vault_search,1); row.addWidget(import_btn); row.addWidget(reveal); row.addWidget(add); box.addLayout(row)
+        page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; zoek ook rechtstreeks op telefoonnummer."); row=QHBoxLayout(); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, telefoon, account, host, gebruikersnaam of domeinâ€¦"); self.vault_search.textChanged.connect(self.refresh_vault); reveal=QPushButton("Toon wachtwoord"); reveal.clicked.connect(self.reveal_secret); import_btn=QPushButton("KeePass CSV import"); import_btn.clicked.connect(self.import_keepass); add=QPushButton("Nieuw kluisitem"); add.setObjectName("Primary"); add.clicked.connect(self.add_vault); row.addWidget(self.vault_search,1); row.addWidget(import_btn); row.addWidget(reveal); row.addWidget(add); box.addLayout(row)
         self.vault_table=QTableWidget(0,9); self.vault_table.setHorizontalHeaderLabels(["Klant","Klantnr.","Categorie","Groep","Omschrijving","Gebruikersnaam","Host / IP","URL","ID"]); self.vault_table.setColumnHidden(8,True); self.vault_table.horizontalHeader().setStretchLastSection(True); self.vault_table.doubleClicked.connect(self.reveal_secret); box.addWidget(self.vault_table,1); return page
     def _selected_id(self,table,col):
         row=table.currentRow(); item=table.item(row,col) if row>=0 else None; return int(item.text()) if item else None
@@ -83,7 +86,7 @@ class MainWindow(QMainWindow):
     def manage_contacts(self):
         cid=self._selected_id(self.customer_table,5)
         if not cid: QMessageBox.information(self,"Contactpersonen","Selecteer eerst een klant."); return
-        existing=self.customers.contacts(cid); summary="\n".join(f"• {x.name} — {x.role or 'contact'} — {x.phone or x.email}" for x in existing) or "Nog geen contactpersonen."
+        existing=self.customers.contacts(cid); summary="\n".join(f"â€¢ {x.name} â€” {x.role or 'contact'} â€” {x.phone or x.email}" for x in existing) or "Nog geen contactpersonen."
         if QMessageBox.question(self,"Contactpersonen",summary+"\n\nNieuwe contactpersoon toevoegen?")!=QMessageBox.Yes:return
         dlg=ContactDialog(self)
         if dlg.exec():
@@ -92,7 +95,7 @@ class MainWindow(QMainWindow):
     def add_proposal(self):
         customers=self.customers.search();
         if not customers: QMessageBox.information(self,"Offerte","Voeg eerst een klant toe."); return
-        labels=[f"{c.customer_number} — {c.name}" for c in customers]; label,ok=QInputDialog.getItem(self,"Nieuwe offerte","Klant",labels,0,False)
+        labels=[f"{c.customer_number} â€” {c.name}" for c in customers]; label,ok=QInputDialog.getItem(self,"Nieuwe offerte","Klant",labels,0,False)
         if not ok:return
         title,ok=QInputDialog.getText(self,"Nieuwe offerte","Titel")
         if ok:
@@ -104,6 +107,13 @@ class MainWindow(QMainWindow):
         if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
     def open_proposal(self,proposal_id):
         ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+    def open_customer(self,customer_id):
+        customer=self.customers.get(customer_id)
+        if customer:self.customer_search.setText(customer.name); self._show(2)
+    def open_vault(self,query):
+        self.vault_search.setText(query); self._show(5)
+    def handle_incoming_phone(self,phone):
+        self.telephony_page.phone.setText(phone); self.telephony_page.incoming_call(); self._show(7); self.raise_(); self.activateWindow()
     def add_vault(self):
         customers=self.customers.search()
         if not customers: QMessageBox.information(self,"IT Kluis","Voeg eerst een klant toe."); return
@@ -114,12 +124,12 @@ class MainWindow(QMainWindow):
     def import_keepass(self):
         customers=self.customers.search()
         if not customers: QMessageBox.information(self,"KeePass import","Voeg eerst een klant toe."); return
-        labels=[f"{c.customer_number} — {c.name}" for c in customers]; label,ok=QInputDialog.getItem(self,"KeePass import","Importeer gegevens voor klant",labels,0,False)
+        labels=[f"{c.customer_number} â€” {c.name}" for c in customers]; label,ok=QInputDialog.getItem(self,"KeePass import","Importeer gegevens voor klant",labels,0,False)
         if not ok:return
         filename,_=QFileDialog.getOpenFileName(self,"KeePass CSV selecteren","","CSV-bestanden (*.csv)")
         if not filename:return
         try:
-            count=self.vault.import_keepass_csv(customers[labels.index(label)].id,Path(filename)); self.refresh_all(); QMessageBox.information(self,"KeePass import",f"{count} kluisitems veilig geïmporteerd.")
+            count=self.vault.import_keepass_csv(customers[labels.index(label)].id,Path(filename)); self.refresh_all(); QMessageBox.information(self,"KeePass import",f"{count} kluisitems veilig geÃ¯mporteerd.")
         except Exception as e: QMessageBox.warning(self,"KeePass import",str(e))
     def reveal_secret(self,*_):
         entry_id=self._selected_id(self.vault_table,8)
@@ -127,19 +137,19 @@ class MainWindow(QMainWindow):
         reason,ok=QInputDialog.getText(self,"Verificatie","Reden / wijze van klantverificatie")
         if not ok:return
         try:
-            secret=self.vault.reveal(entry_id,reason); QApplication.clipboard().setText(secret); alphabet="  ".join(f"{ch} — {self._spell(ch)}" for ch in secret); QMessageBox.information(self,"Wachtwoord",f"{secret}\n\nSpelalfabet:\n{alphabet}\n\nHet wachtwoord staat 30 seconden op het klembord.")
+            secret=self.vault.reveal(entry_id,reason); QApplication.clipboard().setText(secret); alphabet="  ".join(f"{ch} â€” {self._spell(ch)}" for ch in secret); QMessageBox.information(self,"Wachtwoord",f"{secret}\n\nSpelalfabet:\n{alphabet}\n\nHet wachtwoord staat 30 seconden op het klembord.")
             QTimer.singleShot(30000,lambda:self._clear_clipboard(secret))
         except Exception as e: QMessageBox.warning(self,"IT Kluis",str(e))
     def _clear_clipboard(self,secret):
         if QApplication.clipboard().text()==secret: QApplication.clipboard().clear()
     @staticmethod
     def _spell(char):
-        words=dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",("Anton Bernard Cornelis Dirk Eduard Ferdinand Gerard Hendrik Izaak Johan Karel Lodewijk Maria Nico Otto Pieter Quotiënt Rudolf Simon Theodoor Utrecht Victor Willem Xantippe Ypsilon Zacharias").split()))
+        words=dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",("Anton Bernard Cornelis Dirk Eduard Ferdinand Gerard Hendrik Izaak Johan Karel Lodewijk Maria Nico Otto Pieter QuotiÃ«nt Rudolf Simon Theodoor Utrecht Victor Willem Xantippe Ypsilon Zacharias").split()))
         if char.upper() in words:return words[char.upper()]
-        if char.isdigit():return ("nul","één","twee","drie","vier","vijf","zes","zeven","acht","negen")[int(char)]
+        if char.isdigit():return ("nul","Ã©Ã©n","twee","drie","vier","vijf","zes","zeven","acht","negen")[int(char)]
         return {"@":"apenstaartje",".":"punt","-":"streepje","_":"laag streepje"}.get(char,"teken")
     def check_for_updates(self):
-        self.update_status.setText("GitHub wordt gecontroleerd…"); QApplication.processEvents()
+        self.update_status.setText("GitHub wordt gecontroleerdâ€¦"); QApplication.processEvents()
         try:
             release=UpdateService().latest()
             if not release:
@@ -150,7 +160,7 @@ class MainWindow(QMainWindow):
                 self.update_status.setText(f"Release {release.version} heeft nog geen Windows-pakket."); return
             answer=QMessageBox.question(self,"NOWA CRM bijwerken",f"Versie {release.version} is beschikbaar. Nu downloaden en installeren?\n\nKlantgegevens blijven lokaal behouden.")
             if answer!=QMessageBox.Yes:return
-            self.update_status.setText(f"Versie {release.version} wordt gedownload…"); QApplication.processEvents()
+            self.update_status.setText(f"Versie {release.version} wordt gedownloadâ€¦"); QApplication.processEvents()
             package=UpdateService().download(release); UpdateService().install_after_exit(package)
             QMessageBox.information(self,"Update gereed","NOWA CRM sluit nu af en start automatisch opnieuw met de nieuwe versie."); QApplication.quit()
         except Exception as exc:
@@ -159,6 +169,7 @@ class MainWindow(QMainWindow):
         self.refresh_customers(); self.refresh_proposals(); self.refresh_vault()
         if hasattr(self,"operations_page"):self.operations_page.reload_customers()
         if hasattr(self,"workspace_page"):self.workspace_page.reload_customers()
+        if hasattr(self,"telephony_page"):self.telephony_page.reload_customers()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
@@ -170,7 +181,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self,"proposal_table"):return
         rows=self.proposals.list(self.proposal_search.text()); self.proposal_table.setRowCount(len(rows))
         for r,x in enumerate(rows):
-            vals=(x.number,x.customer_name,x.title,x.status,str(x.revision),f"€ {x.total_cents/100:,.2f}",str(x.id))
+            vals=(x.number,x.customer_name,x.title,x.status,str(x.revision),f"â‚¬ {x.total_cents/100:,.2f}",str(x.id))
             for c,v in enumerate(vals):self.proposal_table.setItem(r,c,QTableWidgetItem(v))
     def refresh_vault(self,*_):
         if not hasattr(self,"vault_table"):return
@@ -178,3 +189,4 @@ class MainWindow(QMainWindow):
         for r,x in enumerate(rows):
             vals=(x["customer_name"],x["customer_number"],x["category"],x["group_path"],x["label"],x["username"],x["host"],x["url"],str(x["id"]))
             for c,v in enumerate(vals):self.vault_table.setItem(r,c,QTableWidgetItem(v or ""))
+
