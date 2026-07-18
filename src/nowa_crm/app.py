@@ -13,6 +13,7 @@ from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
+from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.ui.main_window import MainWindow
 from nowa_crm.ui.login import LoginDialog, SetupDialog
 from nowa_crm.ui.theme import THEME
@@ -21,16 +22,17 @@ from nowa_crm.ui.theme import THEME
 def build_services(session=None):
     db = Database(database_path()); db.migrate(); events = EventBus()
     actor = session.username if session else getpass.getuser()
-    return db, CustomerService(db, events), ProposalService(db), VaultService(db, data_dir() / "vault.key", actor, session), OperationsService(db)
+    customers=CustomerService(db,events); proposals=ProposalService(db)
+    return db, customers, proposals, VaultService(db, data_dir() / "vault.key", actor, session), OperationsService(db), WorkspaceService(db,proposals,actor)
 
 
 def main() -> int:
     app = QApplication(sys.argv); app.setStyleSheet(THEME)
-    db, _, _, _, _ = build_services(); auth=AuthService(db)
+    db, _, _, _, _, _ = build_services(); auth=AuthService(db)
     if not auth.has_users() and SetupDialog(auth).exec()!=QDialog.Accepted: return 0
     login=LoginDialog(auth)
     if login.exec()!=QDialog.Accepted or not login.session: return 0
-    _, customers, proposals, vault, operations = build_services(login.session); window = MainWindow(customers, proposals, vault, operations); window.show()
+    _, customers, proposals, vault, operations, workspace = build_services(login.session); window = MainWindow(customers, proposals, vault, operations, workspace); window.show()
     return app.exec()
 
 

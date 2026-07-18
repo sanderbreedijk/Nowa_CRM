@@ -264,6 +264,39 @@ CREATE TABLE IF NOT EXISTS project_tasks (
 CREATE INDEX IF NOT EXISTS idx_project_tasks_customer ON project_tasks(customer_id, status, start_date);
 """
 
+WORKSPACE_070_SCHEMA = """
+CREATE TABLE IF NOT EXISTS customer_notes (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS action_items (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    owner TEXT NOT NULL DEFAULT 'NOWA',
+    due_date TEXT NOT NULL DEFAULT '',
+    priority TEXT NOT NULL DEFAULT 'Normaal',
+    status TEXT NOT NULL DEFAULT 'Open',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status, due_date, priority);
+CREATE TABLE IF NOT EXISTS customer_commercial_settings (
+    customer_id INTEGER PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+    hourly_rate_cents INTEGER NOT NULL DEFAULT 9400,
+    discount_percent REAL NOT NULL DEFAULT 0,
+    payment_term_days INTEGER NOT NULL DEFAULT 14,
+    validity_days INTEGER NOT NULL DEFAULT 30,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
-    (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA)
+    (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
+    (5, WORKSPACE_070_SCHEMA)
 )
