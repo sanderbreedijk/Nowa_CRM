@@ -336,11 +336,35 @@ CREATE TABLE IF NOT EXISTS mail_attachments (
 );
 INSERT OR IGNORE INTO mail_templates(name,subject_template,body_template,category) VALUES
 ('Algemene klantmail','Betreft: {klantnaam}','Beste {contactnaam},\n\n\n\nMet vriendelijke groet,\nNOWA Solutions','Algemeen'),
-('Offerte verzenden','Offerte {offertenummer} – {offertetitel}','Beste {contactnaam},\n\nIn de bijlage ontvangt u onze offerte {offertenummer} voor {offertetitel}.\n\nHeeft u vragen, dan lichten wij de offerte graag toe.\n\nMet vriendelijke groet,\nNOWA Solutions','Offerte'),
+('Offerte verzenden','Offerte {offertenummer} â€“ {offertetitel}','Beste {contactnaam},\n\nIn de bijlage ontvangt u onze offerte {offertenummer} voor {offertetitel}.\n\nHeeft u vragen, dan lichten wij de offerte graag toe.\n\nMet vriendelijke groet,\nNOWA Solutions','Offerte'),
 ('Voortgang project','Voortgang IT-project {klantnaam}','Beste {contactnaam},\n\nHierbij ontvangt u de actuele voortgang van het IT-project.\n\n{voortgang}\n\nMet vriendelijke groet,\nNOWA Solutions','Project');
+"""
+
+TELEPHONY_090_SCHEMA = """
+CREATE TABLE IF NOT EXISTS call_events (
+    id INTEGER PRIMARY KEY,
+    external_id TEXT NOT NULL DEFAULT '',
+    phone_number TEXT NOT NULL,
+    normalized_number TEXT NOT NULL DEFAULT '',
+    direction TEXT NOT NULL DEFAULT 'inkomend' CHECK(direction IN ('inkomend','uitgaand')),
+    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+    contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'nieuw',
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at TEXT,
+    subject TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL DEFAULT '',
+    handled_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_call_events_phone ON call_events(normalized_number, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_call_events_customer ON call_events(customer_id, started_at DESC);
 """
 
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
-    (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA)
+    (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA)
 )
+
