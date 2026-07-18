@@ -9,17 +9,19 @@ from nowa_crm.modules.mail.service import MailService
 from nowa_crm.modules.telephony.service import TelephonyService
 from nowa_crm.modules.assets.service import CustomerAssetsService
 from nowa_crm.modules.servicedesk.service import ServiceDeskService
+from nowa_crm.modules.reporting.service import ReportingService
 
 
 class Customer360Service:
     def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService,
                  operations: OperationsService, workspace: WorkspaceService, mail: MailService,
                  telephony: TelephonyService, assets: CustomerAssetsService | None = None,
-                 servicedesk: ServiceDeskService | None = None):
+                 servicedesk: ServiceDeskService | None = None, reporting: ReportingService | None = None):
         self.customers, self.proposals, self.vault = customers, proposals, vault
         self.operations, self.workspace, self.mail, self.telephony = operations, workspace, mail, telephony
         self.assets=assets
         self.servicedesk=servicedesk
+        self.reporting=reporting
 
     def snapshot(self, customer_id: int) -> dict:
         customer=self.customers.get(customer_id)
@@ -34,9 +36,10 @@ class Customer360Service:
         software=self.assets.list("software",customer_id) if self.assets else []
         documents=self.assets.list("documents",customer_id) if self.assets else []
         tickets=self.servicedesk.list(customer_id) if self.servicedesk else []
+        reports=self.reporting.history(customer_id) if self.reporting else []
         return {"customer":customer,"contacts":contacts,"proposals":proposals,"vault":vault,"users":users,
                 "licenses":licenses,"hardware":hardware,"tasks":tasks,"notes":notes,"actions":actions,
-                "mail":mail,"calls":calls,"locations":locations,"software":software,"documents":documents,"tickets":tickets,
+                "mail":mail,"calls":calls,"locations":locations,"software":software,"documents":documents,"tickets":tickets,"reports":reports,
                 "warnings":self.operations.license_warnings(customer_id)}
 
     def timeline(self, customer_id: int) -> list[dict]:
@@ -48,4 +51,5 @@ class Customer360Service:
         for x in data["proposals"]:rows.append({"date":"","kind":"Offerte","title":f"{x.number} · {x.title}","detail":x.status})
         for x in data["documents"]:rows.append({"date":x["created_at"],"kind":"Document","title":x["title"],"detail":x["document_type"]})
         for x in data["tickets"]:rows.append({"date":x["updated_at"],"kind":"Ticket","title":f"{x['number']} · {x['subject']}","detail":x["status"]})
+        for x in data["reports"]:rows.append({"date":x["created_at"],"kind":"Rapportage","title":x["subject"],"detail":f"{x['progress_percent']}% voortgang"})
         return sorted(rows,key=lambda x:(x["date"] or "",x["title"]),reverse=True)

@@ -103,6 +103,14 @@ class MailPage(QWidget):
         if index>=0:self.customer.setCurrentIndex(index)
         self.to.setText(message["recipients"]); self.cc.setText(message["cc"]); self.subject.setText(message["subject"]); self.body.setPlainText(message["body"])
 
+    def open_message(self,message_id: int):
+        message=self.mail.get(message_id)
+        if not message:return
+        self.message_id=message_id; index=self.customer.findData(message["customer_id"])
+        if index>=0:self.customer.setCurrentIndex(index)
+        self.to.setText(message["recipients"]); self.cc.setText(message["cc"])
+        self.subject.setText(message["subject"]); self.body.setPlainText(message["body"]); self.refresh_history()
+
     def record_incoming(self):
         sender,ok=QInputDialog.getText(self,"Ontvangen mail","Afzender")
         if not ok:return
