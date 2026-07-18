@@ -7,6 +7,7 @@ from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
+from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
 
 
@@ -51,6 +52,20 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert operations.dashboard() == {"users": 1, "licenses": 1, "hardware": 1, "open_tasks": 1}
     assert operations.license_warnings(customer_id) == ["1 actieve gebruikers hebben nog geen MFA-registratie."]
     assert operations.intake(customer_id)["teams_count"] == 1
+    workspace = WorkspaceService(db, proposals, "beheerder", tmp_path)
+    workspace.add_note(customer_id, "Afspraak", "Migratie gefaseerd uitvoeren")
+    action_id = workspace.add_action(customer_id, "DNS controleren", "Sander", "2026-08-01", "Hoog")
+    assert workspace.actions(customer_id)[0]["id"] == action_id
+    assert workspace.global_search("Technische intake")[0]["kind"] == "Projecttaak"
+    assert workspace.notes(customer_id)[0]["subject"] == "Afspraak"
+    workspace.save_commercial_settings(customer_id, 9900, 5, 14, 30)
+    generated_id = workspace.build_intake_proposal(customer_id, "Automatische migratieofferte")
+    assert proposals.get(generated_id).total_cents > 0
+    assert "Voortgang IT-project" in workspace.progress_mail(customer_id)
+    assert len(workspace.export_customer_csv(customer_id)) == 4
+    assert workspace.backup().exists()
+    workspace.complete_action(action_id)
+    assert workspace.actions(customer_id) == []
     with db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
