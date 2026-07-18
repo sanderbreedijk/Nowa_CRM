@@ -196,4 +196,74 @@ INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_p
 SELECT id,'uren','Inrichting, testen en documentatie',8,9400,20 FROM proposal_templates WHERE name='Netwerkproject';
 """
 
-MIGRATIONS: tuple[tuple[int, str], ...] = ((1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA))
+OPERATIONS_060_SCHEMA = """
+CREATE TABLE IF NOT EXISTS customer_users (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    display_name TEXT NOT NULL,
+    user_principal_name TEXT NOT NULL DEFAULT '',
+    department TEXT NOT NULL DEFAULT '',
+    license_name TEXT NOT NULL DEFAULT '',
+    mfa_enabled INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_customer_users_customer ON customer_users(customer_id, display_name COLLATE NOCASE);
+CREATE TABLE IF NOT EXISTS customer_licenses (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    product TEXT NOT NULL,
+    supplier TEXT NOT NULL DEFAULT 'Microsoft',
+    quantity INTEGER NOT NULL DEFAULT 1,
+    unit_price_cents INTEGER NOT NULL DEFAULT 0,
+    included_in_proposal INTEGER NOT NULL DEFAULT 1,
+    renewal_date TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS customer_hardware (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    brand TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    serial_number TEXT NOT NULL DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 1,
+    purchase_price_cents INTEGER NOT NULL DEFAULT 0,
+    sales_price_cents INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'In gebruik',
+    notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS project_intakes (
+    customer_id INTEGER PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+    users_count INTEGER NOT NULL DEFAULT 0,
+    devices_count INTEGER NOT NULL DEFAULT 0,
+    shared_mailboxes INTEGER NOT NULL DEFAULT 0,
+    teams_count INTEGER NOT NULL DEFAULT 0,
+    sharepoint_sites INTEGER NOT NULL DEFAULT 0,
+    migration_source TEXT NOT NULL DEFAULT '',
+    desired_date TEXT NOT NULL DEFAULT '',
+    scope_notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS project_tasks (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    phase TEXT NOT NULL DEFAULT 'Voorbereiding',
+    task_name TEXT NOT NULL,
+    owner TEXT NOT NULL DEFAULT 'NOWA',
+    start_date TEXT NOT NULL DEFAULT '',
+    end_date TEXT NOT NULL DEFAULT '',
+    dependency TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'Gepland',
+    notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_project_tasks_customer ON project_tasks(customer_id, status, start_date);
+"""
+
+MIGRATIONS: tuple[tuple[int, str], ...] = (
+    (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA)
+)
