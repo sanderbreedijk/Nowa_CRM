@@ -1,4 +1,7 @@
 from pathlib import Path
+import sqlite3
+
+from cryptography.fernet import Fernet
 
 from nowa_crm.core.database import Database
 from nowa_crm.core.auth import AuthService
@@ -11,6 +14,7 @@ from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.modules.mail.service import MailService
 from nowa_crm.modules.telephony.service import TelephonyService, normalize_phone
 from nowa_crm.modules.customer360.service import Customer360Service
+from nowa_crm.modules.migration.service import LegacyImportService
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -115,7 +119,24 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert len(snapshot["users"]) == len(snapshot["licenses"]) == len(snapshot["hardware"]) == 1
     assert any(item["kind"] == "Gesprek" for item in dossier.timeline(customer_id))
     assert any(item["kind"] == "E-mail" for item in dossier.timeline(customer_id))
+    legacy = tmp_path / "oude-workspace.sqlite3"; legacy_key = tmp_path / "secret.key"; key = Fernet.generate_key(); legacy_key.write_bytes(key)
+    with sqlite3.connect(legacy) as conn:
+        conn.execute("""CREATE TABLE customers(id INTEGER PRIMARY KEY,customer_number TEXT,name TEXT,organisation_type TEXT,contact_name TEXT,email TEXT,phone TEXT,postcode TEXT,street TEXT,city TEXT,address TEXT,notes TEXT,created_at TEXT,updated_at TEXT)""")
+        conn.execute("""CREATE TABLE contacts(id INTEGER PRIMARY KEY,customer_id INTEGER,name TEXT,role TEXT,email TEXT,phone TEXT,notes TEXT,created_at TEXT)""")
+        conn.execute("""CREATE TABLE secrets(id INTEGER PRIMARY KEY,customer_id INTEGER,label TEXT,username TEXT,encrypted_value BLOB,notes TEXT,updated_at TEXT,category TEXT,vault_path TEXT,host TEXT,url TEXT,linked_user_id INTEGER)""")
+        conn.execute("INSERT INTO customers VALUES(2,'OUD-002','Oude Klant BV','','','oud@example.nl','0201234567','1000 AA','Dam 1','Amsterdam','','Importtest','','')")
+        conn.execute("INSERT INTO contacts VALUES(1,2,'Oude Contact','Directeur','contact@oud.nl','0611111111','','')")
+        conn.execute("INSERT INTO secrets VALUES(1,2,'Oude router','admin',?,'','','Netwerk','Netwerk','192.168.1.1','',NULL)",(Fernet(key).encrypt(b"oud-geheim"),))
+    migration = LegacyImportService(db,customers,proposals,vault,operations,workspace)
+    assert migration.preview(legacy)["warnings"]
+    assert migration.preview(legacy,legacy_key)["counts"]["customers"] == 1
+    imported = migration.import_database(legacy,legacy_key)
+    assert imported["created"]["customers"] == imported["created"]["contacts"] == imported["created"]["secrets"] == 1
+    old_customer = customers.search("OUD-002")[0]
+    assert vault.reveal(vault.search(old_customer.id,"Oude router")[0]["id"],"Migratietest") == "oud-geheim"
+    repeated = migration.import_database(legacy,legacy_key)
+    assert repeated["created"]["customers"] == repeated["created"]["contacts"] == repeated["created"]["secrets"] == 0
     with db.transaction() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
+        assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 5
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
     assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
