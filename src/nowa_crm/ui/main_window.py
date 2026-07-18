@@ -17,6 +17,7 @@ from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.modules.mail.service import MailService
 from nowa_crm.modules.telephony.service import TelephonyService
 from nowa_crm.modules.customer360.service import Customer360Service
+from nowa_crm.modules.migration.service import LegacyImportService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
@@ -24,6 +25,7 @@ from nowa_crm.ui.workspace_page import WorkspacePage
 from nowa_crm.ui.mail_page import MailPage
 from nowa_crm.ui.telephony_page import TelephonyPage
 from nowa_crm.ui.customer360_page import Customer360Page
+from nowa_crm.ui.migration_page import MigrationPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
@@ -39,7 +41,8 @@ class MainWindow(QMainWindow):
         self.mail_page=MailPage(customers,mail,workspace,self)
         self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
         self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony),self.open_vault,self.open_proposal,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Updates",self._update_page())]
+        self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace),self.refresh_all,self)
+        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Oude import",self.migration_page),("Updates",self._update_page())]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for i,(title,page) in enumerate(pages):
             b=QPushButton(title); b.setObjectName("Nav"); b.setCheckable(True); b.setChecked(i==0); self.nav_group.addButton(b,i); b.clicked.connect(lambda _,x=i:self._show(x)); nav.addWidget(b); self.stack.addWidget(page)
