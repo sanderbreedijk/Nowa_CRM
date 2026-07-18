@@ -15,6 +15,7 @@ from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.modules.mail.service import MailService
+from nowa_crm.modules.telephony.service import TelephonyService
 from nowa_crm.ui.main_window import MainWindow
 from nowa_crm.ui.login import LoginDialog, SetupDialog
 from nowa_crm.ui.theme import THEME
@@ -24,18 +25,32 @@ def build_services(session=None):
     db = Database(database_path()); db.migrate(); events = EventBus()
     actor = session.username if session else getpass.getuser()
     customers=CustomerService(db,events); proposals=ProposalService(db)
-    return db, customers, proposals, VaultService(db, data_dir() / "vault.key", actor, session), OperationsService(db), WorkspaceService(db,proposals,actor), MailService(db,actor)
+    workspace=WorkspaceService(db,proposals,actor)
+    return db, customers, proposals, VaultService(db, data_dir() / "vault.key", actor, session), OperationsService(db), workspace, MailService(db,actor), TelephonyService(db,workspace,actor)
+
+
+def _startup_phone(arguments: list[str]) -> str:
+    if "--phone" in arguments:
+        index=arguments.index("--phone")
+        return arguments[index+1] if index+1<len(arguments) else ""
+    for value in arguments:
+        if value.startswith(("tel:","callto:")):return value.split(":",1)[1]
+        if sum(ch.isdigit() for ch in value)>=6:return value
+    return ""
 
 
 def main() -> int:
     app = QApplication(sys.argv); app.setStyleSheet(THEME)
-    db, _, _, _, _, _, _ = build_services(); auth=AuthService(db)
+    db, _, _, _, _, _, _, _ = build_services(); auth=AuthService(db)
     if not auth.has_users() and SetupDialog(auth).exec()!=QDialog.Accepted: return 0
     login=LoginDialog(auth)
     if login.exec()!=QDialog.Accepted or not login.session: return 0
-    _, customers, proposals, vault, operations, workspace, mail = build_services(login.session); window = MainWindow(customers, proposals, vault, operations, workspace, mail); window.show()
+    _, customers, proposals, vault, operations, workspace, mail, telephony = build_services(login.session); window = MainWindow(customers, proposals, vault, operations, workspace, mail, telephony); window.show()
+    phone=_startup_phone(sys.argv[1:])
+    if phone:window.handle_incoming_phone(phone)
     return app.exec()
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
