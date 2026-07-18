@@ -8,6 +8,7 @@ from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
+from nowa_crm.modules.mail.service import MailService
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
 
 
@@ -66,6 +67,19 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert workspace.backup().exists()
     workspace.complete_action(action_id)
     assert workspace.actions(customer_id) == []
+    mail = MailService(db, "beheerder", tmp_path)
+    template = next(item for item in mail.templates() if item["category"] == "Offerte")
+    rendered = mail.render_template(template["id"], customer_id, contact_id, generated_id)
+    assert proposals.get(generated_id).number in rendered["subject"]
+    message_id = mail.create_draft(customer_id, rendered["recipient"], rendered["subject"], rendered["body"], contact_id)
+    attachment = tmp_path / "offerte.pdf"; attachment.write_bytes(b"%PDF-voorbeeld")
+    mail.add_attachment(message_id, attachment)
+    eml = mail.export_eml(message_id)
+    assert eml.exists() and b"offerte.pdf" in eml.read_bytes()
+    mail.mark_sent(message_id)
+    incoming_id = mail.record_incoming("sander@example.nl", "info@nowa.nl", "Akkoord", "Offerte is akkoord")
+    assert mail.get(incoming_id)["customer_id"] == customer_id
+    assert {item["status"] for item in mail.list_messages(customer_id)} == {"verzonden", "ontvangen"}
     with db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
