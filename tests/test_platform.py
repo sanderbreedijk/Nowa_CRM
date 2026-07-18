@@ -17,6 +17,7 @@ from nowa_crm.modules.customer360.service import Customer360Service
 from nowa_crm.modules.migration.service import LegacyImportService
 from nowa_crm.modules.assets.service import CustomerAssetsService
 from nowa_crm.modules.servicedesk.service import ServiceDeskService
+from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -138,13 +139,27 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     servicedesk.close(ticket_id,"Defecte uplinkkabel vervangen")
     assert servicedesk.get(ticket_id)["status"] == "Gesloten"
     assert servicedesk.stats(customer_id) == {"open":0,"critical":0,"minutes":45}
-    dossier_service = Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,assets,servicedesk)
+    servicedesk.create(customer_id,"Printer niet bereikbaar","Controle nodig","Support","Hoog","NOWA","2026-08-03",contact_id)
+    reporting=ReportingService(db,"beheerder",mail,tmp_path/"rapportages")
+    report=reporting.compose(customer_id,"Sander")
+    assert "Voortgangsupdate IT-project" in report["subject"]
+    assert "Printer niet bereikbaar" in report["body"]
+    assert report["progress"] == 0
+    report_id=reporting.save(customer_id,"Sander")
+    assert reporting.get(report_id)["progress_percent"] == 0
+    report_path=reporting.export_text(customer_id,"Sander")
+    assert report_path.exists() and "Acties en aandachtspunten" in report_path.read_text(encoding="utf-8")
+    report_mail=reporting.create_mail_draft(customer_id,contact_id,"Sander")
+    assert mail.get(report_mail)["status"] == "concept"
+    dossier_service = Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,assets,servicedesk,reporting)
     dossier_assets = dossier_service.snapshot(customer_id)
     assert dossier_assets["locations"][0]["id"] == location_id
     assert dossier_assets["software"][0]["id"] == software_id
     assert dossier_assets["documents"][0]["id"] == document_id
-    assert dossier_assets["tickets"][0]["id"] == ticket_id
+    assert any(item["id"] == ticket_id for item in dossier_assets["tickets"])
+    assert dossier_assets["reports"][0]["customer_id"] == customer_id
     assert any(item["kind"] == "Ticket" for item in dossier_service.timeline(customer_id))
+    assert any(item["kind"] == "Rapportage" for item in dossier_service.timeline(customer_id))
     legacy = tmp_path / "oude-workspace.sqlite3"; legacy_key = tmp_path / "secret.key"; key = Fernet.generate_key(); legacy_key.write_bytes(key)
     with sqlite3.connect(legacy) as conn:
         conn.execute("""CREATE TABLE customers(id INTEGER PRIMARY KEY,customer_number TEXT,name TEXT,organisation_type TEXT,contact_name TEXT,email TEXT,phone TEXT,postcode TEXT,street TEXT,city TEXT,address TEXT,notes TEXT,created_at TEXT,updated_at TEXT)""")
