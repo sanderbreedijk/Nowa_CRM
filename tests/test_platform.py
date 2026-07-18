@@ -15,6 +15,7 @@ from nowa_crm.modules.mail.service import MailService
 from nowa_crm.modules.telephony.service import TelephonyService, normalize_phone
 from nowa_crm.modules.customer360.service import Customer360Service
 from nowa_crm.modules.migration.service import LegacyImportService
+from nowa_crm.modules.assets.service import CustomerAssetsService
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -119,6 +120,18 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert len(snapshot["users"]) == len(snapshot["licenses"]) == len(snapshot["hardware"]) == 1
     assert any(item["kind"] == "Gesprek" for item in dossier.timeline(customer_id))
     assert any(item["kind"] == "E-mail" for item in dossier.timeline(customer_id))
+    assets = CustomerAssetsService(db,tmp_path/"documents")
+    location_id = assets.add_location(customer_id,"Hoofdkantoor","Coolsingel 1","Rotterdam")
+    assert assets.add_location(customer_id,"Hoofdkantoor") == location_id
+    software_id = assets.add_software(customer_id,"Exact Online","Exact","Cloud","NOWA ondersteunt")
+    document_source = tmp_path/"netwerkplan.txt"; document_source.write_text("Lokaal klantdocument",encoding="utf-8")
+    document_id = assets.add_document(customer_id,"Netwerkplan",document_source,"Techniek")
+    assert assets.document_path(document_id).read_text(encoding="utf-8") == "Lokaal klantdocument"
+    assert assets.add_document(customer_id,"Netwerkplan",document_source,"Techniek") == document_id
+    dossier_assets = Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,assets).snapshot(customer_id)
+    assert dossier_assets["locations"][0]["id"] == location_id
+    assert dossier_assets["software"][0]["id"] == software_id
+    assert dossier_assets["documents"][0]["id"] == document_id
     legacy = tmp_path / "oude-workspace.sqlite3"; legacy_key = tmp_path / "secret.key"; key = Fernet.generate_key(); legacy_key.write_bytes(key)
     with sqlite3.connect(legacy) as conn:
         conn.execute("""CREATE TABLE customers(id INTEGER PRIMARY KEY,customer_number TEXT,name TEXT,organisation_type TEXT,contact_name TEXT,email TEXT,phone TEXT,postcode TEXT,street TEXT,city TEXT,address TEXT,notes TEXT,created_at TEXT,updated_at TEXT)""")
@@ -127,7 +140,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
         conn.execute("INSERT INTO customers VALUES(2,'OUD-002','Oude Klant BV','','','oud@example.nl','0201234567','1000 AA','Dam 1','Amsterdam','','Importtest','','')")
         conn.execute("INSERT INTO contacts VALUES(1,2,'Oude Contact','Directeur','contact@oud.nl','0611111111','','')")
         conn.execute("INSERT INTO secrets VALUES(1,2,'Oude router','admin',?,'','','Netwerk','Netwerk','192.168.1.1','',NULL)",(Fernet(key).encrypt(b"oud-geheim"),))
-    migration = LegacyImportService(db,customers,proposals,vault,operations,workspace)
+    migration = LegacyImportService(db,customers,proposals,vault,operations,workspace,assets)
     assert migration.preview(legacy)["warnings"]
     assert migration.preview(legacy,legacy_key)["counts"]["customers"] == 1
     imported = migration.import_database(legacy,legacy_key)
