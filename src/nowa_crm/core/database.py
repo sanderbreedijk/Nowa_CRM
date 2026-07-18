@@ -436,8 +436,22 @@ CREATE TABLE IF NOT EXISTS ticket_time_entries (
 );
 """
 
+REPORTING_140_SCHEMA = """
+CREATE TABLE IF NOT EXISTS project_reports (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    report_type TEXT NOT NULL DEFAULT 'Voortgang',
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    progress_percent INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_project_reports_customer ON project_reports(customer_id,created_at DESC);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
-    (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA)
+    (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA)
 )
