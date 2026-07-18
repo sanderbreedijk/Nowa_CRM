@@ -20,6 +20,7 @@ from nowa_crm.modules.servicedesk.service import ServiceDeskService
 from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.modules.security.service import SecurityService
+from nowa_crm.modules.communications.service import CommunicationService
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -130,6 +131,13 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     telephony.finish_call(call_id, "Servicevraag", "Klant telefonisch geholpen", "Informatie verstrekt", True, "2026-08-02")
     assert telephony.get(call_id)["status"] == "afgerond"
     assert telephony.history(customer_id)[0]["id"] == call_id
+    communications = CommunicationService(mail, telephony)
+    combined = communications.timeline(customer_id)
+    assert {item["channel"] for item in combined} == {"E-mail", "Telefoon"}
+    assert communications.timeline(customer_id, "Servicevraag", "Telefoon")[0]["id"] == call_id
+    communication_stats = communications.stats(customer_id)
+    assert communication_stats["total"] == 3
+    assert communication_stats["incoming"] == 2 and communication_stats["outgoing"] == 1
     assert workspace.actions(customer_id)[0]["title"].startswith("Terugbellen:")
     calls = []
     coligo = ColigoAdapter(); coligo.start(calls.append)

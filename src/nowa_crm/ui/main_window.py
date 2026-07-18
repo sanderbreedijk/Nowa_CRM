@@ -23,6 +23,7 @@ from nowa_crm.modules.servicedesk.service import ServiceDeskService
 from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.modules.security.service import SecurityService
+from nowa_crm.modules.communications.service import CommunicationService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
@@ -36,6 +37,7 @@ from nowa_crm.ui.servicedesk_page import ServiceDeskPage
 from nowa_crm.ui.reporting_page import ReportingPage
 from nowa_crm.ui.planning_page import PlanningPage
 from nowa_crm.ui.security_page import SecurityPage
+from nowa_crm.ui.communications_page import CommunicationsPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
@@ -50,6 +52,7 @@ class MainWindow(QMainWindow):
         self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self)
         self.mail_page=MailPage(customers,mail,workspace,self)
         self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
+        self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self)
         self.assets_service=CustomerAssetsService(customers.db)
         self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
@@ -62,7 +65,7 @@ class MainWindow(QMainWindow):
         self.security_service=SecurityService(customers.db)
         self.security_page=SecurityPage(customers,self.security_service,self)
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page())]
+        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page()),("Communicatie",self.communications_page)]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
@@ -70,7 +73,7 @@ class MainWindow(QMainWindow):
 
     def _build_navigation(self,nav,pages):
         groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,)),
-                ("Service",(6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(7,14,15)))
+                ("Service",(16,6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(7,14,15)))
         self.nav_sections={};self.page_sections={};self.nav_buttons={}
         for section,indices in groups:
             header=QPushButton(f"›  {section}");header.setObjectName("NavSection");nav.addWidget(header)
@@ -165,7 +168,11 @@ class MainWindow(QMainWindow):
     def open_vault(self,query):
         self.vault_search.setText(query); self._show(6)
     def open_mail_message(self,message_id):
-        self.mail_page.open_message(message_id); self._show(7)
+        if message_id is not None:self.mail_page.open_message(message_id)
+        self._show(7)
+    def open_call(self,call_id):
+        if call_id is not None:self.telephony_page.open_call(call_id)
+        self._show(8)
     def handle_incoming_phone(self,phone):
         self.telephony_page.phone.setText(phone); self.telephony_page.incoming_call(); self._show(8); self.raise_(); self.activateWindow()
     def add_vault(self):
@@ -230,6 +237,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,"reporting_page"):self.reporting_page.reload_customers()
         if hasattr(self,"planning_page"):self.planning_page.reload_customers()
         if hasattr(self,"security_page"):self.security_page.reload_customers()
+        if hasattr(self,"communications_page"):self.communications_page.reload_customers()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):

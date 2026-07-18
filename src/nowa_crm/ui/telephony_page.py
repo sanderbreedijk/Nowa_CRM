@@ -74,6 +74,14 @@ class TelephonyPage(QWidget):
         self.call_id=int(item.text()); call=self.service.get(self.call_id); self.phone.setText(call["phone_number"]); self.subject.setText(call["subject"]); self.notes.setPlainText(call["notes"]); self.outcome.setCurrentText(call["outcome"] or "Beantwoord")
         self.match.setText(f"{call['customer_name']} · {call['contact_name']}\n{call['phone_number']}")
 
+    def open_call(self,call_id):
+        if call_id is None:return
+        self.call_id=call_id; call=self.service.get(call_id)
+        if not call:return
+        self.phone.setText(call["phone_number"]); self.subject.setText(call["subject"]); self.notes.setPlainText(call["notes"])
+        self.outcome.setCurrentText(call["outcome"] or "Beantwoord")
+        self.match.setText(f"{call['customer_name']} · {call['contact_name']}\n{call['phone_number']}")
+
     def _open_customer(self):
         call=self.service.get(self.call_id) if self.call_id else None
         if call and call["customer_id"]:self.open_customer(call["customer_id"])
