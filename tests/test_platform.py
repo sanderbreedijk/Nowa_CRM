@@ -19,6 +19,7 @@ from nowa_crm.modules.assets.service import CustomerAssetsService
 from nowa_crm.modules.servicedesk.service import ServiceDeskService
 from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.modules.planning.service import PlanningService
+from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -81,6 +82,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert planning.export_pdf(customer_id).read_bytes().startswith(b"%PDF")
     planning.delete(second_task)
     assert planning.stats(customer_id)["progress"] == 100
+    security=SecurityService(db,tmp_path/"security")
+    security_summary=security.summary(customer_id)
+    assert security_summary["score"] < 100
+    assert any(item["category"]=="MFA" and item["severity"]=="Hoog" for item in security_summary["findings"])
+    assert security.audit(customer_id)
+    security_csv=security.export_csv(customer_id)
+    assert security_csv.exists() and "MFA" in security_csv.read_text(encoding="utf-8-sig")
+    security_report=security.export_report(customer_id)
+    assert "Beveiligingsscore" in security_report.read_text(encoding="utf-8")
     workspace = WorkspaceService(db, proposals, "beheerder", tmp_path)
     workspace.add_note(customer_id, "Afspraak", "Migratie gefaseerd uitvoeren")
     action_id = workspace.add_action(customer_id, "DNS controleren", "Sander", "2026-08-01", "Hoog")
