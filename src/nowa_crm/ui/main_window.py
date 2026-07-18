@@ -14,23 +14,26 @@ from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
+from nowa_crm.modules.mail.service import MailService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
 from nowa_crm.ui.workspace_page import WorkspacePage
+from nowa_crm.ui.mail_page import MailPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService, operations: OperationsService, workspace: WorkspaceService):
-        super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault; self.operations=operations; self.workspace=workspace
+    def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService, operations: OperationsService, workspace: WorkspaceService, mail: MailService):
+        super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault; self.operations=operations; self.workspace=workspace; self.mail=mail
         self.setWindowTitle("NOWA CRM"); self.resize(1380,860)
         root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); sidebar=QFrame(); sidebar.setObjectName("Sidebar"); sidebar.setFixedWidth(230); nav=QVBoxLayout(sidebar)
         brand=QLabel("NOWA CRM"); brand.setObjectName("Brand"); nav.addWidget(brand); self.stack=QStackedWidget()
         self.operations_page=OperationsPage(customers,operations,self)
         self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self._placeholder("Mail","Klantmails en sjablonen worden hier als zelfstandige module aangesloten.")),("Telefonie",self._placeholder("Coligo telefonie","Inkomende nummers worden hier straks direct aan klanten gekoppeld.")),("Updates",self._update_page())]
+        self.mail_page=MailPage(customers,mail,workspace,self)
+        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self._placeholder("Coligo telefonie","Inkomende nummers worden hier straks direct aan klanten gekoppeld.")),("Updates",self._update_page())]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for i,(title,page) in enumerate(pages):
             b=QPushButton(title); b.setObjectName("Nav"); b.setCheckable(True); b.setChecked(i==0); self.nav_group.addButton(b,i); b.clicked.connect(lambda _,x=i:self._show(x)); nav.addWidget(b); self.stack.addWidget(page)
@@ -68,14 +71,14 @@ class MainWindow(QMainWindow):
     def add_customer(self):
         dlg=CustomerDialog(self)
         if dlg.exec():
-            try:self.customers.create(*dlg.values()); self.refresh_all()
+            try:self.customers.create(*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def edit_customer(self,*_):
         cid=self._selected_id(self.customer_table,5)
         if not cid:return
         customer=self.customers.get(cid); dlg=CustomerDialog(self,customer)
         if dlg.exec():
-            try:self.customers.update(cid,*dlg.values()); self.refresh_all()
+            try:self.customers.update(cid,*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def manage_contacts(self):
         cid=self._selected_id(self.customer_table,5)
