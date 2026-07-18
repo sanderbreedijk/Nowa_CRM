@@ -10,6 +10,7 @@ from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
 from nowa_crm.modules.mail.service import MailService
 from nowa_crm.modules.telephony.service import TelephonyService, normalize_phone
+from nowa_crm.modules.customer360.service import Customer360Service
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -99,6 +100,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert calls[0].external_id == "coligo-test-2"
     assert _startup_phone(["--phone", "0101234567"]) == "0101234567"
     assert _startup_phone(["tel:+31612345678"]) == "+31612345678"
+    dossier = Customer360Service(customers, proposals, vault, operations, workspace, mail, telephony)
+    snapshot = dossier.snapshot(customer_id)
+    assert snapshot["customer"].name == "Voorbeeld BV"
+    assert len(snapshot["contacts"]) == 1
+    assert len(snapshot["proposals"]) == 2
+    assert len(snapshot["vault"]) == 2
+    assert len(snapshot["users"]) == len(snapshot["licenses"]) == len(snapshot["hardware"]) == 1
+    assert any(item["kind"] == "Gesprek" for item in dossier.timeline(customer_id))
+    assert any(item["kind"] == "E-mail" for item in dossier.timeline(customer_id))
     with db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
