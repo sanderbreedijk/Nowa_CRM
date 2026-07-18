@@ -6,6 +6,7 @@ from nowa_crm.core.events import EventBus
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
+from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
 
 
@@ -41,6 +42,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     keepass.write_text("Title,Username,Password,URL,Notes,Group\nRouter,admin,router-geheim,https://192.168.1.1,Lokaal,Netwerk\n", encoding="utf-8")
     assert vault.import_keepass_csv(customer_id, keepass) == 1
     assert vault.search_all("Router")[0]["category"] == "Netwerk"
+    operations = OperationsService(db)
+    operations.save_user(customer_id, "Sander", "sander@example.nl", "Directie", "Microsoft 365 Business Premium", False)
+    operations.save_license(customer_id, "Microsoft 365 Business Premium", quantity=1, unit_price_cents=2060)
+    operations.save_hardware(customer_id, "Laptop", "Lenovo", "ThinkPad", "ABC-123", 1, 80000, 109900)
+    operations.save_intake(customer_id, 1, 1, 0, 1, 1, "Microsoft 365 tenant", "Binnen 1 maand", "Gefaseerde migratie")
+    operations.save_task(customer_id, "Inventarisatie", "Technische intake")
+    assert operations.dashboard() == {"users": 1, "licenses": 1, "hardware": 1, "open_tasks": 1}
+    assert operations.license_warnings(customer_id) == ["1 actieve gebruikers hebben nog geen MFA-registratie."]
+    assert operations.intake(customer_id)["teams_count"] == 1
     with db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 3
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
