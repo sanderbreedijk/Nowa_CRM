@@ -23,6 +23,8 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
         raise ValueError("Offerte niet gevonden")
     with service.db.transaction() as conn:
         row = conn.execute("SELECT name,street,postal_code,city FROM customers WHERE id=?", (proposal.customer_id,)).fetchone()
+        intake = conn.execute("SELECT * FROM project_intakes WHERE customer_id=?", (proposal.customer_id,)).fetchone()
+        commercial = conn.execute("SELECT * FROM customer_commercial_settings WHERE customer_id=?", (proposal.customer_id,)).fetchone()
     customer = dict(row) if row else {"name": proposal.customer_name, "street": "", "postal_code": "", "city": ""}
     lines = service.lines(proposal_id)
     totals = service.totals(proposal_id)
@@ -46,7 +48,18 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
     address = " ".join(value for value in (customer["street"], customer["postal_code"], customer["city"]) if value)
     if address:
         story.append(Paragraph(address, styles["BodyText"]))
-    story.extend([Spacer(1, 8 * mm), Paragraph("Investeringsoverzicht", styles["Heading2"])])
+    story.extend([Spacer(1, 8 * mm), Paragraph("Managementsamenvatting", styles["Heading2"])])
+    if intake:
+        story.append(Paragraph(
+            f"NOWA Solutions verzorgt de voorbereiding, inrichting en overdracht voor een omgeving met "
+            f"<b>{intake['users_count']} gebruikers</b> en <b>{intake['devices_count']} apparaten</b>. "
+            f"De werkzaamheden worden gefaseerd uitgevoerd, getest en gedocumenteerd.",
+            styles["BodyText"]))
+        if intake["scope_notes"]:
+            story.append(Paragraph(f"<b>Scope:</b> {intake['scope_notes']}", styles["BodyText"]))
+    else:
+        story.append(Paragraph("Deze offerte bundelt de afgesproken diensten, licenties en hardware in één uitvoerbaar voorstel.", styles["BodyText"]))
+    story.extend([Spacer(1, 6 * mm), Paragraph("Investeringsoverzicht", styles["Heading2"])])
     rows = [["Omschrijving", "Aantal", "Prijs", "Totaal"]]
     for line in lines:
         rows.append([Paragraph(line.description, styles["BodyText"]), f"{line.quantity:g}", _money(line.unit_price_cents), _money(line.line_total_cents)])
@@ -70,6 +83,7 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
         Spacer(1, 14 * mm),
         Paragraph("Uitgangspunten", styles["Heading2"]),
         Paragraph("Deze offerte is gebaseerd op de hierboven beschreven aantallen en werkzaamheden. Meerwerk wordt uitsluitend na afstemming uitgevoerd.", styles["BodyText"]),
+        Paragraph(f"Betalingstermijn: {commercial['payment_term_days'] if commercial else 14} dagen. Geldigheid offerte: {commercial['validity_days'] if commercial else 30} dagen.", styles["BodyText"]),
         Spacer(1, 12 * mm),
         Paragraph("Akkoord opdrachtgever", styles["Heading2"]),
         Paragraph("Naam: ____________________________________&nbsp;&nbsp;&nbsp; Datum: ____________________", styles["BodyText"]),
