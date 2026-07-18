@@ -12,19 +12,22 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFrame, QG
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
+from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
+from nowa_crm.ui.operations_page import OperationsPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService):
-        super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault
+    def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService, operations: OperationsService):
+        super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault; self.operations=operations
         self.setWindowTitle("NOWA CRM"); self.resize(1380,860)
         root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); sidebar=QFrame(); sidebar.setObjectName("Sidebar"); sidebar.setFixedWidth(230); nav=QVBoxLayout(sidebar)
         brand=QLabel("NOWA CRM"); brand.setObjectName("Brand"); nav.addWidget(brand); self.stack=QStackedWidget()
-        pages=[("Overzicht",self._dashboard()),("Klanten",self._customer_page()),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self._placeholder("Mail","Klantmails en sjablonen worden hier als zelfstandige module aangesloten.")),("Telefonie",self._placeholder("Coligo telefonie","Inkomende nummers worden hier straks direct aan klanten gekoppeld.")),("Updates",self._update_page())]
+        self.operations_page=OperationsPage(customers,operations,self)
+        pages=[("Overzicht",self._dashboard()),("Klanten",self._customer_page()),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self._placeholder("Mail","Klantmails en sjablonen worden hier als zelfstandige module aangesloten.")),("Telefonie",self._placeholder("Coligo telefonie","Inkomende nummers worden hier straks direct aan klanten gekoppeld.")),("Updates",self._update_page())]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for i,(title,page) in enumerate(pages):
             b=QPushButton(title); b.setObjectName("Nav"); b.setCheckable(True); b.setChecked(i==0); self.nav_group.addButton(b,i); b.clicked.connect(lambda _,x=i:self._show(x)); nav.addWidget(b); self.stack.addWidget(page)
@@ -44,8 +47,8 @@ class MainWindow(QMainWindow):
         row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.setObjectName("Primary"); check.clicked.connect(self.check_for_updates); releases=QPushButton("Releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL))); row.addWidget(check); row.addWidget(releases); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
     def _dashboard(self):
         page,box=self._page("Goedemiddag","Uw centrale werkplek voor klanten, offertes en veilige service."); grid=QGridLayout(); self.kpis=[]
-        for i,title in enumerate(("Klanten","Open offertes","Kluisitems")):
-            card=QFrame(); card.setObjectName("Card"); c=QVBoxLayout(card); value=QLabel("0"); value.setObjectName("Kpi"); c.addWidget(value); c.addWidget(QLabel(title)); grid.addWidget(card,0,i); self.kpis.append(value)
+        for i,title in enumerate(("Klanten","Open offertes","Kluisitems","Actieve gebruikers","Licenties","Hardware","Open taken")):
+            card=QFrame(); card.setObjectName("Card"); c=QVBoxLayout(card); value=QLabel("0"); value.setObjectName("Kpi"); c.addWidget(value); c.addWidget(QLabel(title)); grid.addWidget(card,i//4,i%4); self.kpis.append(value)
         box.addLayout(grid); hint=QFrame(); hint.setObjectName("Card"); h=QVBoxLayout(hint); h.addWidget(QLabel("Slim voorbereid op groei")); h.addWidget(QLabel("Mail en Coligo-nummerherkenning worden via losse koppelingen toegevoegd zonder de CRM-kern te wijzigen.")); box.addWidget(hint); box.addStretch(); return page
     def _customer_page(self):
         page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
@@ -145,7 +148,10 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.update_status.setText(f"Updatecontrole mislukt: {exc}")
     def refresh_all(self):
-        self.refresh_customers(); self.refresh_proposals(); self.refresh_vault(); self.kpis[0].setText(str(self.customers.count())); self.kpis[1].setText(str(self.proposals.count_open())); self.kpis[2].setText(str(self.vault.count()))
+        self.refresh_customers(); self.refresh_proposals(); self.refresh_vault()
+        if hasattr(self,"operations_page"):self.operations_page.reload_customers()
+        stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"])
+        for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
         if not hasattr(self,"customer_table"):return
         rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows))
