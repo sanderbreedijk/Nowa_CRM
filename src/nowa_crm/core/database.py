@@ -509,9 +509,19 @@ INSERT OR IGNORE INTO integration_settings(provider,enabled,settings_json) VALUE
 ('outlook',0,'{"mode":"eml"}'),('coligo',0,'{"mode":"local_ingest"}');
 """
 
+FOLLOWUP_220_SCHEMA = """
+ALTER TABLE action_items ADD COLUMN action_type TEXT NOT NULL DEFAULT 'Taak';
+ALTER TABLE action_items ADD COLUMN source_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE action_items ADD COLUMN source_id INTEGER;
+ALTER TABLE action_items ADD COLUMN reminder_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE action_items ADD COLUMN completed_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_action_items_worklist ON action_items(status,due_date,owner,action_type);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
-    (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA)
+    (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
+    (14, FOLLOWUP_220_SCHEMA)
 )

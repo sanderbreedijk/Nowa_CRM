@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+from datetime import date, timedelta
 
 from cryptography.fernet import Fernet
 
@@ -100,8 +101,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert "Beveiligingsscore" in security_report.read_text(encoding="utf-8")
     workspace = WorkspaceService(db, proposals, "beheerder", tmp_path)
     workspace.add_note(customer_id, "Afspraak", "Migratie gefaseerd uitvoeren")
-    action_id = workspace.add_action(customer_id, "DNS controleren", "Sander", "2026-08-01", "Hoog")
+    tomorrow=(date.today()+timedelta(days=1)).isoformat()
+    action_id = workspace.add_action(customer_id, "DNS controleren", "Sander", tomorrow, "Hoog", "Controle na wijziging", "Terugbellen", f"{tomorrow} 09:00")
     assert workspace.actions(customer_id)[0]["id"] == action_id
+    assert workspace.actions(period="Komende 7 dagen")[0]["action_type"] == "Terugbellen"
+    assert workspace.action_summary()["upcoming"] == 1
+    workspace.set_action_status(action_id,"Wacht op klant")
+    assert workspace.actions(customer_id)[0]["status"] == "Wacht op klant"
+    workspace.reschedule_action(action_id,date.today().isoformat())
+    assert workspace.action_summary()["today"] == 1
     assert workspace.global_search("Technische intake")[0]["kind"] == "Projecttaak"
     assert workspace.notes(customer_id)[0]["subject"] == "Afspraak"
     workspace.save_commercial_settings(customer_id, 9900, 5, 14, 30)

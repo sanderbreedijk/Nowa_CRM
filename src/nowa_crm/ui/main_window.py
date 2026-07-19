@@ -80,6 +80,16 @@ class MainWindow(QMainWindow):
         nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root)
         self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
         self.refresh_all()
+        QTimer.singleShot(800,self.show_followup_reminder)
+
+    def show_followup_reminder(self):
+        stats=self.workspace.action_summary()
+        if not stats["overdue"] and not stats["today"]:return
+        parts=[]
+        if stats["overdue"]:parts.append(f"{stats['overdue']} te laat")
+        if stats["today"]:parts.append(f"{stats['today']} voor vandaag")
+        answer=QMessageBox.question(self,"Opvolging nodig",f"Er staan {' en '.join(parts)}.\n\nWerkvoorraad openen?")
+        if answer==QMessageBox.Yes:self._show(1)
 
     def _build_navigation(self,nav,pages):
         groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,17)),
