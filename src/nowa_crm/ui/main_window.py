@@ -27,6 +27,7 @@ from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.modules.communications.service import CommunicationService
 from nowa_crm.modules.documents.service import DocumentCenterService
 from nowa_crm.modules.integrations.service import IntegrationService
+from nowa_crm.modules.daystart.service import DaystartService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
         self.documents_page=DocumentsPage(customers,self.documents_service,self.open_proposal,self)
         self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
         self.integration_service=IntegrationService(customers.db,mail,telephony,telephony.actor)
+        self.daystart_service=DaystartService(customers.db)
         self.integrations_page=IntegrationsPage(self.integration_service,self.open_call,self)
         self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
@@ -133,10 +135,56 @@ class MainWindow(QMainWindow):
         self.update_status=QLabel("Controleer GitHub Releases op een nieuwe, geteste Windows-versie."); self.update_status.setWordWrap(True); content.addWidget(self.update_status)
         row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.setObjectName("Primary"); check.clicked.connect(self.check_for_updates); releases=QPushButton("Releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL))); row.addWidget(check); row.addWidget(releases); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
     def _dashboard(self):
-        page,box=self._page("Goedemiddag","Uw centrale werkplek voor klanten, offertes en veilige service."); grid=QGridLayout(); self.kpis=[]
+        page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); self.kpis=[]
         for i,title in enumerate(("Klanten","Open offertes","Kluisitems","Actieve gebruikers","Licenties","Hardware","Open taken","Actiepunten")):
             card=QFrame(); card.setObjectName("Card"); c=QVBoxLayout(card); value=QLabel("0"); value.setObjectName("Kpi"); c.addWidget(value); c.addWidget(QLabel(title)); grid.addWidget(card,i//4,i%4); self.kpis.append(value)
-        box.addLayout(grid); hint=QFrame(); hint.setObjectName("Card"); h=QVBoxLayout(hint); h.addWidget(QLabel("Modulair integratiecentrum actief")); h.addWidget(QLabel("Outlook-overdracht en Coligo-nummerherkenning zijn lokaal beschikbaar zonder de CRM-kern of klantdata in de cloud te plaatsen.")); box.addWidget(hint); box.addStretch(); return page
+        box.addLayout(grid)
+        filters=QHBoxLayout();self.day_owner=QLineEdit();self.day_owner.setPlaceholderText("Filter op medewerker…");self.day_owner.textChanged.connect(self.refresh_daystart)
+        self.day_priority=QComboBox();self.day_priority.addItems(["Alle","Kritiek","Hoog","Normaal","Laag"]);self.day_priority.currentIndexChanged.connect(self.refresh_daystart)
+        self.day_period=QComboBox();self.day_period.addItems(["Actueel","Vandaag","Te laat"]);self.day_period.currentIndexChanged.connect(self.refresh_daystart);self.day_summary=QLabel()
+        filters.addWidget(self.day_owner,1);filters.addWidget(self.day_priority);filters.addWidget(self.day_period);filters.addWidget(self.day_summary);box.addLayout(filters)
+        self.day_table=QTableWidget(0,9);self.day_table.setHorizontalHeaderLabels(["Prioriteit","Soort","Deadline","Klant","Onderwerp","Toegewezen","Status / detail","Klant-ID","Item-ID"])
+        self.day_table.setColumnHidden(7,True);self.day_table.setColumnHidden(8,True);self.day_table.horizontalHeader().setStretchLastSection(True);self.day_table.doubleClicked.connect(self.open_daystart_customer);box.addWidget(self.day_table,1)
+        actions=QHBoxLayout()
+        for text,handler in (("Open klantdossier",self.open_daystart_customer),("Toewijzen",self.assign_daystart),("Uitstellen",self.snooze_daystart),("Melding afronden",self.dismiss_daystart)):
+            button=QPushButton(text);button.clicked.connect(handler);actions.addWidget(button)
+        actions.addStretch();box.addLayout(actions);return page
+
+    def selected_daystart(self):
+        row=self.day_table.currentRow()
+        if row<0:return None
+        kind=self.day_table.item(row,1);entity=self.day_table.item(row,8);customer=self.day_table.item(row,7)
+        return (kind.text(),int(entity.text()),int(customer.text())) if kind and entity and customer and customer.text() else (kind.text(),int(entity.text()),None) if kind and entity else None
+
+    def refresh_daystart(self,*_):
+        if not hasattr(self,"day_table"):return
+        rows=self.daystart_service.items(self.day_owner.text(),self.day_priority.currentText(),self.day_period.currentText());self.day_table.setRowCount(len(rows))
+        for r,item in enumerate(rows):
+            values=(item["priority"],item["kind"],item["due_at"],item["customer_name"],item["title"],item["assigned_to"],item["detail"],item["customer_id"] or "",item["entity_id"])
+            for c,value in enumerate(values):self.day_table.setItem(r,c,QTableWidgetItem(str(value or "")))
+        summary=self.daystart_service.summary();self.day_summary.setText(f"{summary['total']} open · {summary['overdue']} te laat · {summary['urgent']} urgent")
+
+    def open_daystart_customer(self,*_):
+        selected=self.selected_daystart()
+        if selected and selected[2]:self.open_customer(selected[2])
+
+    def assign_daystart(self):
+        selected=self.selected_daystart()
+        if not selected:return
+        owner,ok=QInputDialog.getText(self,"Dagstart toewijzen","Medewerker")
+        if ok:self.daystart_service.assign(selected[0],selected[1],owner);self.refresh_daystart()
+
+    def snooze_daystart(self):
+        selected=self.selected_daystart()
+        if not selected:return
+        until,ok=QInputDialog.getText(self,"Melding uitstellen","Tonen vanaf (jjjj-mm-dd)")
+        if ok:
+            try:self.daystart_service.snooze(selected[0],selected[1],until);self.refresh_daystart()
+            except Exception as exc:QMessageBox.warning(self,"Melding uitstellen",str(exc))
+
+    def dismiss_daystart(self):
+        selected=self.selected_daystart()
+        if selected:self.daystart_service.dismiss(selected[0],selected[1]);self.refresh_daystart()
     def _customer_page(self):
         page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
         add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts)
@@ -350,6 +398,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,"communications_page"):self.communications_page.reload_customers()
         if hasattr(self,"documents_page"):self.documents_page.reload_customers()
         if hasattr(self,"integrations_page"):self.integrations_page.reload()
+        if hasattr(self,"day_table"):self.refresh_daystart()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
