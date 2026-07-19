@@ -12,19 +12,21 @@ class CustomerDialog(QDialog):
         self.name = QLineEdit(customer.name if customer else "")
         self.email = QLineEdit(customer.email if customer else "")
         self.phone = QLineEdit(customer.phone if customer else "")
+        self.mobile_phone = QLineEdit(customer.mobile_phone if customer else "")
         self.street = QLineEdit(customer.street if customer else "")
         self.postal_code = QLineEdit(customer.postal_code if customer else "")
         self.city = QLineEdit(customer.city if customer else "")
+        self.country = QLineEdit(customer.country if customer else "")
         self.notes = QTextEdit(customer.notes if customer else ""); self.notes.setMaximumHeight(90)
-        for label, widget in [("Klantnummer *",self.number),("Naam *",self.name),("E-mail",self.email),("Telefoon",self.phone),
-                              ("Straat en huisnummer",self.street),("Postcode",self.postal_code),("Plaats",self.city),("Notities",self.notes)]: form.addRow(label,widget)
+        for label, widget in [("Klantnummer *",self.number),("Naam *",self.name),("E-mail",self.email),("Telefoon",self.phone),("Mobiele telefoon",self.mobile_phone),
+                              ("Straat en huisnummer",self.street),("Postcode",self.postal_code),("Plaats",self.city),("Land",self.country),("Notities",self.notes)]: form.addRow(label,widget)
         box.addLayout(form); buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel); buttons.accepted.connect(self._accept); buttons.rejected.connect(self.reject); box.addWidget(buttons)
 
     def _accept(self):
         if not self.number.text().strip() or not self.name.text().strip(): QMessageBox.warning(self,"Controle","Klantnummer en naam zijn verplicht."); return
         self.accept()
 
-    def values(self): return [w.text().strip() for w in (self.number,self.name,self.email,self.phone,self.street,self.postal_code,self.city)] + [self.notes.toPlainText().strip()]
+    def values(self): return [w.text().strip() for w in (self.number,self.name,self.email,self.phone,self.street,self.postal_code,self.city)] + [self.notes.toPlainText().strip(),self.mobile_phone.text().strip(),self.country.text().strip()]
 
 
 class ContactDialog(QDialog):

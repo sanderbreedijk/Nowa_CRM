@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFrame, QG
                                QVBoxLayout, QWidget)
 
 from nowa_crm.modules.customers.service import CustomerService
+from nowa_crm.modules.customers.importer import CustomerImportService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
@@ -49,6 +50,7 @@ from nowa_crm import __version__
 class MainWindow(QMainWindow):
     def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService, operations: OperationsService, workspace: WorkspaceService, mail: MailService, telephony: TelephonyService):
         super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault; self.operations=operations; self.workspace=workspace; self.mail=mail; self.telephony=telephony
+        self.customer_import=CustomerImportService(customers.db,telephony.actor)
         self.setWindowTitle("NOWA CRM"); self.resize(1380,860)
         root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); sidebar=QFrame(); sidebar.setObjectName("Sidebar"); sidebar.setFixedWidth(230); nav=QVBoxLayout(sidebar)
         brand=QLabel("NOWA CRM"); brand.setObjectName("Brand"); nav.addWidget(brand); self.stack=QStackedWidget()
@@ -137,8 +139,8 @@ class MainWindow(QMainWindow):
         box.addLayout(grid); hint=QFrame(); hint.setObjectName("Card"); h=QVBoxLayout(hint); h.addWidget(QLabel("Modulair integratiecentrum actief")); h.addWidget(QLabel("Outlook-overdracht en Coligo-nummerherkenning zijn lokaal beschikbaar zonder de CRM-kern of klantdata in de cloud te plaatsen.")); box.addWidget(hint); box.addStretch(); return page
     def _customer_page(self):
         page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
-        add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts); row.addWidget(self.customer_search,1); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
-        self.customer_table=QTableWidget(0,6); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Plaats","ID"]); self.customer_table.setColumnHidden(5,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
+        add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts); import_btn=QPushButton("Klanten synchroniseren uit Excel");import_btn.clicked.connect(self.import_customers); row.addWidget(self.customer_search,1); row.addWidget(import_btn); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
+        self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(add); box.addLayout(row)
         self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); self.proposal_table.doubleClicked.connect(self.edit_proposal); box.addWidget(self.proposal_table,1); return page
@@ -153,14 +155,14 @@ class MainWindow(QMainWindow):
             try:self.customers.create(*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def edit_customer(self,*_):
-        cid=self._selected_id(self.customer_table,5)
+        cid=self._selected_id(self.customer_table,7)
         if not cid:return
         customer=self.customers.get(cid); dlg=CustomerDialog(self,customer)
         if dlg.exec():
             try:self.customers.update(cid,*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def manage_contacts(self):
-        cid=self._selected_id(self.customer_table,5)
+        cid=self._selected_id(self.customer_table,7)
         if not cid: QMessageBox.information(self,"Contactpersonen","Selecteer eerst een klant."); return
         existing=self.customers.contacts(cid); summary="\n".join(f"• {x.name} — {x.role or 'contact'} — {x.phone or x.email}" for x in existing) or "Nog geen contactpersonen."
         if QMessageBox.question(self,"Contactpersonen",summary+"\n\nNieuwe contactpersoon toevoegen?")!=QMessageBox.Yes:return
@@ -178,6 +180,22 @@ class MainWindow(QMainWindow):
             try:
                 proposal_id=self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all(); ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
             except Exception as e: QMessageBox.critical(self,"Offerte",str(e))
+    def import_customers(self):
+        filename,_=QFileDialog.getOpenFileName(self,"Excel-adressenlijst selecteren","","Excel-bestanden (*.xlsx)")
+        if not filename:return
+        try:
+            preview=self.customer_import.preview(Path(filename))
+            message=(f"Bronregels: {len(preview.rows)}\n\n"
+                     f"Nieuw: {preview.created}\nBijwerken: {preview.updated}\nOngewijzigd: {preview.unchanged}\n"
+                     f"Niet meer aanwezig (uit actieve klantenlijst): {preview.archived}\n\n"
+                     "Fax en krediettermijn worden genegeerd.\n"
+                     "Vóór uitvoering wordt automatisch een lokale back-up gemaakt.\n\nSynchronisatie uitvoeren?")
+            if QMessageBox.question(self,"Klantimport controleren",message)!=QMessageBox.Yes:return
+            result=self.customer_import.apply(preview);self.refresh_all();self.mail_page.reload()
+            QMessageBox.information(self,"Klantimport voltooid",
+                f"{result['created']} toegevoegd\n{result['updated']} bijgewerkt\n{result['archived']} uitgefaseerd\n"
+                f"{result['unchanged']} ongewijzigd\n\nBack-up:\n{result['backup']}")
+        except Exception as exc:QMessageBox.warning(self,"Klantimport",str(exc))
     def edit_proposal(self,*_):
         proposal_id=self._selected_id(self.proposal_table,6)
         if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
@@ -291,7 +309,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self,"customer_table"):return
         rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows))
         for r,x in enumerate(rows):
-            for c,v in enumerate((x.customer_number,x.name,x.email,x.phone,x.city,str(x.id))):self.customer_table.setItem(r,c,QTableWidgetItem(v))
+            for c,v in enumerate((x.customer_number,x.name,x.email,x.phone,x.mobile_phone,x.city,x.country,str(x.id))):self.customer_table.setItem(r,c,QTableWidgetItem(v))
     def refresh_proposals(self,*_):
         if not hasattr(self,"proposal_table"):return
         rows=self.proposals.list(self.proposal_search.text()); self.proposal_table.setRowCount(len(rows))

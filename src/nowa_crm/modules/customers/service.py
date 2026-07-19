@@ -17,6 +17,8 @@ class Customer:
     postal_code: str
     city: str
     notes: str
+    country: str
+    mobile_phone: str
 
 
 @dataclass(frozen=True)
@@ -33,13 +35,13 @@ class CustomerService:
     def __init__(self, db: Database, events: EventBus):
         self.db, self.events = db, events
 
-    def create(self, customer_number: str, name: str, email: str = "", phone: str = "", street: str = "", postal_code: str = "", city: str = "", notes: str = "") -> int:
+    def create(self, customer_number: str, name: str, email: str = "", phone: str = "", street: str = "", postal_code: str = "", city: str = "", notes: str = "", mobile_phone: str = "", country: str = "") -> int:
         if not customer_number.strip() or not name.strip():
             raise ValueError("Klantnummer en naam zijn verplicht")
         with self.db.transaction() as conn:
             cur = conn.execute(
-                "INSERT INTO customers(customer_number,name,email,phone,street,postal_code,city,notes) VALUES(?,?,?,?,?,?,?,?)",
-                tuple(value.strip() for value in (customer_number, name, email, phone, street, postal_code, city, notes)),
+                "INSERT INTO customers(customer_number,name,email,phone,street,postal_code,city,notes,mobile_phone,country) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                tuple(value.strip() for value in (customer_number, name, email, phone, street, postal_code, city, notes, mobile_phone, country)),
             )
             customer_id = int(cur.lastrowid)
         self.events.publish(Event("customer.created", {"customer_id": customer_id}))
@@ -49,29 +51,29 @@ class CustomerService:
         term = f"%{query.strip()}%"
         with self.db.transaction() as conn:
             rows = conn.execute(
-                """SELECT id,customer_number,name,email,phone,street,postal_code,city,notes FROM customers
-                   WHERE ?='' OR customer_number LIKE ? OR name LIKE ? OR email LIKE ? OR phone LIKE ? OR street LIKE ? OR postal_code LIKE ? OR city LIKE ?
+                """SELECT id,customer_number,name,email,phone,street,postal_code,city,notes,country,mobile_phone FROM customers
+                   WHERE active=1 AND (?='' OR customer_number LIKE ? OR name LIKE ? OR email LIKE ? OR phone LIKE ? OR mobile_phone LIKE ? OR street LIKE ? OR postal_code LIKE ? OR city LIKE ? OR country LIKE ?
                    OR EXISTS(SELECT 1 FROM contacts ct WHERE ct.customer_id=customers.id AND (ct.name LIKE ? OR ct.email LIKE ? OR ct.phone LIKE ?))
-                   ORDER BY name COLLATE NOCASE LIMIT 200""",
-                (query.strip(), term, term, term, term, term, term, term, term, term, term),
+                   ) ORDER BY name COLLATE NOCASE LIMIT 5000""",
+                (query.strip(), term, term, term, term, term, term, term, term, term, term, term, term),
             ).fetchall()
         return [Customer(**dict(row)) for row in rows]
 
     def get(self, customer_id: int) -> Customer | None:
         with self.db.transaction() as conn:
             row = conn.execute(
-                "SELECT id,customer_number,name,email,phone,street,postal_code,city,notes FROM customers WHERE id=?", (customer_id,)
+                "SELECT id,customer_number,name,email,phone,street,postal_code,city,notes,country,mobile_phone FROM customers WHERE id=?", (customer_id,)
             ).fetchone()
         return Customer(**dict(row)) if row else None
 
-    def update(self, customer_id: int, customer_number: str, name: str, email: str = "", phone: str = "", street: str = "", postal_code: str = "", city: str = "", notes: str = "") -> None:
+    def update(self, customer_id: int, customer_number: str, name: str, email: str = "", phone: str = "", street: str = "", postal_code: str = "", city: str = "", notes: str = "", mobile_phone: str = "", country: str = "") -> None:
         if not customer_number.strip() or not name.strip():
             raise ValueError("Klantnummer en naam zijn verplicht")
         with self.db.transaction() as conn:
             cur = conn.execute(
-                """UPDATE customers SET customer_number=?,name=?,email=?,phone=?,street=?,postal_code=?,city=?,notes=?,updated_at=CURRENT_TIMESTAMP
+                """UPDATE customers SET customer_number=?,name=?,email=?,phone=?,street=?,postal_code=?,city=?,notes=?,mobile_phone=?,country=?,updated_at=CURRENT_TIMESTAMP
                    WHERE id=?""",
-                (*tuple(value.strip() for value in (customer_number, name, email, phone, street, postal_code, city, notes)), customer_id),
+                (*tuple(value.strip() for value in (customer_number, name, email, phone, street, postal_code, city, notes, mobile_phone, country)), customer_id),
             )
             if not cur.rowcount:
                 raise KeyError(customer_id)
@@ -89,7 +91,7 @@ class CustomerService:
 
     def count(self) -> int:
         with self.db.transaction() as conn:
-            return int(conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0])
+            return int(conn.execute("SELECT COUNT(*) FROM customers WHERE active=1").fetchone()[0])
 
     def contacts(self, customer_id: int) -> list[Contact]:
         with self.db.transaction() as conn:
