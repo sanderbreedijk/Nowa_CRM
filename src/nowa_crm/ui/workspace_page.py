@@ -13,7 +13,7 @@ class WorkspacePage(QWidget):
         super().__init__(parent); self.customers=customers; self.service=service; self.on_proposal=on_proposal; self.open_result=open_result
         root=QVBoxLayout(self); title=QLabel("Werkruimte"); title.setObjectName("Title"); root.addWidget(title)
         sub=QLabel("Zoek veilig door alle CRM-modules en open direct het juiste klantitem."); sub.setObjectName("Subtitle"); root.addWidget(sub)
-        top=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek klant, offerte, ticket, actie, document, mail, gesprek, software of kluismetadataâ€¦"); self.search.textChanged.connect(self.refresh_search)
+        top=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek klant, offerte, ticket, actie, document, mail, gesprek, software of kluismetadata…"); self.search.textChanged.connect(self.refresh_search)
         top.addWidget(self.search,1); root.addLayout(top)
         self.results=QTableWidget(0,5); self.results.setHorizontalHeaderLabels(["Soort","Resultaat","Details","Klant-ID","Bron-ID"]); self.results.setColumnHidden(3,True); self.results.setColumnHidden(4,True); self.results.horizontalHeader().setStretchLastSection(True); self.results.doubleClicked.connect(self.open_selected_result); root.addWidget(self.results,1)
         summary=QGridLayout(); self.action_kpis=[]
@@ -26,14 +26,14 @@ class WorkspacePage(QWidget):
         root.addLayout(bar)
         split=QSplitter(); notes=QWidget(); nl=QVBoxLayout(notes); nl.addWidget(QLabel("Klantnotities")); self.notes=QTableWidget(0,3); self.notes.setHorizontalHeaderLabels(["Onderwerp","Notitie","Datum"]); self.notes.horizontalHeader().setStretchLastSection(True); nl.addWidget(self.notes,1)
         add_note=QPushButton("Notitie toevoegen"); add_note.clicked.connect(self.add_note); nl.addWidget(add_note)
-        actions=QWidget(); al=QVBoxLayout(actions); al.addWidget(QLabel("Mijn werkvoorraad")); filters=QHBoxLayout(); self.period=QComboBox(); self.period.addItems(["Alles","Te laat","Vandaag","Komende 7 dagen","Zonder deadline"]); self.period.currentTextChanged.connect(self.refresh_actions); self.owner_filter=QLineEdit(); self.owner_filter.setPlaceholderText("Filter op eigenaarâ€¦"); self.owner_filter.textChanged.connect(self.refresh_actions); filters.addWidget(self.period); filters.addWidget(self.owner_filter,1); al.addLayout(filters)
+        actions=QWidget(); al=QVBoxLayout(actions); al.addWidget(QLabel("Mijn werkvoorraad")); filters=QHBoxLayout(); self.period=QComboBox(); self.period.addItems(["Alles","Te laat","Vandaag","Komende 7 dagen","Zonder deadline"]); self.period.currentTextChanged.connect(self.refresh_actions); self.owner_filter=QLineEdit(); self.owner_filter.setPlaceholderText("Filter op eigenaar…"); self.owner_filter.textChanged.connect(self.refresh_actions); filters.addWidget(self.period); filters.addWidget(self.owner_filter,1); al.addLayout(filters)
         self.actions=QTableWidget(0,9); self.actions.setHorizontalHeaderLabels(["Soort","Actie","Klant","Eigenaar","Deadline","Prioriteit","Status","Herinnering","ID"]); self.actions.setColumnHidden(8,True); self.actions.horizontalHeader().setStretchLastSection(True); al.addWidget(self.actions,1)
         action_bar=QHBoxLayout(); add_action=QPushButton("Nieuwe opvolging"); add_action.setObjectName("Primary"); add_action.clicked.connect(self.add_action); status=QPushButton("Status wijzigen"); status.clicked.connect(self.change_status); reschedule=QPushButton("Deadline verplaatsen"); reschedule.clicked.connect(self.reschedule_action); complete=QPushButton("Markeer gereed"); complete.clicked.connect(self.complete_action); action_bar.addWidget(add_action); action_bar.addWidget(status); action_bar.addWidget(reschedule); action_bar.addWidget(complete); action_bar.addStretch(); al.addLayout(action_bar)
         split.addWidget(notes); split.addWidget(actions); root.addWidget(split,1); self.reload_customers()
 
     def reload_customers(self):
         current=self.customer.currentData(); self.customer.blockSignals(True); self.customer.clear()
-        for customer in self.customers.search():self.customer.addItem(f"{customer.customer_number} â€” {customer.name}",customer.id)
+        for customer in self.customers.search():self.customer.addItem(f"{customer.customer_number} — {customer.name}",customer.id)
         if current:
             index=self.customer.findData(current)
             if index>=0:self.customer.setCurrentIndex(index)
