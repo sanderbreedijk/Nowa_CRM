@@ -17,7 +17,7 @@ def _money(cents: int) -> str:
     return f"€ {cents / 100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
+def export_proposal_pdf(service: ProposalService, proposal_id: int, output_dir: Path | None = None) -> Path:
     proposal = service.get(proposal_id)
     if not proposal:
         raise ValueError("Offerte niet gevonden")
@@ -25,20 +25,24 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
         row = conn.execute("SELECT name,street,postal_code,city FROM customers WHERE id=?", (proposal.customer_id,)).fetchone()
         intake = conn.execute("SELECT * FROM project_intakes WHERE customer_id=?", (proposal.customer_id,)).fetchone()
         commercial = conn.execute("SELECT * FROM customer_commercial_settings WHERE customer_id=?", (proposal.customer_id,)).fetchone()
+        profile_row = conn.execute("SELECT * FROM organization_profile WHERE id=1").fetchone()
     customer = dict(row) if row else {"name": proposal.customer_name, "street": "", "postal_code": "", "city": ""}
+    profile = dict(profile_row) if profile_row else {"company_name":"NOWA Solutions","primary_color":"#0B2342","footer_text":"NOWA Solutions"}
+    company = profile["company_name"] or "NOWA Solutions"
+    primary = colors.HexColor(profile["primary_color"] or "#0B2342")
     lines = service.lines(proposal_id)
     totals = service.totals(proposal_id)
-    folder = data_dir() / "exports"
+    folder = output_dir or data_dir() / "exports"
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / f"{proposal.number}.pdf"
 
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="NowaTitle", parent=styles["Title"], textColor=colors.HexColor("#0B2342"), fontSize=23, leading=27))
+    styles.add(ParagraphStyle(name="NowaTitle", parent=styles["Title"], textColor=primary, fontSize=23, leading=27))
     styles.add(ParagraphStyle(name="Right", parent=styles["BodyText"], alignment=TA_RIGHT))
     doc = SimpleDocTemplate(str(target), pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm, topMargin=18 * mm, bottomMargin=18 * mm,
-                            title=f"{proposal.number} - {proposal.title}", author="NOWA Solutions")
+                            title=f"{proposal.number} - {proposal.title}", author=company)
     story = [
-        Paragraph("NOWA Solutions", styles["Heading2"]),
+        Paragraph(company, styles["Heading2"]),
         Paragraph("Offerte", styles["NowaTitle"]),
         Paragraph(f"<b>{proposal.number}</b> &nbsp; | &nbsp; Revisie {proposal.revision}", styles["BodyText"]),
         Spacer(1, 8 * mm),
@@ -51,7 +55,7 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
     story.extend([Spacer(1, 8 * mm), Paragraph("Managementsamenvatting", styles["Heading2"])])
     if intake:
         story.append(Paragraph(
-            f"NOWA Solutions verzorgt de voorbereiding, inrichting en overdracht voor een omgeving met "
+            f"{company} verzorgt de voorbereiding, inrichting en overdracht voor een omgeving met "
             f"<b>{intake['users_count']} gebruikers</b> en <b>{intake['devices_count']} apparaten</b>. "
             f"De werkzaamheden worden gefaseerd uitgevoerd, getest en gedocumenteerd.",
             styles["BodyText"]))
@@ -65,7 +69,7 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
         rows.append([Paragraph(line.description, styles["BodyText"]), f"{line.quantity:g}", _money(line.unit_price_cents), _money(line.line_total_cents)])
     table = Table(rows, colWidths=[92 * mm, 20 * mm, 27 * mm, 29 * mm], repeatRows=1)
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B2342")),
+        ("BACKGROUND", (0, 0), (-1, 0), primary),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
@@ -90,5 +94,10 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int) -> Path:
         Spacer(1, 10 * mm),
         Paragraph("Handtekening: ______________________________________________________", styles["BodyText"]),
     ])
-    doc.build(story)
+    def footer(canvas, _doc):
+        canvas.saveState(); canvas.setStrokeColor(primary); canvas.setLineWidth(.7)
+        canvas.line(18*mm,12*mm,A4[0]-18*mm,12*mm); canvas.setFillColor(colors.HexColor("#52657A"))
+        canvas.setFont("Helvetica",8); canvas.drawString(18*mm,7.5*mm,profile.get("footer_text") or company)
+        canvas.drawRightString(A4[0]-18*mm,7.5*mm,f"Pagina {_doc.page}"); canvas.restoreState()
+    doc.build(story,onFirstPage=footer,onLaterPages=footer)
     return target
