@@ -25,6 +25,7 @@ from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.modules.communications.service import CommunicationService
 from nowa_crm.modules.documents.service import DocumentCenterService
+from nowa_crm.modules.integrations.service import IntegrationService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
@@ -40,6 +41,7 @@ from nowa_crm.ui.planning_page import PlanningPage
 from nowa_crm.ui.security_page import SecurityPage
 from nowa_crm.ui.communications_page import CommunicationsPage
 from nowa_crm.ui.documents_page import DocumentsPage
+from nowa_crm.ui.integrations_page import IntegrationsPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
@@ -58,6 +60,8 @@ class MainWindow(QMainWindow):
         self.documents_service=DocumentCenterService(customers.db,self.assets_service,mail)
         self.documents_page=DocumentsPage(customers,self.documents_service,self.open_proposal,self)
         self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
+        self.integration_service=IntegrationService(customers.db,mail,telephony,telephony.actor)
+        self.integrations_page=IntegrationsPage(self.integration_service,self.open_call,self)
         self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
         self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self)
@@ -69,7 +73,7 @@ class MainWindow(QMainWindow):
         self.security_service=SecurityService(customers.db)
         self.security_page=SecurityPage(customers,self.security_service,self)
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page()),("Communicatie",self.communications_page),("Documentcentrum",self.documents_page)]
+        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page()),("Communicatie",self.communications_page),("Documentcentrum",self.documents_page),("Integraties",self.integrations_page)]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
@@ -77,7 +81,7 @@ class MainWindow(QMainWindow):
 
     def _build_navigation(self,nav,pages):
         groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,17)),
-                ("Service",(16,6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(7,14,15)))
+                ("Service",(16,6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(18,7,14,15)))
         self.nav_sections={};self.page_sections={};self.nav_buttons={}
         for section,indices in groups:
             header=QPushButton(f"›  {section}");header.setObjectName("NavSection");nav.addWidget(header)
@@ -118,7 +122,7 @@ class MainWindow(QMainWindow):
         page,box=self._page("Goedemiddag","Uw centrale werkplek voor klanten, offertes en veilige service."); grid=QGridLayout(); self.kpis=[]
         for i,title in enumerate(("Klanten","Open offertes","Kluisitems","Actieve gebruikers","Licenties","Hardware","Open taken","Actiepunten")):
             card=QFrame(); card.setObjectName("Card"); c=QVBoxLayout(card); value=QLabel("0"); value.setObjectName("Kpi"); c.addWidget(value); c.addWidget(QLabel(title)); grid.addWidget(card,i//4,i%4); self.kpis.append(value)
-        box.addLayout(grid); hint=QFrame(); hint.setObjectName("Card"); h=QVBoxLayout(hint); h.addWidget(QLabel("Slim voorbereid op groei")); h.addWidget(QLabel("Mail en Coligo-nummerherkenning worden via losse koppelingen toegevoegd zonder de CRM-kern te wijzigen.")); box.addWidget(hint); box.addStretch(); return page
+        box.addLayout(grid); hint=QFrame(); hint.setObjectName("Card"); h=QVBoxLayout(hint); h.addWidget(QLabel("Modulair integratiecentrum actief")); h.addWidget(QLabel("Outlook-overdracht en Coligo-nummerherkenning zijn lokaal beschikbaar zonder de CRM-kern of klantdata in de cloud te plaatsen.")); box.addWidget(hint); box.addStretch(); return page
     def _customer_page(self):
         page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
         add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts); row.addWidget(self.customer_search,1); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
@@ -248,6 +252,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,"security_page"):self.security_page.reload_customers()
         if hasattr(self,"communications_page"):self.communications_page.reload_customers()
         if hasattr(self,"documents_page"):self.documents_page.reload_customers()
+        if hasattr(self,"integrations_page"):self.integrations_page.reload()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):

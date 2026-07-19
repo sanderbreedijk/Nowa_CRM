@@ -22,6 +22,7 @@ from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.modules.communications.service import CommunicationService
 from nowa_crm.modules.documents.service import DocumentCenterService
+from nowa_crm.modules.integrations.service import IntegrationService
 from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
@@ -194,6 +195,16 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert report_path.exists() and "Acties en aandachtspunten" in report_path.read_text(encoding="utf-8")
     report_mail=reporting.create_mail_draft(customer_id,contact_id,"Sander")
     assert mail.get(report_mail)["status"] == "concept"
+    integrations=IntegrationService(db,mail,telephony,"beheerder")
+    integrations.save("outlook",True,{"mode":"eml","sender_address":"info@nowa.nl","token":"nooit-opslaan"})
+    integrations.save("coligo",True,{"mode":"local_ingest","line_name":"Hoofdlijn","password":"nooit-opslaan"})
+    assert integrations.settings("outlook")["settings"]["sender_address"] == "info@nowa.nl"
+    assert "token" not in integrations.settings("outlook")["settings"]
+    outlook_file=integrations.prepare_outlook(report_mail)
+    assert outlook_file.exists() and outlook_file.suffix == ".eml"
+    coligo_call=integrations.ingest_coligo("06-12345678","coligo-live-1","Hoofdlijn")
+    assert coligo_call["customer_id"] == customer_id
+    assert {item["provider"] for item in integrations.events()} == {"outlook","coligo"}
     documents=DocumentCenterService(db,assets,mail)
     documents.save_profile("NOWA Test","Teststraat 1","1000 AA Test","010-1234567","info@nowa.test",
                            "https://nowa.test","#123456","Lokale testvoettekst")
