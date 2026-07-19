@@ -9,13 +9,13 @@ from nowa_crm.modules.workspace.service import WorkspaceService
 
 
 class WorkspacePage(QWidget):
-    def __init__(self, customers: CustomerService, service: WorkspaceService, on_proposal, parent=None):
-        super().__init__(parent); self.customers=customers; self.service=service; self.on_proposal=on_proposal
+    def __init__(self, customers: CustomerService, service: WorkspaceService, on_proposal, open_result=None, parent=None):
+        super().__init__(parent); self.customers=customers; self.service=service; self.on_proposal=on_proposal; self.open_result=open_result
         root=QVBoxLayout(self); title=QLabel("Werkruimte"); title.setObjectName("Title"); root.addWidget(title)
-        sub=QLabel("Zoeken, notities, acties en commerciële werkstromen over alle modules."); sub.setObjectName("Subtitle"); root.addWidget(sub)
-        top=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek klant, contact, offerte, kluisitem, gebruiker of projecttaak…"); self.search.textChanged.connect(self.refresh_search)
+        sub=QLabel("Zoek veilig door alle CRM-modules en open direct het juiste klantitem."); sub.setObjectName("Subtitle"); root.addWidget(sub)
+        top=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek klant, offerte, ticket, actie, document, mail, gesprek, software of kluismetadata…"); self.search.textChanged.connect(self.refresh_search)
         top.addWidget(self.search,1); root.addLayout(top)
-        self.results=QTableWidget(0,4); self.results.setHorizontalHeaderLabels(["Soort","Resultaat","Details","Klant-ID"]); self.results.setColumnHidden(3,True); self.results.horizontalHeader().setStretchLastSection(True); root.addWidget(self.results,1)
+        self.results=QTableWidget(0,5); self.results.setHorizontalHeaderLabels(["Soort","Resultaat","Details","Klant-ID","Bron-ID"]); self.results.setColumnHidden(3,True); self.results.setColumnHidden(4,True); self.results.horizontalHeader().setStretchLastSection(True); self.results.doubleClicked.connect(self.open_selected_result); root.addWidget(self.results,1)
         bar=QHBoxLayout(); bar.addWidget(QLabel("Klantcontext")); self.customer=QComboBox(); self.customer.currentIndexChanged.connect(self.refresh_context); bar.addWidget(self.customer,1)
         for text,handler in (("Offerte uit intake",self.create_proposal),("Prijsinstellingen",self.commercial_settings),("Voortgangsmail",self.progress_mail),("CSV-export",self.export_csv),("Back-up maken",self.backup)):
             button=QPushButton(text); button.clicked.connect(handler); bar.addWidget(button)
@@ -37,8 +37,16 @@ class WorkspacePage(QWidget):
     def refresh_search(self,*_):
         rows=self.service.global_search(self.search.text()); self.results.setRowCount(len(rows))
         for r,row in enumerate(rows):
-            for c,value in enumerate((row["kind"],row["title"],row["detail"],row["customer_id"])):
+            for c,value in enumerate((row["kind"],row["title"],row["detail"],row["customer_id"],row["entity_id"])):
                 self.results.setItem(r,c,QTableWidgetItem(str(value or "")))
+
+    def open_selected_result(self,*_):
+        row=self.results.currentRow()
+        if row<0 or not self.open_result:return
+        kind=self.results.item(row,0).text();title=self.results.item(row,1).text()
+        customer=self.results.item(row,3);entity=self.results.item(row,4)
+        self.open_result(kind,int(entity.text()) if entity and entity.text() else None,
+                         int(customer.text()) if customer and customer.text() else None,title)
 
     def refresh_context(self,*_):
         customer_id=self.customer.currentData()
