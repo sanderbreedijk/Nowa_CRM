@@ -54,11 +54,11 @@ class MainWindow(QMainWindow):
         self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self)
         self.mail_page=MailPage(customers,mail,workspace,self)
         self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
-        self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self)
         self.assets_service=CustomerAssetsService(customers.db)
         self.documents_service=DocumentCenterService(customers.db,self.assets_service,mail)
         self.documents_page=DocumentsPage(customers,self.documents_service,self.open_proposal,self)
         self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
+        self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
         self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self)
         self.servicedesk_page=ServiceDeskPage(customers,self.servicedesk_service,self)
@@ -177,6 +177,11 @@ class MainWindow(QMainWindow):
     def open_call(self,call_id):
         if call_id is not None:self.telephony_page.open_call(call_id)
         self._show(8)
+    def create_ticket_from_communication(self,customer_id,subject,description,source_type,source_id):
+        try:
+            ticket_id=self.servicedesk_service.create_from_source(customer_id,subject or "Servicevraag",description,source_type,source_id)
+            self.servicedesk_page.open_ticket(ticket_id);self._show(9)
+        except Exception as exc:QMessageBox.warning(self,"Serviceticket",str(exc))
     def handle_incoming_phone(self,phone):
         self.telephony_page.phone.setText(phone); self.telephony_page.incoming_call(); self._show(8); self.raise_(); self.activateWindow()
     def add_vault(self):
