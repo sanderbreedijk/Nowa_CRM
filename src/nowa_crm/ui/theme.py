@@ -1,7 +1,7 @@
 THEME = """
 QMainWindow, QWidget {
-    background-color: #F3F6FA;
-    color: #182235;
+    background-color: #F5F7FB;
+    color: #142033;
     font-family: "Segoe UI";
     font-size: 14px;
 }
@@ -69,7 +69,7 @@ QLabel#Subtitle {
 QFrame#Card {
     background-color: #FFFFFF;
     border: 1px solid #D8E1EC;
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 16px;
 }
 QFrame#Card QLabel {
@@ -98,14 +98,14 @@ QTableWidget {
     alternate-background-color: #F6F8FB;
     color: #172033;
     border: 1px solid #D5DFEA;
-    border-radius: 10px;
+    border-radius: 12px;
     gridline-color: #E6ECF3;
     selection-background-color: #D7E9FF;
     selection-color: #0B2342;
 }
 QHeaderView::section {
-    background-color: #E7EEF7;
-    color: #26364D;
+    background-color: #DCE8F6;
+    color: #102643;
     border: none;
     border-bottom: 1px solid #C9D5E3;
     padding: 10px;
@@ -133,6 +133,36 @@ QPushButton#Primary:hover {
     background-color: #0C5FB9;
     border-color: #0C5FB9;
 }
+QPushButton:disabled {
+    background-color: #E5EAF0;
+    color: #7A8798;
+    border-color: #CFD7E2;
+}
+QTabWidget::pane {
+    background-color: #FFFFFF;
+    border: 1px solid #D5DFEA;
+    border-radius: 10px;
+    top: -1px;
+}
+QTabBar::tab {
+    background-color: #E8EEF6;
+    color: #31445D;
+    padding: 10px 16px;
+    margin-right: 3px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-weight: 600;
+}
+QTabBar::tab:selected {
+    background-color: #FFFFFF;
+    color: #0B5CAD;
+}
+QToolTip {
+    background-color: #102643;
+    color: #FFFFFF;
+    border: 1px solid #45A3FF;
+    padding: 6px;
+}
 QDialog {
     background-color: #F3F6FA;
 }
@@ -141,3 +171,4 @@ QMessageBox QLabel {
     background-color: transparent;
 }
 """
+

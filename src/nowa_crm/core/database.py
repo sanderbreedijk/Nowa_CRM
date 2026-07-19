@@ -636,6 +636,26 @@ CREATE TABLE IF NOT EXISTS daystart_states (
 CREATE INDEX IF NOT EXISTS idx_daystart_visible ON daystart_states(dismissed,snoozed_until,assigned_to);
 """
 
+VAULT_VERIFICATION_300_SCHEMA = """
+CREATE TABLE IF NOT EXISTS vault_verifications (
+    id INTEGER PRIMARY KEY,
+    vault_entry_id INTEGER NOT NULL REFERENCES vault_entries(id) ON DELETE CASCADE,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    call_id INTEGER NOT NULL REFERENCES call_events(id) ON DELETE CASCADE,
+    requester_name TEXT NOT NULL,
+    verification_method TEXT NOT NULL,
+    request_reason TEXT NOT NULL,
+    identity_confirmed INTEGER NOT NULL DEFAULT 0,
+    authority_confirmed INTEGER NOT NULL DEFAULT 0,
+    successful INTEGER NOT NULL DEFAULT 0,
+    used_at TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    verified_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_vault_verification_entry ON vault_verifications(vault_entry_id,successful,created_at DESC);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -643,6 +663,6 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
     (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA),
-    (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA)
+    (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA), (22, VAULT_VERIFICATION_300_SCHEMA)
 )
 
