@@ -656,6 +656,47 @@ CREATE TABLE IF NOT EXISTS vault_verifications (
 CREATE INDEX IF NOT EXISTS idx_vault_verification_entry ON vault_verifications(vault_entry_id,successful,created_at DESC);
 """
 
+PROPOSAL_TEMPLATE_310_SCHEMA = """
+ALTER TABLE proposal_templates ADD COLUMN sections_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE proposal_templates ADD COLUMN calculation_json TEXT NOT NULL DEFAULT '{}';
+
+INSERT OR IGNORE INTO proposal_templates(
+    name,description,introduction,terms,sections_json,calculation_json
+) VALUES(
+    'NOWA Professional',
+    'Modulair professioneel offertesjabloon uit de oorspronkelijke NOWA Workspace v6.3.0',
+    'Hartelijk dank voor het prettige gesprek. Op basis van de besproken uitgangspunten hebben wij dit voorstel opgesteld.
+
+NOWA Solutions adviseert een Microsoft 365-omgeving met duidelijke inrichting, beveiliging, documentatie, monitoring en nazorgafspraken.',
+    'Werkzaamheden buiten de beschreven scope worden uitsluitend na akkoord uitgevoerd.
+Software van derden valt buiten functionele ondersteuning, tenzij deze uitdrukkelijk is opgenomen.
+Nazorg vindt plaats op nacalculatie, tenzij anders overeengekomen.
+
+AVG: NOWA Solutions verwerkt persoonsgegevens uitsluitend voor zover noodzakelijk voor uitvoering, migratie, beheer, documentatie en ondersteuning.
+
+Deze offerte is gebaseerd op de tijdens de intake beschikbare informatie. Wijzigingen in scope, aantallen of planning kunnen invloed hebben op kosten en doorlooptijd.',
+    '[{"key":"cover","title":"Voorblad","enabled":true},{"key":"letter","title":"Begeleidend schrijven","enabled":true},{"key":"summary","title":"Managementsamenvatting","enabled":true},{"key":"current_situation","title":"Huidige situatie","enabled":true},{"key":"solution","title":"Voorgestelde oplossing","enabled":true},{"key":"planning","title":"Planning en oplevering","enabled":true},{"key":"activities","title":"Werkzaamheden","enabled":true},{"key":"licenses","title":"Licenties","enabled":true},{"key":"hardware","title":"Hardware","enabled":true},{"key":"pricing","title":"Investering","enabled":true},{"key":"scope","title":"Scope en uitsluitingen","enabled":true},{"key":"avg","title":"AVG-verklaring","enabled":true},{"key":"disclaimer","title":"Disclaimer","enabled":true},{"key":"approval","title":"Akkoord","enabled":true}]',
+    '{"hourly_rate_eur":94.0,"fixed_hours":{"Projectvoorbereiding":3.0,"Kick-off / afstemming":1.0,"Technisch ontwerp":2.0,"Documentatie":4.0,"Oplevering":2.0,"Gebruikersinstructie":2.0},"percentages":{"Projectmanagement":0.10,"Risico-/wijzigingsbuffer":0.08},"minimum_total_hours":56.0,"rounding_step_hours":0.25,"enabled":true}'
+);
+
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Projectvoorbereiding',3,9400,10 FROM proposal_templates
+WHERE name='NOWA Professional'
+AND NOT EXISTS(SELECT 1 FROM proposal_template_lines l WHERE l.template_id=proposal_templates.id);
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Kick-off en afstemming',1,9400,20 FROM proposal_templates WHERE name='NOWA Professional';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Technisch ontwerp',2,9400,30 FROM proposal_templates WHERE name='NOWA Professional';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Uitvoering volgens intake en overeengekomen scope',42,9400,40 FROM proposal_templates WHERE name='NOWA Professional';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Documentatie',4,9400,50 FROM proposal_templates WHERE name='NOWA Professional';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Oplevering',2,9400,60 FROM proposal_templates WHERE name='NOWA Professional';
+INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order)
+SELECT id,'uren','Gebruikersinstructie',2,9400,70 FROM proposal_templates WHERE name='NOWA Professional';
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -663,6 +704,6 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
     (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA),
-    (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA), (22, VAULT_VERIFICATION_300_SCHEMA)
+    (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA), (22, VAULT_VERIFICATION_300_SCHEMA),
+    (23, PROPOSAL_TEMPLATE_310_SCHEMA)
 )
-
