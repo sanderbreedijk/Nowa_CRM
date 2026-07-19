@@ -518,10 +518,36 @@ ALTER TABLE action_items ADD COLUMN completed_at TEXT;
 CREATE INDEX IF NOT EXISTS idx_action_items_worklist ON action_items(status,due_date,owner,action_type);
 """
 
+PROPOSALS_230_SCHEMA = """
+ALTER TABLE proposals ADD COLUMN introduction TEXT NOT NULL DEFAULT '';
+ALTER TABLE proposals ADD COLUMN terms TEXT NOT NULL DEFAULT '';
+ALTER TABLE proposal_templates ADD COLUMN introduction TEXT NOT NULL DEFAULT '';
+ALTER TABLE proposal_templates ADD COLUMN terms TEXT NOT NULL DEFAULT '';
+ALTER TABLE proposal_lines ADD COLUMN catalog_item_id INTEGER REFERENCES product_catalog(id) ON DELETE SET NULL;
+CREATE TABLE IF NOT EXISTS product_catalog (
+    id INTEGER PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'Dienst',
+    unit TEXT NOT NULL DEFAULT 'stuk',
+    unit_price_cents INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_product_catalog_name ON product_catalog(active,category,name COLLATE NOCASE);
+INSERT OR IGNORE INTO product_catalog(code,name,category,unit,unit_price_cents) VALUES
+('UUR-IT','IT-werkzaamheden','Uren','uur',9400),
+('UUR-PROJECT','Projectleiding','Uren','uur',10900),
+('M365-BP','Microsoft 365 Business Premium','Licentie','gebruiker/maand',0),
+('WP-INST','Installatie en oplevering werkplek','Dienst','stuk',18800),
+('NET-SCAN','Netwerkinventarisatie en advies','Dienst','opdracht',37600);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
-    (14, FOLLOWUP_220_SCHEMA)
+    (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA)
 )
