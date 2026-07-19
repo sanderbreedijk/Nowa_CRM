@@ -34,9 +34,9 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     source_root = Path(__file__).parents[1] / "src"
     for source in source_root.rglob("*.py"):
         text = source.read_text(encoding="utf-8")
-        assert not any(marker in text for marker in ("Ãƒ", "Ã‚", "Ã¢â‚¬")), f"Beschadigde UTF-8-tekst in {source}"
+        assert not any(marker in text for marker in ("Ã", "Â", "â€")), f"Beschadigde UTF-8-tekst in {source}"
     dossier_ui = (source_root / "nowa_crm" / "ui" / "customer360_page.py").read_text(encoding="utf-8")
-    assert "360Â° klantdossier" in dossier_ui and "commerciÃ«le" in dossier_ui and "Ã©Ã©n klant" in dossier_ui
+    assert "360° klantdossier" in dossier_ui and "commerciële" in dossier_ui and "één klant" in dossier_ui
     navigation_ui = (source_root / "nowa_crm" / "ui" / "main_window.py").read_text(encoding="utf-8")
     assert "NavSection" in navigation_ui
     assert all(section in navigation_ui for section in ("Start","Relaties","Verkoop","Service","Projecten","Systeem"))
