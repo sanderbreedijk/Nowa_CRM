@@ -168,7 +168,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     snapshot = dossier.snapshot(customer_id)
     assert snapshot["customer"].name == "Voorbeeld BV"
     assert len(snapshot["contacts"]) == 1
-    assert len(snapshot["proposals"]) == 2
+    assert len(snapshot["proposals"]) == 3
     assert len(snapshot["vault"]) == 2
     assert len(snapshot["users"]) == len(snapshot["licenses"]) == len(snapshot["hardware"]) == 1
     assert any(item["kind"] == "Gesprek" for item in dossier.timeline(customer_id))
