@@ -1,0 +1,2 @@
+"""Centrale lokale dagstart."""
+

@@ -623,6 +623,19 @@ CREATE TABLE IF NOT EXISTS call_customer_aliases (
 CREATE INDEX IF NOT EXISTS idx_call_alias_customer ON call_customer_aliases(customer_id,normalized_number);
 """
 
+DAYSTART_290_SCHEMA = """
+CREATE TABLE IF NOT EXISTS daystart_states (
+    item_kind TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    assigned_to TEXT NOT NULL DEFAULT '',
+    snoozed_until TEXT NOT NULL DEFAULT '',
+    dismissed INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(item_kind,entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_daystart_visible ON daystart_states(dismissed,snoozed_until,assigned_to);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -630,6 +643,6 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
     (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA),
-    (20, TELEPHONY_280_SCHEMA)
+    (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA)
 )
 

@@ -27,6 +27,7 @@ from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.modules.communications.service import CommunicationService
 from nowa_crm.modules.documents.service import DocumentCenterService
 from nowa_crm.modules.integrations.service import IntegrationService
+from nowa_crm.modules.daystart.service import DaystartService
 from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
@@ -282,6 +283,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert dossier_assets["reports"][0]["customer_id"] == customer_id
     assert any(item["kind"] == "Ticket" for item in dossier_service.timeline(customer_id))
     assert any(item["kind"] == "Rapportage" for item in dossier_service.timeline(customer_id))
+    daystart=DaystartService(db);day_items=daystart.items()
+    assert {item["kind"] for item in day_items}>={"Actie","E-mail","Terugbellen","Ticket","Beveiliging"}
+    selected_day=next(item for item in day_items if item["kind"]=="Actie")
+    daystart.assign(selected_day["kind"],selected_day["entity_id"],"Sander")
+    assert any(item["assigned_to"]=="Sander" for item in daystart.items(owner="Sander"))
+    future_day=(date.today()+timedelta(days=10)).isoformat();daystart.snooze(selected_day["kind"],selected_day["entity_id"],future_day)
+    assert all(not (item["kind"]==selected_day["kind"] and item["entity_id"]==selected_day["entity_id"]) for item in daystart.items())
+    mail_day=next(item for item in daystart.items() if item["kind"]=="E-mail");daystart.dismiss(mail_day["kind"],mail_day["entity_id"])
+    assert daystart.summary()["total"]>=1
     legacy = tmp_path / "oude-workspace.sqlite3"; legacy_key = tmp_path / "secret.key"; key = Fernet.generate_key(); legacy_key.write_bytes(key)
     with sqlite3.connect(legacy) as conn:
         conn.execute("""CREATE TABLE customers(id INTEGER PRIMARY KEY,customer_number TEXT,name TEXT,organisation_type TEXT,contact_name TEXT,email TEXT,phone TEXT,postcode TEXT,street TEXT,city TEXT,address TEXT,notes TEXT,created_at TEXT,updated_at TEXT)""")
@@ -321,7 +331,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     with import_db.transaction() as conn:
         assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
         assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
-        assert 20 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+        assert 21 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
     assert importer.history()[0]["unchanged_count"]==0
     assert {item["action"] for item in importer.changes(result["run_id"])}=={"nieuw","gedeactiveerd"}
     export_file=importer.export_active(tmp_path/"actieve-klanten.xlsx")
