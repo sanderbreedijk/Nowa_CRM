@@ -144,6 +144,17 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     incoming_id = mail.record_incoming("sander@example.nl", "info@nowa.nl", "Akkoord", "Offerte is akkoord")
     assert mail.get(incoming_id)["customer_id"] == customer_id
     assert {item["status"] for item in mail.list_messages(customer_id)} == {"verzonden", "ontvangen"}
+    unknown_mail=mail.record_incoming("onbekend@gmail.com","service@nowa.nl","Nieuwe vraag","Kunt u helpen?")
+    assert mail.get(unknown_mail)["customer_id"] is None
+    mail.link_customer(unknown_mail,customer_id)
+    assert mail.detect_customer("onbekend@gmail.com")[0]==customer_id
+    mail.triage(unknown_mail,"wacht_op_klant","Hoog","Sander","2026-08-04")
+    assert mail.list_messages(queue="open")[0]["priority"]=="Hoog"
+    queue=mail.queue_stats();assert queue["open"]>=1 and queue["urgent"]>=1 and queue["unlinked"]==0
+    reply_id=mail.reply_draft(unknown_mail)
+    assert mail.get(reply_id)["subject"]=="Re: Nieuwe vraag"
+    mail.triage(unknown_mail,"afgerond","Hoog","Sander","2026-08-04")
+    assert mail.list_messages(queue="afgerond")[0]["id"]==unknown_mail
     telephony = TelephonyService(db, workspace, "beheerder")
     assert normalize_phone("+31 6 12345678") == "0612345678"
     match = telephony.recognize("06-12345678")
@@ -158,8 +169,8 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert {item["channel"] for item in combined} == {"E-mail", "Telefoon"}
     assert communications.timeline(customer_id, "Servicevraag", "Telefoon")[0]["id"] == call_id
     communication_stats = communications.stats(customer_id)
-    assert communication_stats["total"] == 3
-    assert communication_stats["incoming"] == 2 and communication_stats["outgoing"] == 1
+    assert communication_stats["total"] == 5
+    assert communication_stats["incoming"] == 3 and communication_stats["outgoing"] == 2
     assert workspace.actions(customer_id)[0]["title"].startswith("Terugbellen:")
     calls = []
     coligo = ColigoAdapter(); coligo.start(calls.append)
@@ -298,7 +309,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     with import_db.transaction() as conn:
         assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
         assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
-        assert 18 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+        assert 19 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
     assert importer.history()[0]["unchanged_count"]==0
     assert {item["action"] for item in importer.changes(result["run_id"])}=={"nieuw","gedeactiveerd"}
     export_file=importer.export_active(tmp_path/"actieve-klanten.xlsx")
