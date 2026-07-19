@@ -139,7 +139,12 @@ class MainWindow(QMainWindow):
         box.addLayout(grid); hint=QFrame(); hint.setObjectName("Card"); h=QVBoxLayout(hint); h.addWidget(QLabel("Modulair integratiecentrum actief")); h.addWidget(QLabel("Outlook-overdracht en Coligo-nummerherkenning zijn lokaal beschikbaar zonder de CRM-kern of klantdata in de cloud te plaatsen.")); box.addWidget(hint); box.addStretch(); return page
     def _customer_page(self):
         page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
-        add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts); import_btn=QPushButton("Klanten synchroniseren uit Excel");import_btn.clicked.connect(self.import_customers); row.addWidget(self.customer_search,1); row.addWidget(import_btn); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
+        add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts)
+        import_btn=QPushButton("Excel synchroniseren");import_btn.clicked.connect(self.import_customers)
+        history_btn=QPushButton("Importhistorie");history_btn.clicked.connect(self.customer_import_history)
+        export_btn=QPushButton("Exporteren");export_btn.clicked.connect(self.export_customers)
+        reactivate_btn=QPushButton("Heractiveren");reactivate_btn.clicked.connect(self.reactivate_customer)
+        row.addWidget(self.customer_search,1); row.addWidget(import_btn); row.addWidget(history_btn); row.addWidget(export_btn); row.addWidget(reactivate_btn); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
         self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(add); box.addLayout(row)
@@ -185,9 +190,13 @@ class MainWindow(QMainWindow):
         if not filename:return
         try:
             preview=self.customer_import.preview(Path(filename))
+            detail="\n".join(f"• {item['action']}: {item['customer_number']} — {item['name']} ({item['fields']})" for item in preview.changes[:25])
+            if len(preview.changes)>25:detail+=f"\n• … en nog {len(preview.changes)-25} wijzigingen"
+            warnings=("\n\nWAARSCHUWINGEN\n"+"\n".join(f"• {text}" for text in preview.warnings)) if preview.warnings else ""
             message=(f"Bronregels: {len(preview.rows)}\n\n"
                      f"Nieuw: {preview.created}\nBijwerken: {preview.updated}\nOngewijzigd: {preview.unchanged}\n"
                      f"Niet meer aanwezig (uit actieve klantenlijst): {preview.archived}\n\n"
+                     f"WIJZIGINGEN\n{detail or 'Geen wijzigingen.'}{warnings}\n\n"
                      "Fax en krediettermijn worden genegeerd.\n"
                      "Vóór uitvoering wordt automatisch een lokale back-up gemaakt.\n\nSynchronisatie uitvoeren?")
             if QMessageBox.question(self,"Klantimport controleren",message)!=QMessageBox.Yes:return
@@ -196,6 +205,44 @@ class MainWindow(QMainWindow):
                 f"{result['created']} toegevoegd\n{result['updated']} bijgewerkt\n{result['archived']} uitgefaseerd\n"
                 f"{result['unchanged']} ongewijzigd\n\nBack-up:\n{result['backup']}")
         except Exception as exc:QMessageBox.warning(self,"Klantimport",str(exc))
+    def customer_import_history(self):
+        runs=self.customer_import.history()
+        if not runs:
+            QMessageBox.information(self,"Importhistorie","Er zijn nog geen klantimports uitgevoerd.");return
+        labels=[f"#{run['id']} — {run['created_at']} — {run['source_name']} — {run['status']}" for run in runs]
+        label,ok=QInputDialog.getItem(self,"Importhistorie","Import bekijken",labels,0,False)
+        if not ok:return
+        run=runs[labels.index(label)];changes=self.customer_import.changes(run["id"])
+        lines=[f"{item['action'].capitalize()}: {item['customer_number']} — {item['customer_name']}"
+               +(f" ({item['changed_fields']})" if item["changed_fields"] else "") for item in changes if item["action"]!="ongewijzigd"]
+        summary=(f"Bestand: {run['source_name']}\nDatum: {run['created_at']}\nDoor: {run['performed_by'] or 'onbekend'}\n"
+                 f"Status: {run['status']}\n\nNieuw: {run['created_count']}\nBijgewerkt: {run['updated_count']}\n"
+                 f"Gedeactiveerd: {run['archived_count']}\nOngewijzigd: {run['unchanged_count']}\n\n"
+                 +"Wijzigingen:\n"+("\n".join(lines[:40]) or "Geen wijzigingen."))
+        if len(lines)>40:summary+=f"\n… en nog {len(lines)-40}"
+        if run["status"]=="uitgevoerd":
+            answer=QMessageBox.question(self,"Importverslag",summary+"\n\nDeze laatste import ongedaan maken?")
+            if answer==QMessageBox.Yes:
+                try:
+                    result=self.customer_import.undo(run["id"]);self.refresh_all();self.mail_page.reload()
+                    QMessageBox.information(self,"Import hersteld",f"{result['restored']} klantwijzigingen zijn lokaal teruggedraaid.")
+                except Exception as exc:QMessageBox.warning(self,"Import herstellen",str(exc))
+        else:QMessageBox.information(self,"Importverslag",summary)
+    def export_customers(self):
+        filename,_=QFileDialog.getSaveFileName(self,"Actieve klanten exporteren",f"NOWA-klanten-{__version__}.xlsx","Excel-bestanden (*.xlsx)")
+        if not filename:return
+        if not filename.lower().endswith(".xlsx"):filename+=".xlsx"
+        try:
+            path=self.customer_import.export_active(Path(filename))
+            QMessageBox.information(self,"Klanten geëxporteerd",f"De actuele actieve klantenlijst is opgeslagen:\n{path}")
+        except Exception as exc:QMessageBox.warning(self,"Klanten exporteren",str(exc))
+    def reactivate_customer(self):
+        number,ok=QInputDialog.getText(self,"Klant opnieuw activeren","Klantnummer")
+        if ok and number.strip():
+            try:
+                self.customer_import.reactivate(number);self.refresh_all()
+                QMessageBox.information(self,"Klant geactiveerd",f"Klant {number.strip()} staat weer in de actieve klantenlijst.")
+            except Exception as exc:QMessageBox.warning(self,"Klant activeren",str(exc))
     def edit_proposal(self,*_):
         proposal_id=self._selected_id(self.proposal_table,6)
         if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
@@ -322,3 +369,4 @@ class MainWindow(QMainWindow):
         for r,x in enumerate(rows):
             vals=(x["customer_name"],x["customer_number"],x["category"],x["group_path"],x["label"],x["username"],x["host"],x["url"],str(x["id"]))
             for c,v in enumerate(vals):self.vault_table.setItem(r,c,QTableWidgetItem(v or ""))
+
