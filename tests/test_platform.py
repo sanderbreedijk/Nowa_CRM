@@ -171,7 +171,19 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     communication_stats = communications.stats(customer_id)
     assert communication_stats["total"] == 5
     assert communication_stats["incoming"] == 3 and communication_stats["outgoing"] == 2
-    assert workspace.actions(customer_id)[0]["title"].startswith("Terugbellen:")
+    unknown_call=telephony.register_call("085-0000000",external_id="coligo-unknown-1")
+    assert telephony.get(unknown_call)["customer_id"] is None
+    telephony.link_customer(unknown_call,customer_id)
+    assert telephony.recognize("0850000000")["customer"]["id"]==customer_id
+    assert telephony.register_call("0850000000",external_id="coligo-unknown-1")==unknown_call
+    queue_before=telephony.queue_stats()
+    missed_call=telephony.mark_missed("06-12345678","coligo-missed-1")
+    assert telephony.get(missed_call)["status"]=="gemist"
+    assert telephony.history(queue="terugbellen")[0]["callback_status"]=="open"
+    call_queue=telephony.queue_stats();assert call_queue["callbacks"]==queue_before["callbacks"]+1 and call_queue["missed"]==queue_before["missed"]+1
+    telephony.complete_callback(missed_call)
+    assert telephony.queue_stats()["callbacks"]==queue_before["callbacks"]
+    assert any(item["title"].startswith("Terugbellen:") for item in workspace.actions(customer_id))
     calls = []
     coligo = ColigoAdapter(); coligo.start(calls.append)
     coligo.ingest("0612345678", "coligo-test-2", "Sander")
@@ -309,7 +321,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     with import_db.transaction() as conn:
         assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
         assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
-        assert 19 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+        assert 20 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
     assert importer.history()[0]["unchanged_count"]==0
     assert {item["action"] for item in importer.changes(result["run_id"])}=={"nieuw","gedeactiveerd"}
     export_file=importer.export_active(tmp_path/"actieve-klanten.xlsx")

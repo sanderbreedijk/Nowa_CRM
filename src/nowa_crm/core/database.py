@@ -604,12 +604,32 @@ CREATE TABLE IF NOT EXISTS mail_customer_aliases (
 CREATE INDEX IF NOT EXISTS idx_mail_alias_customer ON mail_customer_aliases(customer_id,email_address);
 """
 
+TELEPHONY_280_SCHEMA = """
+ALTER TABLE call_events ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normaal';
+ALTER TABLE call_events ADD COLUMN assigned_to TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_events ADD COLUMN callback_due TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_events ADD COLUMN callback_status TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_calls_callback ON call_events(callback_status,callback_due,started_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_calls_external_unique ON call_events(external_id) WHERE external_id<>'';
+CREATE TABLE IF NOT EXISTS call_customer_aliases (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    normalized_number TEXT NOT NULL UNIQUE,
+    source TEXT NOT NULL DEFAULT 'handmatig',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_call_alias_customer ON call_customer_aliases(customer_id,normalized_number);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
-    (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA)
+    (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA),
+    (20, TELEPHONY_280_SCHEMA)
 )
 
