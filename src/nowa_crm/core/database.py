@@ -586,12 +586,30 @@ CREATE TABLE IF NOT EXISTS customer_import_changes (
 CREATE INDEX IF NOT EXISTS idx_customer_import_changes_run ON customer_import_changes(run_id,id);
 """
 
+MAILBOX_270_SCHEMA = """
+ALTER TABLE mail_messages ADD COLUMN triage_state TEXT NOT NULL DEFAULT 'open';
+ALTER TABLE mail_messages ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normaal';
+ALTER TABLE mail_messages ADD COLUMN assigned_to TEXT NOT NULL DEFAULT '';
+ALTER TABLE mail_messages ADD COLUMN follow_up_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE mail_messages ADD COLUMN handled_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_mail_triage ON mail_messages(triage_state,priority,occurred_at DESC);
+CREATE TABLE IF NOT EXISTS mail_customer_aliases (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    email_address TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    source TEXT NOT NULL DEFAULT 'handmatig',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mail_alias_customer ON mail_customer_aliases(customer_id,email_address);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
-    (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA)
+    (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA)
 )
 
