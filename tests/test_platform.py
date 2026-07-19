@@ -1,6 +1,7 @@
 from pathlib import Path
 import sqlite3
 from datetime import date, timedelta
+from email.message import EmailMessage
 
 from cryptography.fernet import Fernet
 
@@ -212,10 +213,20 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     report_mail=reporting.create_mail_draft(customer_id,contact_id,"Sander")
     assert mail.get(report_mail)["status"] == "concept"
     integrations=IntegrationService(db,mail,telephony,"beheerder")
-    integrations.save("outlook",True,{"mode":"eml","sender_address":"info@nowa.nl","token":"nooit-opslaan"})
+    outlook_import=tmp_path/"outlook-import";outlook_import.mkdir()
+    imported_message=EmailMessage();imported_message["From"]="Sander <sander@example.nl>";imported_message["To"]="info@nowa.nl"
+    imported_message["Subject"]="Nieuwe Outlook servicevraag";imported_message["Message-ID"]="<nowa-test-240@example.nl>"
+    imported_message.set_content("Graag ondersteuning bij de printer.");imported_message.add_attachment(b"voorbeeld",maintype="text",subtype="plain",filename="vraag.txt")
+    (outlook_import/"servicevraag.eml").write_bytes(imported_message.as_bytes())
+    integrations.save("outlook",True,{"mode":"eml_folder","mailbox_address":"service@nowa.nl","folder_path":str(outlook_import),"token":"nooit-opslaan"})
     integrations.save("coligo",True,{"mode":"local_ingest","line_name":"Hoofdlijn","password":"nooit-opslaan"})
-    assert integrations.settings("outlook")["settings"]["sender_address"] == "info@nowa.nl"
+    assert integrations.settings("outlook")["settings"]["mailbox_address"] == "service@nowa.nl"
     assert "token" not in integrations.settings("outlook")["settings"]
+    first_sync=integrations.sync_outlook_folder();second_sync=integrations.sync_outlook_folder()
+    assert first_sync["imported"]==first_sync["linked"]==1 and second_sync["duplicates"]==1
+    imported_mail=next(item for item in mail.list_messages(customer_id) if item["subject"]=="Nieuwe Outlook servicevraag")
+    assert mail.attachments(imported_mail["id"])[0]["original_name"]=="vraag.txt"
+    assert mail.dossier_stats()["unlinked"]==0
     outlook_file=integrations.prepare_outlook(report_mail)
     assert outlook_file.exists() and outlook_file.suffix == ".eml"
     coligo_call=integrations.ingest_coligo("06-12345678","coligo-live-1","Hoofdlijn")

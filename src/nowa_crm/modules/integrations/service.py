@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 from nowa_crm.core.database import Database
 from nowa_crm.modules.mail.service import MailService
@@ -60,6 +61,15 @@ class IntegrationService:
         self.log("outlook", "mail_overgedragen", path.name, True, "mail", message_id)
         return path
 
+    def sync_outlook_folder(self) -> dict:
+        settings=self.settings("outlook")
+        if not settings["enabled"]:raise ValueError("Schakel de Outlook-koppeling eerst in.")
+        folder=settings["settings"].get("folder_path","")
+        if not folder:raise ValueError("Kies eerst een lokale Outlook-importmap.")
+        result=self.mail.import_folder(Path(folder))
+        self.log("outlook","map_ingelezen",f"{result['imported']} nieuw · {result['linked']} gekoppeld · {result['unlinked']} ongekoppeld · {result['duplicates']} dubbel",result["errors"]==0)
+        return result
+
     def latest_draft(self) -> dict | None:
         rows = self.mail.list_messages()
         for row in rows:
@@ -81,7 +91,7 @@ class IntegrationService:
 
     @staticmethod
     def _safe_settings(provider: str, settings: dict) -> dict:
-        allowed = {"outlook": {"mode", "sender_address"}, "coligo": {"mode", "line_name"}}[provider]
+        allowed = {"outlook": {"mode", "mailbox_address", "sender_address", "folder_path"}, "coligo": {"mode", "line_name"}}[provider]
         return {key: str(value).strip() for key, value in settings.items() if key in allowed}
 
     @classmethod

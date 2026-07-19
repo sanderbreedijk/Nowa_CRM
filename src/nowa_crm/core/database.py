@@ -544,10 +544,16 @@ INSERT OR IGNORE INTO product_catalog(code,name,category,unit,unit_price_cents) 
 ('NET-SCAN','Netwerkinventarisatie en advies','Dienst','opdracht',37600);
 """
 
+MAIL_DOSSIER_240_SCHEMA = """
+ALTER TABLE mail_messages ADD COLUMN source_path TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_external_unique ON mail_messages(external_id) WHERE external_id<>'';
+CREATE INDEX IF NOT EXISTS idx_mail_unlinked ON mail_messages(customer_id,direction,occurred_at DESC);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
-    (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA)
+    (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA)
 )

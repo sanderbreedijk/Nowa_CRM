@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import mimetypes
 import shutil
+import hashlib
 from datetime import datetime
+from email import policy
+from email.parser import BytesParser
+from email.utils import getaddresses, parsedate_to_datetime
 from email.message import EmailMessage
 from pathlib import Path
 from uuid import uuid4
@@ -120,6 +124,70 @@ class MailService:
             cur=conn.execute("INSERT INTO mail_attachments(message_id,original_name,stored_name,relative_path,size_bytes) VALUES(?,?,?,?,?)",
                              (message_id,source.name,stored,str(relative),target.stat().st_size))
             return int(cur.lastrowid)
+
+    def _store_attachment(self, message_id: int, filename: str, payload: bytes) -> int:
+        safe_name=Path(filename or "bijlage").name
+        folder=self.attachments_root/str(message_id);folder.mkdir(parents=True,exist_ok=True)
+        stored=f"{uuid4().hex}-{safe_name}";target=folder/stored;target.write_bytes(payload)
+        relative=target.relative_to(self.root)
+        with self.db.transaction() as conn:
+            return int(conn.execute("INSERT INTO mail_attachments(message_id,original_name,stored_name,relative_path,size_bytes) VALUES(?,?,?,?,?)",(message_id,safe_name,stored,str(relative),len(payload))).lastrowid)
+
+    def import_eml(self, source: Path) -> tuple[int,bool]:
+        if not source.is_file() or source.suffix.lower()!=".eml":raise ValueError("Selecteer een geldig EML-bestand")
+        raw=source.read_bytes();message=BytesParser(policy=policy.default).parsebytes(raw)
+        external=(message.get("Message-ID") or "").strip() or "sha256:"+hashlib.sha256(raw).hexdigest()
+        with self.db.transaction() as conn:
+            existing=conn.execute("SELECT id FROM mail_messages WHERE external_id=?",(external,)).fetchone()
+        if existing:return int(existing["id"]),False
+        senders=getaddresses(message.get_all("From",[]));recipients=getaddresses(message.get_all("To",[])+message.get_all("Cc",[]))
+        sender=senders[0][1] if senders else str(message.get("From", ""));recipient_text=", ".join(address for _,address in recipients if address)
+        customer_id,contact_id=self.detect_customer(sender)
+        if customer_id is None:
+            for _,address in recipients:
+                customer_id,contact_id=self.detect_customer(address)
+                if customer_id is not None:break
+        body=""
+        preferred=message.get_body(preferencelist=("plain","html")) if message.is_multipart() else message
+        if preferred:
+            try:body=preferred.get_content()
+            except (LookupError,UnicodeDecodeError):body=str(preferred.get_payload(decode=True) or b"",errors="replace")
+        occurred=datetime.now().isoformat(timespec="seconds")
+        if message.get("Date"):
+            try:occurred=parsedate_to_datetime(message["Date"]).astimezone().isoformat(timespec="seconds")
+            except (TypeError,ValueError,OverflowError):pass
+        with self.db.transaction() as conn:
+            cur=conn.execute("""INSERT INTO mail_messages(customer_id,contact_id,direction,status,sender,recipients,cc,subject,body,external_id,occurred_at,created_by,source_path)
+                VALUES(?,?,'inkomend','ontvangen',?,?,?,?,?,?,?,?,?)""",(customer_id,contact_id,sender,recipient_text,str(message.get("Cc","")),str(message.get("Subject","(geen onderwerp)")),body,external,occurred,self.actor,str(source)))
+            message_id=int(cur.lastrowid)
+        for part in message.iter_attachments():
+            payload=part.get_payload(decode=True)
+            if payload:self._store_attachment(message_id,part.get_filename() or "bijlage",payload)
+        return message_id,True
+
+    def import_folder(self, folder: Path) -> dict:
+        if not folder.is_dir():raise ValueError("De Outlook-importmap bestaat niet")
+        result={"found":0,"imported":0,"duplicates":0,"linked":0,"unlinked":0,"errors":0}
+        for source in sorted(folder.glob("*.eml")):
+            result["found"]+=1
+            try:
+                message_id,created=self.import_eml(source)
+                if not created:result["duplicates"]+=1;continue
+                result["imported"]+=1
+                if self.get(message_id)["customer_id"] is None:result["unlinked"]+=1
+                else:result["linked"]+=1
+            except Exception:result["errors"]+=1
+        return result
+
+    def link_customer(self, message_id: int, customer_id: int, contact_id: int | None = None) -> None:
+        with self.db.transaction() as conn:
+            if not conn.execute("SELECT 1 FROM customers WHERE id=?",(customer_id,)).fetchone():raise ValueError("Klant niet gevonden")
+            conn.execute("UPDATE mail_messages SET customer_id=?,contact_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,contact_id,message_id))
+
+    def dossier_stats(self) -> dict:
+        with self.db.transaction() as conn:
+            row=conn.execute("SELECT COUNT(*) total,SUM(customer_id IS NOT NULL) linked,SUM(customer_id IS NULL) unlinked,SUM(direction='inkomend') incoming FROM mail_messages").fetchone()
+        return {key:int(row[key] or 0) for key in ("total","linked","unlinked","incoming")}
 
     def attachments(self, message_id: int) -> list[dict]:
         with self.db.transaction() as conn:
