@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
                                QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
                                QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem,
@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
         root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); sidebar=QFrame(); sidebar.setObjectName("Sidebar"); sidebar.setFixedWidth(230); nav=QVBoxLayout(sidebar)
         brand=QLabel("NOWA CRM"); brand.setObjectName("Brand"); nav.addWidget(brand); self.stack=QStackedWidget()
         self.operations_page=OperationsPage(customers,operations,self)
-        self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self)
+        self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self.open_global_result,self)
         self.mail_page=MailPage(customers,mail,workspace,self)
         self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
         self.assets_service=CustomerAssetsService(customers.db)
@@ -77,7 +77,9 @@ class MainWindow(QMainWindow):
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
-        nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root); self.refresh_all()
+        nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root)
+        self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
+        self.refresh_all()
 
     def _build_navigation(self,nav,pages):
         groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,17)),
@@ -186,6 +188,26 @@ class MainWindow(QMainWindow):
             ticket_id=self.servicedesk_service.create_from_source(customer_id,subject or "Servicevraag",description,source_type,source_id)
             self.servicedesk_page.open_ticket(ticket_id);self._show(9)
         except Exception as exc:QMessageBox.warning(self,"Serviceticket",str(exc))
+    def open_global_search(self):
+        self._show(1);self.workspace_page.search.setFocus();self.workspace_page.search.selectAll()
+    def open_global_result(self,kind,entity_id,customer_id,title):
+        if kind=="Offerte" and entity_id:self.open_proposal(entity_id)
+        elif kind=="Ticket" and entity_id:self.servicedesk_page.open_ticket(entity_id);self._show(9)
+        elif kind=="E-mail" and entity_id:self.open_mail_message(entity_id)
+        elif kind=="Gesprek" and entity_id:self.open_call(entity_id)
+        elif kind=="Kluis":self.open_vault(title.split(" · ",1)[0])
+        elif kind=="Document":
+            self.documents_page.search.setText(title);self._show(17)
+        elif kind=="Projecttaak":
+            self.planning_page.reload_customers()
+            index=self.planning_page.customer.findData(customer_id)
+            if index>=0:self.planning_page.customer.setCurrentIndex(index)
+            self._show(11)
+        elif kind=="Actie":
+            index=self.workspace_page.customer.findData(customer_id)
+            if index>=0:self.workspace_page.customer.setCurrentIndex(index)
+            self._show(1)
+        elif customer_id:self.open_customer(customer_id)
     def handle_incoming_phone(self,phone):
         self.telephony_page.phone.setText(phone); self.telephony_page.incoming_call(); self._show(8); self.raise_(); self.activateWindow()
     def add_vault(self):

@@ -21,24 +21,42 @@ class WorkspaceService:
         term = f"%{value}%"
         with self.db.transaction() as conn:
             rows = conn.execute(
-                """SELECT 'Klant' kind,c.id customer_id,c.name title,c.customer_number||' · '||c.city detail FROM customers c
-                   WHERE c.name LIKE ? OR c.customer_number LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.city LIKE ?
+                """SELECT 'Klant' kind,c.id entity_id,c.id customer_id,c.name title,c.customer_number||' · '||c.city detail FROM customers c
+                   WHERE c.name LIKE :term OR c.customer_number LIKE :term OR c.email LIKE :term OR c.phone LIKE :term OR c.city LIKE :term
                    UNION ALL
-                   SELECT 'Contact',ct.customer_id,ct.name,COALESCE(ct.role,'')||' · '||COALESCE(ct.email,'')||' · '||COALESCE(ct.phone,'') FROM contacts ct
-                   WHERE ct.name LIKE ? OR ct.email LIKE ? OR ct.phone LIKE ?
+                   SELECT 'Contact',ct.id,ct.customer_id,ct.name,COALESCE(ct.role,'')||' · '||COALESCE(ct.email,'')||' · '||COALESCE(ct.phone,'') FROM contacts ct
+                   WHERE ct.name LIKE :term OR ct.email LIKE :term OR ct.phone LIKE :term
                    UNION ALL
-                   SELECT 'Offerte',p.customer_id,p.number||' · '||p.title,p.status FROM proposals p WHERE p.number LIKE ? OR p.title LIKE ?
+                   SELECT 'Offerte',p.id,p.customer_id,p.number||' · '||p.title,p.status FROM proposals p WHERE p.number LIKE :term OR p.title LIKE :term
                    UNION ALL
-                   SELECT 'Kluis',v.customer_id,v.label,v.category||' · '||v.username||' · '||v.host FROM vault_entries v
-                   WHERE v.label LIKE ? OR v.username LIKE ? OR v.host LIKE ? OR v.url LIKE ?
+                   SELECT 'Kluis',v.id,v.customer_id,v.label,v.category||' · '||v.username||' · '||v.host FROM vault_entries v
+                   WHERE v.label LIKE :term OR v.username LIKE :term OR v.host LIKE :term OR v.url LIKE :term
                    UNION ALL
-                   SELECT 'Gebruiker',u.customer_id,u.display_name,u.user_principal_name||' · '||u.license_name FROM customer_users u
-                   WHERE u.display_name LIKE ? OR u.user_principal_name LIKE ?
+                   SELECT 'Gebruiker',u.id,u.customer_id,u.display_name,u.user_principal_name||' · '||u.license_name FROM customer_users u
+                   WHERE u.display_name LIKE :term OR u.user_principal_name LIKE :term
                    UNION ALL
-                   SELECT 'Projecttaak',t.customer_id,t.task_name,t.phase||' · '||t.status FROM project_tasks t
-                   WHERE t.task_name LIKE ? OR t.phase LIKE ? OR t.owner LIKE ?
+                   SELECT 'Projecttaak',t.id,t.customer_id,t.task_name,t.phase||' · '||t.status FROM project_tasks t
+                   WHERE t.task_name LIKE :term OR t.phase LIKE :term OR t.owner LIKE :term
+                   UNION ALL
+                   SELECT 'Ticket',s.id,s.customer_id,s.number||' · '||s.subject,s.priority||' · '||s.status FROM service_tickets s
+                   WHERE s.number LIKE :term OR s.subject LIKE :term OR s.description LIKE :term OR s.owner LIKE :term
+                   UNION ALL
+                   SELECT 'Actie',a.id,a.customer_id,a.title,a.priority||' · '||a.status||' · '||a.due_date FROM action_items a
+                   WHERE a.title LIKE :term OR a.notes LIKE :term OR a.owner LIKE :term
+                   UNION ALL
+                   SELECT 'Document',d.id,d.customer_id,d.title,d.document_type||' · '||d.original_name FROM customer_documents d
+                   WHERE d.title LIKE :term OR d.original_name LIKE :term OR d.notes LIKE :term
+                   UNION ALL
+                   SELECT 'E-mail',m.id,m.customer_id,m.subject,m.direction||' · '||m.status||' · '||COALESCE(NULLIF(m.sender,''),m.recipients) FROM mail_messages m
+                   WHERE m.subject LIKE :term OR m.sender LIKE :term OR m.recipients LIKE :term OR m.body LIKE :term
+                   UNION ALL
+                   SELECT 'Gesprek',ce.id,ce.customer_id,COALESCE(NULLIF(ce.subject,''),ce.phone_number),ce.direction||' · '||ce.status||' · '||ce.outcome FROM call_events ce
+                   WHERE ce.phone_number LIKE :term OR ce.subject LIKE :term OR ce.notes LIKE :term OR ce.outcome LIKE :term
+                   UNION ALL
+                   SELECT 'Software',sw.id,sw.customer_id,sw.name,sw.vendor||' · '||sw.version||' · '||sw.support_scope FROM customer_software sw
+                   WHERE sw.name LIKE :term OR sw.vendor LIKE :term OR sw.support_scope LIKE :term
                    LIMIT 250""",
-                (term,term,term,term,term,term,term,term,term,term,term,term,term,term,term,term,term,term,term),
+                {"term":term},
             ).fetchall()
         return [dict(row) for row in rows]
 
