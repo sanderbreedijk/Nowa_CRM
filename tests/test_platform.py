@@ -63,6 +63,14 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     template = proposals.templates()[0]
     proposals.apply_template(proposal_id, template["id"])
     assert len(proposals.lines(proposal_id)) > 2
+    catalog_id=proposals.save_catalog_item("BACKUP-MON","Beheerde cloudback-up","Licentie","maand",2495,"Maanddienst")
+    proposals.add_catalog_line(proposal_id,catalog_id,2)
+    assert any(item["code"]=="BACKUP-MON" for item in proposals.catalog("backup"))
+    proposals.save_texts(proposal_id,"Een heldere introductie voor de klant.","Uitvoering in overleg met opdrachtgever.")
+    copy_id=proposals.duplicate(proposal_id)
+    assert proposals.get(copy_id).introduction.startswith("Een heldere") and len(proposals.lines(copy_id))==len(proposals.lines(proposal_id))
+    saved_template=proposals.save_as_template(proposal_id,"Klantgerichte beheeroplossing")
+    assert any(item["id"]==saved_template for item in proposals.templates())
     vault = VaultService(db, tmp_path / "vault.key", "beheerder", session)
     entry_id = vault.add(customer_id, "Microsoft 365 beheer", "admin@example.nl", "heel-geheim")
     assert vault.search(customer_id, "Microsoft")[0]["id"] == entry_id
