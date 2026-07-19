@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
                                QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
                                QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem,
                                QVBoxLayout, QWidget)
@@ -81,7 +81,7 @@ class MainWindow(QMainWindow):
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
-        nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root)
+        nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
         self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
         self.refresh_all()
         QTimer.singleShot(800,self.show_followup_reminder)
@@ -353,12 +353,34 @@ class MainWindow(QMainWindow):
     def reveal_secret(self,*_):
         entry_id=self._selected_id(self.vault_table,8)
         if not entry_id: QMessageBox.information(self,"IT Kluis","Selecteer eerst een kluisitem."); return
-        reason,ok=QInputDialog.getText(self,"Verificatie","Reden / wijze van klantverificatie")
+        call_id=self.telephony_page.call_id
+        if not call_id:
+            QMessageBox.warning(self,"Veilige wachtwoordverstrekking","Start of selecteer eerst het telefoongesprek in Telefonie. Zonder gekoppeld gesprek blijft het wachtwoord verborgen.");return
+        call=self.telephony.get(call_id);entry=self.vault.entry_info(entry_id)
+        if not call or not entry:return
+        if call["customer_id"]!=entry["customer_id"]:
+            QMessageBox.warning(self,"Veilige wachtwoordverstrekking",f"De beller is gekoppeld aan {call['customer_name']}, maar het kluisitem hoort bij {entry['customer_name']}. Er wordt niets getoond.");return
+        requester,ok=QInputDialog.getText(self,"Stap 1 van 5 — Aanvrager","Naam van de persoon die het wachtwoord aanvraagt")
         if not ok:return
+        methods=list(self.vault.VERIFICATION_METHODS);method,ok=QInputDialog.getItem(self,"Stap 2 van 5 — Verificatie","Gebruikte verificatiemethode",methods,0,False)
+        if not ok:return
+        reason,ok=QInputDialog.getText(self,"Stap 3 van 5 — Reden","Waarom heeft de beller dit wachtwoord nodig?")
+        if not ok:return
+        identity=QMessageBox.question(self,"Stap 4 van 5 — Identiteit","Is de identiteit daadwerkelijk gecontroleerd met de gekozen methode?",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
+        authority=QMessageBox.question(self,"Stap 5 van 5 — Bevoegdheid","Is vastgesteld dat deze persoon dit specifieke wachtwoord mag ontvangen?",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
         try:
-            secret=self.vault.reveal(entry_id,reason); QApplication.clipboard().setText(secret); alphabet="  ".join(f"{ch} — {self._spell(ch)}" for ch in secret); QMessageBox.information(self,"Wachtwoord",f"{secret}\n\nSpelalfabet:\n{alphabet}\n\nHet wachtwoord staat 30 seconden op het klembord.")
+            verification_id=self.vault.record_verification(entry_id,call_id,requester,method,reason,identity,authority)
+            if not identity or not authority:
+                QMessageBox.warning(self,"Verificatie mislukt","Identiteit en bevoegdheid moeten beide bevestigd zijn. De mislukte poging is lokaal vastgelegd; het wachtwoord blijft verborgen.");return
+            if QMessageBox.question(self,"Laatste bevestiging",f"Toon het wachtwoord van ‘{entry['label']}’ voor {requester}?\n\nDeze inzage wordt lokaal gelogd.",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)!=QMessageBox.Yes:return
+            secret=self.vault.reveal(entry_id,reason,verification_id); QApplication.clipboard().setText(secret); alphabet="  ".join(f"{ch} — {self._spell(ch)}" for ch in secret); QMessageBox.information(self,"Wachtwoord",f"{secret}\n\nSpelalfabet:\n{alphabet}\n\nHet wachtwoord staat 30 seconden op het klembord.")
             QTimer.singleShot(30000,lambda:self._clear_clipboard(secret))
         except Exception as e: QMessageBox.warning(self,"IT Kluis",str(e))
+    def _polish_ui(self):
+        for table in self.findChildren(QTableWidget):
+            table.setAlternatingRowColors(True);table.setSelectionBehavior(QAbstractItemView.SelectRows)
+            table.setSelectionMode(QAbstractItemView.SingleSelection);table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            table.verticalHeader().setVisible(False);table.verticalHeader().setDefaultSectionSize(36)
     def _clear_clipboard(self,secret):
         if QApplication.clipboard().text()==secret: QApplication.clipboard().clear()
     @staticmethod
