@@ -492,9 +492,26 @@ CREATE TABLE IF NOT EXISTS maintenance_tasks (
 CREATE INDEX IF NOT EXISTS idx_maintenance_due ON maintenance_tasks(active,next_due_date);
 """
 
+INTEGRATIONS_200_SCHEMA = """
+CREATE TABLE IF NOT EXISTS integration_events (
+    id INTEGER PRIMARY KEY,
+    occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    provider TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    successful INTEGER NOT NULL DEFAULT 1,
+    entity_type TEXT NOT NULL DEFAULT '',
+    entity_id INTEGER,
+    actor TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_integration_events_provider ON integration_events(provider,occurred_at DESC);
+INSERT OR IGNORE INTO integration_settings(provider,enabled,settings_json) VALUES
+('outlook',0,'{"mode":"eml"}'),('coligo',0,'{"mode":"local_ingest"}');
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
-    (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA)
+    (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA)
 )
