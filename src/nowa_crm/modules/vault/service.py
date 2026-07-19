@@ -12,6 +12,8 @@ from nowa_crm.core.auth import Session
 
 
 class VaultService:
+    VERIFICATION_METHODS = ("Terugbellen op geregistreerd nummer", "Contactpersoon en controlevraag",
+                            "Persoonlijk bekende bevoegde contactpersoon")
     def __init__(self, db: Database, key_path: Path, actor: str, session: Session | None = None):
         self.db, self.actor, self.session = db, actor, session
         self._cipher = Fernet(self._load_key(key_path))
@@ -86,7 +88,35 @@ class VaultService:
             self._audit(conn, "vault.delete", entry_id, int(row["customer_id"]), reason.strip())
             conn.execute("DELETE FROM vault_entries WHERE id=?", (entry_id,))
 
-    def reveal(self, entry_id: int, reason: str) -> str:
+    def entry_info(self, entry_id: int) -> dict | None:
+        with self.db.transaction() as conn:
+            row=conn.execute("""SELECT v.id,v.customer_id,v.label,c.name customer_name,c.customer_number
+                FROM vault_entries v JOIN customers c ON c.id=v.customer_id WHERE v.id=?""",(entry_id,)).fetchone()
+        return dict(row) if row else None
+
+    def record_verification(self, entry_id: int, call_id: int, requester_name: str, method: str, reason: str,
+                            identity_confirmed: bool, authority_confirmed: bool, notes: str = "") -> int:
+        if method not in self.VERIFICATION_METHODS:raise ValueError("Kies een geldige verificatiemethode.")
+        if len(requester_name.strip())<2:raise ValueError("Leg vast wie het wachtwoord aanvraagt.")
+        if len(reason.strip())<5:raise ValueError("Leg duidelijk vast waarom het wachtwoord nodig is.")
+        with self.db.transaction() as conn:
+            entry=conn.execute("SELECT customer_id FROM vault_entries WHERE id=?",(entry_id,)).fetchone()
+            call=conn.execute("SELECT customer_id,status FROM call_events WHERE id=?",(call_id,)).fetchone()
+            if not entry:raise ValueError("Kluisitem niet gevonden.")
+            if not call:raise ValueError("Start of selecteer eerst het telefoongesprek.")
+            same_customer=call["customer_id"] is not None and int(call["customer_id"])==int(entry["customer_id"])
+            successful=bool(identity_confirmed and authority_confirmed and same_customer)
+            cur=conn.execute("""INSERT INTO vault_verifications(vault_entry_id,customer_id,call_id,requester_name,
+                verification_method,request_reason,identity_confirmed,authority_confirmed,successful,notes,verified_by)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(entry_id,entry["customer_id"],call_id,requester_name.strip(),method,
+                reason.strip(),int(identity_confirmed),int(authority_confirmed),int(successful),notes.strip(),self.actor))
+            verification_id=int(cur.lastrowid)
+            self._audit(conn,"vault.verification.success" if successful else "vault.verification.failed",entry_id,
+                        int(entry["customer_id"]),f"{requester_name.strip()} · {method} · {reason.strip()}")
+        if not same_customer:raise ValueError("De herkende beller hoort niet bij de klant van dit kluisitem. Er wordt niets getoond.")
+        return verification_id
+
+    def reveal(self, entry_id: int, reason: str, verification_id: int | None = None) -> str:
         if self.session: self.session.require("vault.read")
         if len(reason.strip()) < 5:
             raise ValueError("Leg kort vast waarom dit gegeven wordt opgevraagd")
@@ -94,6 +124,12 @@ class VaultService:
             row = conn.execute("SELECT customer_id,secret FROM vault_entries WHERE id=?", (entry_id,)).fetchone()
             if not row:
                 raise KeyError(entry_id)
+            verification=conn.execute("""SELECT * FROM vault_verifications WHERE id=? AND vault_entry_id=? AND customer_id=?
+                AND successful=1 AND used_at IS NULL AND datetime(created_at)>=datetime('now','-10 minutes')""",
+                (verification_id,entry_id,row["customer_id"])).fetchone() if verification_id else None
+            if not verification:
+                raise PermissionError("Wachtwoord blijft verborgen: voer eerst de telefonische verificatie volledig uit.")
+            conn.execute("UPDATE vault_verifications SET used_at=CURRENT_TIMESTAMP WHERE id=?",(verification_id,))
             self._audit(conn, "vault.reveal", entry_id, int(row["customer_id"]), reason.strip())
             return self._cipher.decrypt(row["secret"]).decode("utf-8")
 
@@ -128,3 +164,4 @@ class VaultService:
             "INSERT INTO audit_events(actor,action,entity_type,entity_id,customer_id,reason,metadata) VALUES(?,?,?,?,?,?,?)",
             (self.actor, action, "vault_entry", entity_id, customer_id, reason, json.dumps({"source": "desktop"})),
         )
+
