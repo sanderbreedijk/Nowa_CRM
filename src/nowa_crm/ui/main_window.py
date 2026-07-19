@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.customers.importer import CustomerImportService
 from nowa_crm.modules.proposals.service import ProposalService
+from nowa_crm.modules.proposals.legacy_importer import LegacyProposalImportService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
@@ -60,6 +61,7 @@ class MainWindow(QMainWindow):
         self.mail_page=MailPage(customers,mail,workspace,self)
         self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
         self.assets_service=CustomerAssetsService(customers.db)
+        self.legacy_proposal_import=LegacyProposalImportService(customers.db,proposals,operations,self.assets_service)
         self.documents_service=DocumentCenterService(customers.db,self.assets_service,mail)
         self.documents_page=DocumentsPage(customers,self.documents_service,self.open_proposal,self)
         self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
@@ -195,7 +197,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self.customer_search,1); row.addWidget(import_btn); row.addWidget(history_btn); row.addWidget(export_btn); row.addWidget(reactivate_btn); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
         self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
-        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(add); box.addLayout(row)
+        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); import_old=QPushButton("Oude offerte importeren"); import_old.clicked.connect(self.import_legacy_proposal); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(import_old); row.addWidget(add); box.addLayout(row)
         self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); self.proposal_table.doubleClicked.connect(self.edit_proposal); box.addWidget(self.proposal_table,1); return page
     def _vault_page(self):
         page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; zoek ook rechtstreeks op telefoonnummer."); row=QHBoxLayout(); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, telefoon, account, host, gebruikersnaam of domein…"); self.vault_search.textChanged.connect(self.refresh_vault); reveal=QPushButton("Toon wachtwoord"); reveal.clicked.connect(self.reveal_secret); import_btn=QPushButton("KeePass CSV import"); import_btn.clicked.connect(self.import_keepass); add=QPushButton("Nieuw kluisitem"); add.setObjectName("Primary"); add.clicked.connect(self.add_vault); row.addWidget(self.vault_search,1); row.addWidget(import_btn); row.addWidget(reveal); row.addWidget(add); box.addLayout(row)
@@ -233,6 +235,50 @@ class MainWindow(QMainWindow):
             try:
                 proposal_id=self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all(); ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
             except Exception as e: QMessageBox.critical(self,"Offerte",str(e))
+    def import_legacy_proposal(self):
+        filename,_=QFileDialog.getOpenFileName(self,"Geëxtraheerde oude offerte selecteren","","NOWA-offertepakket (*.zip)")
+        if not filename:return
+        try:
+            preview=self.legacy_proposal_import.preview(Path(filename))
+            customers=self.customers.search()
+            if not customers:
+                QMessageBox.information(self,"Oude offerte importeren","Voeg eerst de klant toe waaraan de offerte gekoppeld moet worden.");return
+            labels=[f"{customer.customer_number} — {customer.name}" for customer in customers]
+            label,ok=QInputDialog.getItem(self,"Klant voor oude offerte",f"Kies de klant voor {preview.source_number} — {preview.title}",labels,0,False)
+            if not ok:return
+            customer=customers[labels.index(label)]
+            line_summary="\n".join(
+                f"• {line['description']}: {line['quantity']:g} × € {line['unit_price_cents']/100:,.2f}"
+                for line in preview.lines[:12]
+            )
+            message=(
+                f"GEKOZEN KLANT\n{customer.customer_number} — {customer.name}\n\n"
+                f"OUDE OFFERTE\nNummer: {preview.source_number}\nDatum: {preview.source_date or 'onbekend'}\n"
+                f"Titel: {preview.title}\nUren: {preview.labor_hours:g}\n"
+                f"Totaal excl. btw: € {preview.subtotal_cents/100:,.2f}\n\n"
+                f"KOPPELING AAN KLANT\nGebruikers: {preview.intake.get('users_count',0)}\n"
+                f"Apparaten: {preview.intake.get('devices_count',0)}\n"
+                f"Gedeelde mailboxen: {preview.intake.get('shared_mailboxes',0)}\n"
+                f"Licentieregels: {len(preview.licenses)}\nHardwareregels: {len(preview.hardware)}\n"
+                f"Originele PDF: {'ja' if preview.pdf_file else 'nee'}\n\n"
+                f"OFFERTEREGELS\n{line_summary}\n\n"
+                "Bestaande klantgegevens worden behouden. Nieuwe gegevens worden toegevoegd; verschillen worden gemeld.\n"
+                "Vooraf wordt automatisch een lokale back-up gemaakt.\n\nImport uitvoeren?"
+            )
+            if QMessageBox.question(self,"Oude offerte controleren",message)!=QMessageBox.Yes:return
+            result=self.legacy_proposal_import.apply(preview,customer.id)
+            self.refresh_all();self.assets_page.reload();self.customer360.reload()
+            warning_text=("\n\nAandachtspunten:\n"+"\n".join(f"• {x}" for x in result["warnings"])) if result["warnings"] else ""
+            QMessageBox.information(
+                self,"Oude offerte geïmporteerd",
+                f"Offerte gekoppeld aan {customer.name}.\n\nOfferteregels: {result['lines']}\n"
+                f"Nieuwe licenties: {result['licenses']}\nNieuwe hardware: {result['hardware']}\n"
+                f"PDF in documentcentrum: {'ja' if result['document_id'] else 'nee'}\n\n"
+                f"Back-up:\n{result['backup']}{warning_text}",
+            )
+            ProposalDialog(self.proposals,result["proposal_id"],self).exec();self.refresh_all()
+        except Exception as exc:
+            QMessageBox.warning(self,"Oude offerte importeren",str(exc))
     def import_customers(self):
         filename,_=QFileDialog.getOpenFileName(self,"Excel-adressenlijst selecteren","","Excel-bestanden (*.xlsx)")
         if not filename:return
@@ -440,4 +486,3 @@ class MainWindow(QMainWindow):
         for r,x in enumerate(rows):
             vals=(x["customer_name"],x["customer_number"],x["category"],x["group_path"],x["label"],x["username"],x["host"],x["url"],str(x["id"]))
             for c,v in enumerate(vals):self.vault_table.setItem(r,c,QTableWidgetItem(v or ""))
-

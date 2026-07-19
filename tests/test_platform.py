@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sqlite3
 import zipfile
 from datetime import date, timedelta
@@ -12,6 +13,7 @@ from nowa_crm.core.events import EventBus
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.customers.importer import CustomerImportService
 from nowa_crm.modules.proposals.service import ProposalService
+from nowa_crm.modules.proposals.legacy_importer import LegacyProposalImportService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
@@ -362,7 +364,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     with import_db.transaction() as conn:
         assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
         assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
-        assert 23 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+        assert 24 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
     assert importer.history()[0]["unchanged_count"]==0
     assert {item["action"] for item in importer.changes(result["run_id"])}=={"nieuw","gedeactiveerd"}
     export_file=importer.export_active(tmp_path/"actieve-klanten.xlsx")
@@ -372,6 +374,48 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert import_customers.search("1643")==[]
     importer.reactivate("1643")
     assert import_customers.search("1643")[0].name=="Aannemersbedrijf Gebr. Bergstra B.V."
+
+    quote_db=Database(tmp_path/"quote-import.sqlite3");quote_db.migrate()
+    quote_customers=CustomerService(quote_db,EventBus())
+    quote_customer_id=quote_customers.create("DOEL-1","Gekozen importklant")
+    quote_proposals=ProposalService(quote_db);quote_operations=OperationsService(quote_db)
+    quote_assets=CustomerAssetsService(quote_db,tmp_path/"quote-documents")
+    quote_importer=LegacyProposalImportService(quote_db,quote_proposals,quote_operations,quote_assets)
+    quote_package=tmp_path/"oude-offerte.zip"
+    manifest={
+        "format":"nowa-crm-legacy-proposal","format_version":1,
+        "source_fingerprint":"oude-offerte-test-1","source_number":"OFF-2026-1001",
+        "source_date":"2026-07-10","title":"Volledige oude offerte",
+        "introduction":"Historische introductie","terms":"Historische voorwaarden",
+        "pdf_file":"origineel.pdf",
+        "proposal_lines":[
+            {"kind":"uren","description":"Migratie","quantity":10.5,"unit_price_cents":9400},
+            {"kind":"hardware","description":"Werkplek","quantity":2,"unit_price_cents":99900},
+            {"kind":"licentie","description":"Licentie buiten eenmalige prijs","quantity":30,"unit_price_cents":0},
+        ],
+        "intake":{"users_count":30,"devices_count":30,"shared_mailboxes":4,"teams_count":4,"sharepoint_sites":4,
+                  "migration_source":"Microsoft 365","desired_date":"In overleg","scope_notes":"Volledige scope"},
+        "licenses":[{"product":"Microsoft 365 Business Premium","supplier":"TechSoup","quantity":30,
+                     "unit_price_cents":2060,"included":False,"notes":"Maandprijs"}],
+        "hardware":[{"kind":"Notebook","brand":"Lenovo","model":"ThinkBook 16","quantity":2,
+                     "sales_price_cents":99900,"notes":"Offertehardware"}],
+        "expected_totals":{"subtotal_cents":298500},
+    }
+    with zipfile.ZipFile(quote_package,"w") as archive:
+        archive.writestr("proposal_import.json",json.dumps(manifest))
+        archive.writestr("origineel.pdf",b"%PDF-1.4\n% testdocument\n")
+    quote_preview=quote_importer.preview(quote_package)
+    assert quote_preview.labor_hours==10.5 and quote_preview.subtotal_cents==298500
+    quote_result=quote_importer.apply(quote_preview,quote_customer_id)
+    assert len(quote_proposals.lines(quote_result["proposal_id"]))==3
+    assert quote_proposals.get(quote_result["proposal_id"]).number=="OFF-2026-1001"
+    assert quote_proposals.get(quote_result["proposal_id"]).terms=="Historische voorwaarden"
+    assert quote_operations.intake(quote_customer_id)["shared_mailboxes"]==4
+    assert quote_operations.list_rows("licenses",quote_customer_id)[0]["quantity"]==30
+    assert quote_operations.list_rows("hardware",quote_customer_id)[0]["model"]=="ThinkBook 16"
+    assert quote_assets.list("documents",quote_customer_id)[0]["original_name"]=="origineel.pdf"
+    try:quote_importer.apply(quote_preview,quote_customer_id);assert False
+    except ValueError as exc:assert "al geïmporteerd" in str(exc)
 
 
 def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
