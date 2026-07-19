@@ -697,6 +697,21 @@ INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_p
 SELECT id,'uren','Gebruikersinstructie',2,9400,70 FROM proposal_templates WHERE name='NOWA Professional';
 """
 
+LEGACY_PROPOSAL_IMPORT_320_SCHEMA = """
+CREATE TABLE IF NOT EXISTS legacy_proposal_imports (
+    id INTEGER PRIMARY KEY,
+    source_fingerprint TEXT NOT NULL UNIQUE,
+    source_number TEXT NOT NULL,
+    source_date TEXT NOT NULL DEFAULT '',
+    proposal_id INTEGER NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES customer_documents(id) ON DELETE SET NULL,
+    snapshot_json TEXT NOT NULL DEFAULT '{}',
+    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_legacy_proposal_import_customer ON legacy_proposal_imports(customer_id,imported_at DESC);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -705,5 +720,5 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
     (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA),
     (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA), (22, VAULT_VERIFICATION_300_SCHEMA),
-    (23, PROPOSAL_TEMPLATE_310_SCHEMA)
+    (23, PROPOSAL_TEMPLATE_310_SCHEMA), (24, LEGACY_PROPOSAL_IMPORT_320_SCHEMA)
 )
