@@ -22,7 +22,7 @@ class WorkspaceService:
         with self.db.transaction() as conn:
             rows = conn.execute(
                 """SELECT 'Klant' kind,c.id entity_id,c.id customer_id,c.name title,c.customer_number||' · '||c.city detail FROM customers c
-                   WHERE c.name LIKE :term OR c.customer_number LIKE :term OR c.email LIKE :term OR c.phone LIKE :term OR c.city LIKE :term
+                   WHERE c.active=1 AND (c.name LIKE :term OR c.customer_number LIKE :term OR c.email LIKE :term OR c.phone LIKE :term OR c.mobile_phone LIKE :term OR c.city LIKE :term OR c.country LIKE :term)
                    UNION ALL
                    SELECT 'Contact',ct.id,ct.customer_id,ct.name,COALESCE(ct.role,'')||' · '||COALESCE(ct.email,'')||' · '||COALESCE(ct.phone,'') FROM contacts ct
                    WHERE ct.name LIKE :term OR ct.email LIKE :term OR ct.phone LIKE :term
