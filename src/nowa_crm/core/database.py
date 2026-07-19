@@ -567,11 +567,31 @@ CREATE TABLE IF NOT EXISTS customer_import_runs (
 );
 """
 
+CUSTOMER_IMPORT_260_SCHEMA = """
+ALTER TABLE customer_import_runs ADD COLUMN unchanged_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE customer_import_runs ADD COLUMN backup_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE customer_import_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'uitgevoerd';
+ALTER TABLE customer_import_runs ADD COLUMN reversed_at TEXT;
+CREATE TABLE IF NOT EXISTS customer_import_changes (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES customer_import_runs(id) ON DELETE CASCADE,
+    customer_id INTEGER NOT NULL REFERENCES customers(id),
+    customer_number TEXT NOT NULL,
+    customer_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    changed_fields TEXT NOT NULL DEFAULT '',
+    before_json TEXT NOT NULL DEFAULT '{}',
+    after_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_customer_import_changes_run ON customer_import_changes(run_id,id);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
     (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA), (13, INTEGRATIONS_200_SCHEMA),
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
-    (17, CUSTOMER_IMPORT_250_SCHEMA)
+    (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA)
 )
+
