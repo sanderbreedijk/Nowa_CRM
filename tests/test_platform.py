@@ -21,6 +21,8 @@ from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.modules.communications.service import CommunicationService
+from nowa_crm.modules.documents.service import DocumentCenterService
+from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, _version_tuple
@@ -183,6 +185,17 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert report_path.exists() and "Acties en aandachtspunten" in report_path.read_text(encoding="utf-8")
     report_mail=reporting.create_mail_draft(customer_id,contact_id,"Sander")
     assert mail.get(report_mail)["status"] == "concept"
+    documents=DocumentCenterService(db,assets,mail)
+    documents.save_profile("NOWA Test","Teststraat 1","1000 AA Test","010-1234567","info@nowa.test",
+                           "https://nowa.test","#123456","Lokale testvoettekst")
+    assert documents.profile()["primary_color"] == "#123456"
+    document_rows=documents.search("Netwerkplan",customer_id)
+    assert document_rows[0]["kind"] == "Document" and document_rows[0]["id"] == document_id
+    assert {row["kind"] for row in documents.search("",customer_id)} >= {"Document","Offerte","Rapportage"}
+    documents.mail.save_template("Testupdate","Test {klantnaam}","Beste {contactnaam}","Test")
+    assert any(row["name"]=="Testupdate" for row in documents.templates())
+    branded_pdf=export_proposal_pdf(proposals,proposal_id,tmp_path/"branded-pdf")
+    assert branded_pdf.read_bytes().startswith(b"%PDF")
     dossier_service = Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,assets,servicedesk,reporting)
     dossier_assets = dossier_service.snapshot(customer_id)
     assert dossier_assets["locations"][0]["id"] == location_id
