@@ -58,6 +58,26 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert customers.search("Sander")[0].id == customer_id
     assert customers.contacts(customer_id)[0].id == contact_id
     proposals = ProposalService(db)
+    professional = next(item for item in proposals.templates() if item["name"] == "NOWA Professional")
+    professional_config = proposals.template_configuration(professional["id"])
+    assert len(professional_config["sections"]) == 14
+    assert professional_config["calculation"]["minimum_total_hours"] == 56.0
+    assert professional_config["calculation"]["hourly_rate_eur"] == 94.0
+    with db.transaction() as conn:
+        professional_line_count = conn.execute(
+            "SELECT COUNT(*) FROM proposal_template_lines WHERE template_id=?",
+            (professional["id"],),
+        ).fetchone()[0]
+    assert professional_line_count == 7
+    db.migrate()
+    with db.transaction() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM proposal_templates WHERE name='NOWA Professional'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM proposal_template_lines WHERE template_id=?",
+            (professional["id"],),
+        ).fetchone()[0] == professional_line_count
     proposal_id = proposals.create(customer_id, "Modernisering werkplekken")
     assert proposals.list("Modernisering")[0].id == proposal_id
     proposals.add_line(proposal_id, "uren", "Implementatie", 10, 12500)
@@ -342,7 +362,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     with import_db.transaction() as conn:
         assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
         assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
-        assert 22 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+        assert 23 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
     assert importer.history()[0]["unchanged_count"]==0
     assert {item["action"] for item in importer.changes(result["run_id"])}=={"nieuw","gedeactiveerd"}
     export_file=importer.export_active(tmp_path/"actieve-klanten.xlsx")
@@ -367,4 +387,3 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
-
