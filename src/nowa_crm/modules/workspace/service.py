@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from nowa_crm.core.database import Database
@@ -21,39 +21,39 @@ class WorkspaceService:
         term = f"%{value}%"
         with self.db.transaction() as conn:
             rows = conn.execute(
-                """SELECT 'Klant' kind,c.id entity_id,c.id customer_id,c.name title,c.customer_number||' · '||c.city detail FROM customers c
+                """SELECT 'Klant' kind,c.id entity_id,c.id customer_id,c.name title,c.customer_number||' Â· '||c.city detail FROM customers c
                    WHERE c.name LIKE :term OR c.customer_number LIKE :term OR c.email LIKE :term OR c.phone LIKE :term OR c.city LIKE :term
                    UNION ALL
-                   SELECT 'Contact',ct.id,ct.customer_id,ct.name,COALESCE(ct.role,'')||' · '||COALESCE(ct.email,'')||' · '||COALESCE(ct.phone,'') FROM contacts ct
+                   SELECT 'Contact',ct.id,ct.customer_id,ct.name,COALESCE(ct.role,'')||' Â· '||COALESCE(ct.email,'')||' Â· '||COALESCE(ct.phone,'') FROM contacts ct
                    WHERE ct.name LIKE :term OR ct.email LIKE :term OR ct.phone LIKE :term
                    UNION ALL
-                   SELECT 'Offerte',p.id,p.customer_id,p.number||' · '||p.title,p.status FROM proposals p WHERE p.number LIKE :term OR p.title LIKE :term
+                   SELECT 'Offerte',p.id,p.customer_id,p.number||' Â· '||p.title,p.status FROM proposals p WHERE p.number LIKE :term OR p.title LIKE :term
                    UNION ALL
-                   SELECT 'Kluis',v.id,v.customer_id,v.label,v.category||' · '||v.username||' · '||v.host FROM vault_entries v
+                   SELECT 'Kluis',v.id,v.customer_id,v.label,v.category||' Â· '||v.username||' Â· '||v.host FROM vault_entries v
                    WHERE v.label LIKE :term OR v.username LIKE :term OR v.host LIKE :term OR v.url LIKE :term
                    UNION ALL
-                   SELECT 'Gebruiker',u.id,u.customer_id,u.display_name,u.user_principal_name||' · '||u.license_name FROM customer_users u
+                   SELECT 'Gebruiker',u.id,u.customer_id,u.display_name,u.user_principal_name||' Â· '||u.license_name FROM customer_users u
                    WHERE u.display_name LIKE :term OR u.user_principal_name LIKE :term
                    UNION ALL
-                   SELECT 'Projecttaak',t.id,t.customer_id,t.task_name,t.phase||' · '||t.status FROM project_tasks t
+                   SELECT 'Projecttaak',t.id,t.customer_id,t.task_name,t.phase||' Â· '||t.status FROM project_tasks t
                    WHERE t.task_name LIKE :term OR t.phase LIKE :term OR t.owner LIKE :term
                    UNION ALL
-                   SELECT 'Ticket',s.id,s.customer_id,s.number||' · '||s.subject,s.priority||' · '||s.status FROM service_tickets s
+                   SELECT 'Ticket',s.id,s.customer_id,s.number||' Â· '||s.subject,s.priority||' Â· '||s.status FROM service_tickets s
                    WHERE s.number LIKE :term OR s.subject LIKE :term OR s.description LIKE :term OR s.owner LIKE :term
                    UNION ALL
-                   SELECT 'Actie',a.id,a.customer_id,a.title,a.priority||' · '||a.status||' · '||a.due_date FROM action_items a
+                   SELECT 'Actie',a.id,a.customer_id,a.title,a.priority||' Â· '||a.status||' Â· '||a.due_date FROM action_items a
                    WHERE a.title LIKE :term OR a.notes LIKE :term OR a.owner LIKE :term
                    UNION ALL
-                   SELECT 'Document',d.id,d.customer_id,d.title,d.document_type||' · '||d.original_name FROM customer_documents d
+                   SELECT 'Document',d.id,d.customer_id,d.title,d.document_type||' Â· '||d.original_name FROM customer_documents d
                    WHERE d.title LIKE :term OR d.original_name LIKE :term OR d.notes LIKE :term
                    UNION ALL
-                   SELECT 'E-mail',m.id,m.customer_id,m.subject,m.direction||' · '||m.status||' · '||COALESCE(NULLIF(m.sender,''),m.recipients) FROM mail_messages m
+                   SELECT 'E-mail',m.id,m.customer_id,m.subject,m.direction||' Â· '||m.status||' Â· '||COALESCE(NULLIF(m.sender,''),m.recipients) FROM mail_messages m
                    WHERE m.subject LIKE :term OR m.sender LIKE :term OR m.recipients LIKE :term OR m.body LIKE :term
                    UNION ALL
-                   SELECT 'Gesprek',ce.id,ce.customer_id,COALESCE(NULLIF(ce.subject,''),ce.phone_number),ce.direction||' · '||ce.status||' · '||ce.outcome FROM call_events ce
+                   SELECT 'Gesprek',ce.id,ce.customer_id,COALESCE(NULLIF(ce.subject,''),ce.phone_number),ce.direction||' Â· '||ce.status||' Â· '||ce.outcome FROM call_events ce
                    WHERE ce.phone_number LIKE :term OR ce.subject LIKE :term OR ce.notes LIKE :term OR ce.outcome LIKE :term
                    UNION ALL
-                   SELECT 'Software',sw.id,sw.customer_id,sw.name,sw.vendor||' · '||sw.version||' · '||sw.support_scope FROM customer_software sw
+                   SELECT 'Software',sw.id,sw.customer_id,sw.name,sw.vendor||' Â· '||sw.version||' Â· '||sw.support_scope FROM customer_software sw
                    WHERE sw.name LIKE :term OR sw.vendor LIKE :term OR sw.support_scope LIKE :term
                    LIMIT 250""",
                 {"term":term},
@@ -72,31 +72,69 @@ class WorkspaceService:
                                (customer_id,subject.strip(),body.strip(),self.actor))
             return int(cur.lastrowid)
 
-    def actions(self, customer_id: int | None = None, include_done: bool = False) -> list[dict]:
+    def actions(self, customer_id: int | None = None, include_done: bool = False, owner: str = "", period: str = "Alles") -> list[dict]:
         clauses, values = [], []
         if customer_id is not None:
             clauses.append("a.customer_id=?"); values.append(customer_id)
         if not include_done:
             clauses.append("a.status NOT IN ('Gereed','Geannuleerd')")
+        if owner.strip():
+            clauses.append("a.owner LIKE ?"); values.append(f"%{owner.strip()}%")
+        today=date.today().isoformat(); week=(date.today()+timedelta(days=7)).isoformat()
+        if period == "Te laat": clauses.append("a.due_date<>'' AND a.due_date<?"); values.append(today)
+        elif period == "Vandaag": clauses.append("a.due_date=?"); values.append(today)
+        elif period == "Komende 7 dagen": clauses.append("a.due_date>=? AND a.due_date<=?"); values.extend((today,week))
+        elif period == "Zonder deadline": clauses.append("a.due_date='' ")
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self.db.transaction() as conn:
             return [dict(row) for row in conn.execute(
-                "SELECT a.id,a.customer_id,COALESCE(c.name,'Algemeen') customer_name,a.title,a.owner,a.due_date,a.priority,a.status,a.notes "
+                "SELECT a.id,a.customer_id,COALESCE(c.name,'Algemeen') customer_name,a.title,a.owner,a.due_date,a.priority,a.status,a.notes,"
+                "a.action_type,a.source_type,a.source_id,a.reminder_at,"
+                "CASE WHEN a.status NOT IN ('Gereed','Geannuleerd') AND a.due_date<>'' AND a.due_date<? THEN 1 ELSE 0 END overdue "
                 "FROM action_items a LEFT JOIN customers c ON c.id=a.customer_id" + where +
-                " ORDER BY CASE a.priority WHEN 'Hoog' THEN 0 WHEN 'Normaal' THEN 1 ELSE 2 END,a.due_date,a.id", values)]
+                " ORDER BY overdue DESC,CASE a.priority WHEN 'Hoog' THEN 0 WHEN 'Normaal' THEN 1 ELSE 2 END,CASE WHEN a.due_date='' THEN 1 ELSE 0 END,a.due_date,a.id", [today,*values])]
 
     def add_action(self, customer_id: int | None, title: str, owner: str = "NOWA", due_date: str = "",
-                   priority: str = "Normaal", notes: str = "") -> int:
+                   priority: str = "Normaal", notes: str = "", action_type: str = "Taak",
+                   reminder_at: str = "", source_type: str = "", source_id: int | None = None) -> int:
         if not title.strip():
             raise ValueError("Titel van het actiepunt is verplicht")
+        for label,value in (("Deadline",due_date),("Herinnering",reminder_at)):
+            if value.strip():
+                try: datetime.fromisoformat(value.strip())
+                except ValueError: raise ValueError(f"{label} moet jjjj-mm-dd of jjjj-mm-dd uu:mm zijn")
         with self.db.transaction() as conn:
-            cur = conn.execute("INSERT INTO action_items(customer_id,title,owner,due_date,priority,notes) VALUES(?,?,?,?,?,?)",
-                               (customer_id,title.strip(),owner.strip(),due_date.strip(),priority,notes.strip()))
+            cur = conn.execute("INSERT INTO action_items(customer_id,title,owner,due_date,priority,notes,action_type,reminder_at,source_type,source_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                               (customer_id,title.strip(),owner.strip() or "NOWA",due_date.strip(),priority,notes.strip(),action_type,reminder_at.strip(),source_type,source_id))
             return int(cur.lastrowid)
 
     def complete_action(self, action_id: int) -> None:
         with self.db.transaction() as conn:
-            conn.execute("UPDATE action_items SET status='Gereed',updated_at=CURRENT_TIMESTAMP WHERE id=?", (action_id,))
+            conn.execute("UPDATE action_items SET status='Gereed',completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?", (action_id,))
+
+    def set_action_status(self, action_id: int, status: str) -> None:
+        if status not in ("Open","Bezig","Wacht op klant","Gereed","Geannuleerd"):
+            raise ValueError("Onbekende actiestatus")
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE action_items SET status=?,completed_at=CASE WHEN ?='Gereed' THEN CURRENT_TIMESTAMP ELSE NULL END,updated_at=CURRENT_TIMESTAMP WHERE id=?",(status,status,action_id))
+
+    def reschedule_action(self, action_id: int, due_date: str) -> None:
+        if due_date:
+            try: date.fromisoformat(due_date)
+            except ValueError: raise ValueError("Deadline moet jjjj-mm-dd zijn")
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE action_items SET due_date=?,status=CASE WHEN status='Gereed' THEN 'Open' ELSE status END,updated_at=CURRENT_TIMESTAMP WHERE id=?",(due_date,action_id))
+
+    def action_summary(self, owner: str = "") -> dict:
+        today=date.today().isoformat(); week=(date.today()+timedelta(days=7)).isoformat()
+        owner_sql=" AND owner LIKE ?" if owner.strip() else ""; values=[f"%{owner.strip()}%"] if owner.strip() else []
+        with self.db.transaction() as conn:
+            row=conn.execute("""SELECT COUNT(*) open,
+                SUM(CASE WHEN due_date<>'' AND due_date<? THEN 1 ELSE 0 END) overdue,
+                SUM(CASE WHEN due_date=? THEN 1 ELSE 0 END) today,
+                SUM(CASE WHEN due_date>? AND due_date<=? THEN 1 ELSE 0 END) upcoming
+                FROM action_items WHERE status NOT IN ('Gereed','Geannuleerd')"""+owner_sql,[today,today,today,week,*values]).fetchone()
+        return {key:int(row[key] or 0) for key in ("open","overdue","today","upcoming")}
 
     def commercial_settings(self, customer_id: int) -> dict:
         with self.db.transaction() as conn:
