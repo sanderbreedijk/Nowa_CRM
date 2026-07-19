@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+from datetime import date, timedelta
 
 from cryptography.fernet import Fernet
 
@@ -33,9 +34,9 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     source_root = Path(__file__).parents[1] / "src"
     for source in source_root.rglob("*.py"):
         text = source.read_text(encoding="utf-8")
-        assert not any(marker in text for marker in ("Ã", "Â", "â€")), f"Beschadigde UTF-8-tekst in {source}"
+        assert not any(marker in text for marker in ("Ãƒ", "Ã‚", "Ã¢â‚¬")), f"Beschadigde UTF-8-tekst in {source}"
     dossier_ui = (source_root / "nowa_crm" / "ui" / "customer360_page.py").read_text(encoding="utf-8")
-    assert "360° klantdossier" in dossier_ui and "commerciële" in dossier_ui and "één klant" in dossier_ui
+    assert "360Â° klantdossier" in dossier_ui and "commerciÃ«le" in dossier_ui and "Ã©Ã©n klant" in dossier_ui
     navigation_ui = (source_root / "nowa_crm" / "ui" / "main_window.py").read_text(encoding="utf-8")
     assert "NavSection" in navigation_ui
     assert all(section in navigation_ui for section in ("Start","Relaties","Verkoop","Service","Projecten","Systeem"))
@@ -100,8 +101,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert "Beveiligingsscore" in security_report.read_text(encoding="utf-8")
     workspace = WorkspaceService(db, proposals, "beheerder", tmp_path)
     workspace.add_note(customer_id, "Afspraak", "Migratie gefaseerd uitvoeren")
-    action_id = workspace.add_action(customer_id, "DNS controleren", "Sander", "2026-08-01", "Hoog")
+    tomorrow=(date.today()+timedelta(days=1)).isoformat()
+    action_id = workspace.add_action(customer_id, "DNS controleren", "Sander", tomorrow, "Hoog", "Controle na wijziging", "Terugbellen", f"{tomorrow} 09:00")
     assert workspace.actions(customer_id)[0]["id"] == action_id
+    assert workspace.actions(period="Komende 7 dagen")[0]["action_type"] == "Terugbellen"
+    assert workspace.action_summary()["upcoming"] == 1
+    workspace.set_action_status(action_id,"Wacht op klant")
+    assert workspace.actions(customer_id)[0]["status"] == "Wacht op klant"
+    workspace.reschedule_action(action_id,date.today().isoformat())
+    assert workspace.action_summary()["today"] == 1
     assert workspace.global_search("Technische intake")[0]["kind"] == "Projecttaak"
     assert workspace.notes(customer_id)[0]["subject"] == "Afspraak"
     workspace.save_commercial_settings(customer_id, 9900, 5, 14, 30)
