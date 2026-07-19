@@ -16,6 +16,8 @@ class Proposal:
     status: str
     revision: int
     total_cents: int
+    introduction: str
+    terms: str
 
 
 @dataclass(frozen=True)
@@ -53,7 +55,7 @@ class ProposalService:
         term = f"%{query.strip()}%"
         with self.db.transaction() as conn:
             rows = conn.execute(
-                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents
+                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms
                    FROM proposals p JOIN customers c ON c.id=p.customer_id
                    WHERE ?='' OR p.number LIKE ? OR p.title LIKE ? OR c.name LIKE ?
                    ORDER BY p.updated_at DESC,p.id DESC""", (query.strip(), term, term, term)
@@ -69,7 +71,7 @@ class ProposalService:
     def get(self, proposal_id: int) -> Proposal | None:
         with self.db.transaction() as conn:
             row = conn.execute(
-                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents
+                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms
                    FROM proposals p JOIN customers c ON c.id=p.customer_id WHERE p.id=?""", (proposal_id,)
             ).fetchone()
         return Proposal(**dict(row)) if row else None
@@ -94,6 +96,48 @@ class ProposalService:
             )
             line_id=int(cur.lastrowid); self._recalculate(conn,proposal_id); return line_id
 
+    def catalog(self, query: str = "", include_inactive: bool = False) -> list[dict]:
+        term=f"%{query.strip()}%"; clauses=[]; values=[]
+        if not include_inactive: clauses.append("active=1")
+        if query.strip(): clauses.append("(code LIKE ? OR name LIKE ? OR category LIKE ?)");values.extend((term,term,term))
+        where=" WHERE "+" AND ".join(clauses) if clauses else ""
+        with self.db.transaction() as conn:
+            return [dict(row) for row in conn.execute("SELECT id,code,name,category,unit,unit_price_cents,active,notes FROM product_catalog"+where+" ORDER BY category,name COLLATE NOCASE",values)]
+
+    def save_catalog_item(self, code: str, name: str, category: str, unit: str, unit_price_cents: int, notes: str = "", item_id: int | None = None) -> int:
+        if not code.strip() or not name.strip():raise ValueError("Artikelcode en naam zijn verplicht")
+        if unit_price_cents<0:raise ValueError("Prijs mag niet negatief zijn")
+        with self.db.transaction() as conn:
+            if item_id:
+                conn.execute("UPDATE product_catalog SET code=?,name=?,category=?,unit=?,unit_price_cents=?,notes=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(code.strip(),name.strip(),category,unit.strip() or "stuk",unit_price_cents,notes.strip(),item_id));return item_id
+            cur=conn.execute("INSERT INTO product_catalog(code,name,category,unit,unit_price_cents,notes) VALUES(?,?,?,?,?,?)",(code.strip(),name.strip(),category,unit.strip() or "stuk",unit_price_cents,notes.strip()));return int(cur.lastrowid)
+
+    def add_catalog_line(self, proposal_id: int, catalog_item_id: int, quantity: float = 1) -> int:
+        with self.db.transaction() as conn:item=conn.execute("SELECT * FROM product_catalog WHERE id=? AND active=1",(catalog_item_id,)).fetchone()
+        if not item:raise ValueError("Catalogusartikel niet gevonden of niet actief")
+        line_id=self.add_line(proposal_id,item["category"].lower(),item["name"],quantity,item["unit_price_cents"])
+        with self.db.transaction() as conn:conn.execute("UPDATE proposal_lines SET catalog_item_id=? WHERE id=?",(catalog_item_id,line_id))
+        return line_id
+
+    def save_texts(self, proposal_id: int, introduction: str, terms: str) -> None:
+        with self.db.transaction() as conn:conn.execute("UPDATE proposals SET introduction=?,terms=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(introduction.strip(),terms.strip(),proposal_id))
+
+    def duplicate(self, proposal_id: int) -> int:
+        source=self.get(proposal_id)
+        if not source:raise ValueError("Offerte niet gevonden")
+        new_id=self.create(source.customer_id,f"Kopie van {source.title}")
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE proposals SET introduction=?,terms=? WHERE id=?",(source.introduction,source.terms,new_id))
+            conn.execute("INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id) SELECT ?,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id FROM proposal_lines WHERE proposal_id=?",(new_id,proposal_id));self._recalculate(conn,new_id)
+        return new_id
+
+    def save_as_template(self, proposal_id: int, name: str) -> int:
+        proposal=self.get(proposal_id)
+        if not proposal or not name.strip():raise ValueError("Naam voor het sjabloon is verplicht")
+        with self.db.transaction() as conn:
+            cur=conn.execute("INSERT INTO proposal_templates(name,description,introduction,terms) VALUES(?,?,?,?)",(name.strip(),f"Gebaseerd op {proposal.number}",proposal.introduction,proposal.terms));template_id=int(cur.lastrowid)
+            conn.execute("INSERT INTO proposal_template_lines(template_id,kind,description,quantity,unit_price_cents,sort_order) SELECT ?,kind,description,quantity,unit_price_cents,sort_order FROM proposal_lines WHERE proposal_id=?",(template_id,proposal_id));return template_id
+
     def delete_line(self, line_id: int) -> None:
         with self.db.transaction() as conn:
             row=conn.execute("SELECT proposal_id FROM proposal_lines WHERE id=?",(line_id,)).fetchone()
@@ -115,7 +159,7 @@ class ProposalService:
 
     def templates(self) -> list[dict]:
         with self.db.transaction() as conn:
-            return [dict(row) for row in conn.execute("SELECT id,name,description FROM proposal_templates ORDER BY name COLLATE NOCASE")]
+            return [dict(row) for row in conn.execute("SELECT id,name,description,introduction,terms FROM proposal_templates ORDER BY name COLLATE NOCASE")]
 
     def apply_template(self, proposal_id: int, template_id: int) -> None:
         with self.db.transaction() as conn:
@@ -125,3 +169,5 @@ class ProposalService:
             conn.executemany("INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order) VALUES(?,?,?,?,?,?)",
                              [(proposal_id, row["kind"], row["description"], row["quantity"], row["unit_price_cents"], start + row["sort_order"]) for row in rows])
             self._recalculate(conn, proposal_id)
+            template=conn.execute("SELECT introduction,terms FROM proposal_templates WHERE id=?",(template_id,)).fetchone()
+            if template:conn.execute("UPDATE proposals SET introduction=CASE WHEN introduction='' THEN ? ELSE introduction END,terms=CASE WHEN terms='' THEN ? ELSE terms END WHERE id=?",(template["introduction"],template["terms"],proposal_id))

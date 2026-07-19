@@ -8,6 +8,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from xml.sax.saxutils import escape
+from datetime import date
 
 from nowa_crm.core.paths import data_dir
 from nowa_crm.modules.proposals.service import ProposalService
@@ -45,6 +47,7 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int, output_dir: 
         Paragraph(company, styles["Heading2"]),
         Paragraph("Offerte", styles["NowaTitle"]),
         Paragraph(f"<b>{proposal.number}</b> &nbsp; | &nbsp; Revisie {proposal.revision}", styles["BodyText"]),
+        Paragraph(f"Offertedatum: {date.today():%d-%m-%Y}", styles["BodyText"]),
         Spacer(1, 8 * mm),
         Paragraph(proposal.title, styles["Heading1"]),
         Paragraph(f"<b>Voor:</b> {customer['name']}", styles["BodyText"]),
@@ -52,8 +55,10 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int, output_dir: 
     address = " ".join(value for value in (customer["street"], customer["postal_code"], customer["city"]) if value)
     if address:
         story.append(Paragraph(address, styles["BodyText"]))
-    story.extend([Spacer(1, 8 * mm), Paragraph("Managementsamenvatting", styles["Heading2"])])
-    if intake:
+    story.extend([Spacer(1, 8 * mm), Paragraph("Samenvatting", styles["Heading2"])])
+    if proposal.introduction:
+        story.append(Paragraph(escape(proposal.introduction).replace("\n","<br/>"),styles["BodyText"]))
+    elif intake:
         story.append(Paragraph(
             f"{company} verzorgt de voorbereiding, inrichting en overdracht voor een omgeving met "
             f"<b>{intake['users_count']} gebruikers</b> en <b>{intake['devices_count']} apparaten</b>. "
@@ -94,6 +99,8 @@ def export_proposal_pdf(service: ProposalService, proposal_id: int, output_dir: 
         Spacer(1, 10 * mm),
         Paragraph("Handtekening: ______________________________________________________", styles["BodyText"]),
     ])
+    if proposal.terms:
+        story[-3:-3]=[Paragraph("Aanvullende afspraken",styles["Heading2"]),Paragraph(escape(proposal.terms).replace("\n","<br/>"),styles["BodyText"]),Spacer(1,6*mm)]
     def footer(canvas, _doc):
         canvas.saveState(); canvas.setStrokeColor(primary); canvas.setLineWidth(.7)
         canvas.line(18*mm,12*mm,A4[0]-18*mm,12*mm); canvas.setFillColor(colors.HexColor("#52657A"))
