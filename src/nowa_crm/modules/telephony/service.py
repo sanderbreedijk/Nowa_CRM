@@ -53,7 +53,7 @@ class TelephonyService:
         term=f"%{query.strip()}%"; values=[query.strip(),term,term,term,term]; customer_clause=""
         if customer_id is not None:customer_clause=" AND ce.customer_id=?"; values.append(customer_id)
         with self.db.transaction() as conn:
-            return [dict(row) for row in conn.execute("""SELECT ce.id,ce.started_at,ce.direction,ce.phone_number,ce.status,ce.subject,ce.outcome,
+            return [dict(row) for row in conn.execute("""SELECT ce.id,ce.customer_id,ce.contact_id,ce.started_at,ce.direction,ce.phone_number,ce.status,ce.subject,ce.outcome,
                 COALESCE(c.name,'Onbekend') customer_name,COALESCE(ct.name,'') contact_name FROM call_events ce
                 LEFT JOIN customers c ON c.id=ce.customer_id LEFT JOIN contacts ct ON ct.id=ce.contact_id
                 WHERE (?='' OR ce.phone_number LIKE ? OR c.name LIKE ? OR ct.name LIKE ? OR ce.subject LIKE ?)"""+customer_clause+
@@ -79,4 +79,3 @@ class TelephonyService:
 def _same_number(left: str, right: str) -> bool:
     if not left or not right:return False
     return left==right or (len(left)>=8 and len(right)>=8 and left[-8:]==right[-8:])
-

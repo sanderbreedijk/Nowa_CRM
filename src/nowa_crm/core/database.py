@@ -468,9 +468,33 @@ INSERT OR IGNORE INTO organization_profile(id,company_name,primary_color,footer_
 VALUES(1,'NOWA Solutions','#0B2342','NOWA Solutions');
 """
 
+SERVICEDESK_190_SCHEMA = """
+ALTER TABLE service_tickets ADD COLUMN source_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_tickets ADD COLUMN source_id INTEGER;
+CREATE TABLE IF NOT EXISTS sla_policies (
+    priority TEXT PRIMARY KEY,
+    response_hours INTEGER NOT NULL,
+    resolution_hours INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO sla_policies(priority,response_hours,resolution_hours) VALUES
+('Laag',8,72),('Normaal',4,24),('Hoog',2,8),('Kritiek',1,4);
+CREATE TABLE IF NOT EXISTS maintenance_tasks (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    frequency TEXT NOT NULL DEFAULT 'Maandelijks',
+    next_due_date TEXT NOT NULL DEFAULT '',
+    owner TEXT NOT NULL DEFAULT 'NOWA',
+    active INTEGER NOT NULL DEFAULT 1,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_maintenance_due ON maintenance_tasks(active,next_due_date);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
     (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
-    (11, DOCUMENTS_180_SCHEMA)
+    (11, DOCUMENTS_180_SCHEMA), (12, SERVICEDESK_190_SCHEMA)
 )

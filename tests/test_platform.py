@@ -169,11 +169,20 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert servicedesk.get(ticket_id)["number"].startswith("TK-")
     servicedesk.add_update(ticket_id,"Routerlogboeken onderzocht","In behandeling")
     servicedesk.add_time(ticket_id,45,"Analyse en herstel")
-    assert servicedesk.stats(customer_id) == {"open":1,"critical":1,"minutes":45}
+    service_stats=servicedesk.stats(customer_id)
+    assert service_stats["open"] == service_stats["critical"] == 1 and service_stats["minutes"] == 45
+    assert servicedesk.get(ticket_id)["sla_state"] in ("Binnen SLA","Dreigt","Overschreden")
     servicedesk.close(ticket_id,"Defecte uplinkkabel vervangen")
     assert servicedesk.get(ticket_id)["status"] == "Gesloten"
-    assert servicedesk.stats(customer_id) == {"open":0,"critical":0,"minutes":45}
-    servicedesk.create(customer_id,"Printer niet bereikbaar","Controle nodig","Support","Hoog","NOWA","2026-08-03",contact_id)
+    closed_stats=servicedesk.stats(customer_id)
+    assert closed_stats["open"] == closed_stats["critical"] == 0 and closed_stats["closed"] == 1
+    printer_ticket=servicedesk.create(customer_id,"Printer niet bereikbaar","Controle nodig","Support","Hoog","NOWA","2026-08-03",contact_id)
+    source_ticket=servicedesk.create_from_source(customer_id,"Servicevraag","Vanuit telefoongesprek","Telefoon",call_id,"Normaal")
+    assert servicedesk.get(source_ticket)["source_type"] == "Telefoon"
+    assert servicedesk.get(source_ticket)["sla_due_at"]
+    assert len(servicedesk.list(customer_id,priority="Normaal")) == 1
+    maintenance_id=servicedesk.add_maintenance(customer_id,"Firewallcontrole","Maandelijks","2026-08-15")
+    assert servicedesk.maintenance(customer_id)[0]["id"] == maintenance_id
     reporting=ReportingService(db,"beheerder",mail,tmp_path/"rapportages")
     report=reporting.compose(customer_id,"Sander")
     assert "Voortgangsupdate IT-project" in report["subject"]
