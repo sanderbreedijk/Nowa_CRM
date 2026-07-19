@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+import zipfile
 from datetime import date, timedelta
 from email.message import EmailMessage
 
@@ -9,6 +10,7 @@ from nowa_crm.core.database import Database
 from nowa_crm.core.auth import AuthService
 from nowa_crm.core.events import EventBus
 from nowa_crm.modules.customers.service import CustomerService
+from nowa_crm.modules.customers.importer import CustomerImportService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
@@ -278,3 +280,37 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 5
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
     assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
+
+    import_db=Database(tmp_path/"customer-import.sqlite3");import_db.migrate()
+    import_customers=CustomerService(import_db,EventBus());import_customers.create("OUD-1","Uit te faseren klant")
+    import_file=tmp_path/"klanten.xlsx"
+    _write_customer_xlsx(import_file,[
+        ["Relatiecode","Naam","Contactpersoon","Adres","Postcode","Plaats","LandNaam","Telefoon","MobieleTelefoon","Fax","Email","Krediettermijn"],
+        ["1643","Aannemersbedrijf Gebr. Bergstra B.V.","Jan Bergstra","Lopikerweg West 5","3411 AL","Lopik","Nederland","0348-551329","0612345678","fax-negeren","factuur@bergstrabv.nl","14"],
+    ])
+    importer=CustomerImportService(import_db,"beheerder");preview=importer.preview(import_file)
+    assert (preview.created,preview.updated,preview.archived)==(1,0,1)
+    result=importer.apply(preview);assert result["backup"].exists()
+    imported_customer=import_customers.search("1643")[0]
+    assert imported_customer.mobile_phone=="0612345678" and imported_customer.country=="Nederland"
+    assert import_customers.contacts(imported_customer.id)[0].name=="Jan Bergstra"
+    assert import_customers.search("Uit te faseren")==[]
+    with import_db.transaction() as conn:
+        assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
+        assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
+        assert 17 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+
+
+def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
+    cells=[]
+    for row_index,row in enumerate(rows,1):
+        parts=[]
+        for column_index,value in enumerate(row):
+            number=column_index+1;letters=""
+            while number:
+                number,remainder=divmod(number-1,26);letters=chr(65+remainder)+letters
+            parts.append(f'<c r="{letters}{row_index}" t="inlineStr"><is><t>{value}</t></is></c>')
+        cells.append(f'<row r="{row_index}">{"".join(parts)}</row>')
+    sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
+    with zipfile.ZipFile(path,"w") as archive:
+        archive.writestr("xl/worksheets/sheet1.xml",sheet)
