@@ -450,8 +450,27 @@ CREATE TABLE IF NOT EXISTS project_reports (
 CREATE INDEX IF NOT EXISTS idx_project_reports_customer ON project_reports(customer_id,created_at DESC);
 """
 
+DOCUMENTS_180_SCHEMA = """
+CREATE TABLE IF NOT EXISTS organization_profile (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    company_name TEXT NOT NULL DEFAULT 'NOWA Solutions',
+    address TEXT NOT NULL DEFAULT '',
+    postal_city TEXT NOT NULL DEFAULT '',
+    phone TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    website TEXT NOT NULL DEFAULT '',
+    primary_color TEXT NOT NULL DEFAULT '#0B2342',
+    footer_text TEXT NOT NULL DEFAULT 'NOWA Solutions',
+    logo_path TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO organization_profile(id,company_name,primary_color,footer_text)
+VALUES(1,'NOWA Solutions','#0B2342','NOWA Solutions');
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
-    (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA)
+    (8, ASSETS_120_SCHEMA), (9, SERVICEDESK_130_SCHEMA), (10, REPORTING_140_SCHEMA),
+    (11, DOCUMENTS_180_SCHEMA)
 )

@@ -24,6 +24,7 @@ from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.modules.security.service import SecurityService
 from nowa_crm.modules.communications.service import CommunicationService
+from nowa_crm.modules.documents.service import DocumentCenterService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
 from nowa_crm.ui.operations_page import OperationsPage
@@ -38,6 +39,7 @@ from nowa_crm.ui.reporting_page import ReportingPage
 from nowa_crm.ui.planning_page import PlanningPage
 from nowa_crm.ui.security_page import SecurityPage
 from nowa_crm.ui.communications_page import CommunicationsPage
+from nowa_crm.ui.documents_page import DocumentsPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
 
@@ -54,6 +56,8 @@ class MainWindow(QMainWindow):
         self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
         self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self)
         self.assets_service=CustomerAssetsService(customers.db)
+        self.documents_service=DocumentCenterService(customers.db,self.assets_service,mail)
+        self.documents_page=DocumentsPage(customers,self.documents_service,self.open_proposal,self)
         self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
         self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self)
@@ -65,14 +69,14 @@ class MainWindow(QMainWindow):
         self.security_service=SecurityService(customers.db)
         self.security_page=SecurityPage(customers,self.security_service,self)
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page()),("Communicatie",self.communications_page)]
+        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page()),("Communicatie",self.communications_page),("Documentcentrum",self.documents_page)]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
         nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root); self.refresh_all()
 
     def _build_navigation(self,nav,pages):
-        groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,)),
+        groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,17)),
                 ("Service",(16,6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(7,14,15)))
         self.nav_sections={};self.page_sections={};self.nav_buttons={}
         for section,indices in groups:
@@ -238,6 +242,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,"planning_page"):self.planning_page.reload_customers()
         if hasattr(self,"security_page"):self.security_page.reload_customers()
         if hasattr(self,"communications_page"):self.communications_page.reload_customers()
+        if hasattr(self,"documents_page"):self.documents_page.reload_customers()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
