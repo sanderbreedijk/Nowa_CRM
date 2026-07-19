@@ -298,7 +298,16 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     with import_db.transaction() as conn:
         assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
         assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
-        assert 17 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+        assert 18 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+    assert importer.history()[0]["unchanged_count"]==0
+    assert {item["action"] for item in importer.changes(result["run_id"])}=={"nieuw","gedeactiveerd"}
+    export_file=importer.export_active(tmp_path/"actieve-klanten.xlsx")
+    assert export_file.exists() and zipfile.is_zipfile(export_file)
+    restored=importer.undo(result["run_id"]);assert restored["restored"]==2
+    assert import_customers.search("Uit te faseren")[0].customer_number=="OUD-1"
+    assert import_customers.search("1643")==[]
+    importer.reactivate("1643")
+    assert import_customers.search("1643")[0].name=="Aannemersbedrijf Gebr. Bergstra B.V."
 
 
 def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
@@ -314,3 +323,4 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
+
