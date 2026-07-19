@@ -78,7 +78,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     vault = VaultService(db, tmp_path / "vault.key", "beheerder", session)
     entry_id = vault.add(customer_id, "Microsoft 365 beheer", "admin@example.nl", "heel-geheim")
     assert vault.search(customer_id, "Microsoft")[0]["id"] == entry_id
-    assert vault.reveal(entry_id, "Klant telefonisch geverifieerd") == "heel-geheim"
+    with db.transaction() as conn:
+        verification_call=int(conn.execute("INSERT INTO call_events(external_id,phone_number,normalized_number,customer_id,handled_by) VALUES('vault-test','0612345678','0612345678',?,'beheerder')",(customer_id,)).lastrowid)
+    failed_verification=vault.record_verification(entry_id,verification_call,"Sander","Contactpersoon en controlevraag","Toegang herstellen",True,False)
+    try:vault.reveal(entry_id,"Onvoldoende verificatie",failed_verification);assert False
+    except PermissionError:pass
+    successful_verification=vault.record_verification(entry_id,verification_call,"Sander","Terugbellen op geregistreerd nummer","Klant telefonisch geverifieerd",True,True)
+    assert vault.reveal(entry_id,"Klant telefonisch geverifieerd",successful_verification) == "heel-geheim"
+    try:vault.reveal(entry_id,"Verificatie niet hergebruiken",successful_verification);assert False
+    except PermissionError:pass
     keepass = tmp_path / "keepass.csv"
     keepass.write_text("Title,Username,Password,URL,Notes,Group\nRouter,admin,router-geheim,https://192.168.1.1,Lokaal,Netwerk\n", encoding="utf-8")
     assert vault.import_keepass_csv(customer_id, keepass) == 1
@@ -170,8 +178,8 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert {item["channel"] for item in combined} == {"E-mail", "Telefoon"}
     assert communications.timeline(customer_id, "Servicevraag", "Telefoon")[0]["id"] == call_id
     communication_stats = communications.stats(customer_id)
-    assert communication_stats["total"] == 5
-    assert communication_stats["incoming"] == 3 and communication_stats["outgoing"] == 2
+    assert communication_stats["total"] == 6
+    assert communication_stats["incoming"] == 4 and communication_stats["outgoing"] == 2
     unknown_call=telephony.register_call("085-0000000",external_id="coligo-unknown-1")
     assert telephony.get(unknown_call)["customer_id"] is None
     telephony.link_customer(unknown_call,customer_id)
@@ -306,11 +314,14 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     imported = migration.import_database(legacy,legacy_key)
     assert imported["created"]["customers"] == imported["created"]["contacts"] == imported["created"]["secrets"] == 1
     old_customer = customers.search("OUD-002")[0]
-    assert vault.reveal(vault.search(old_customer.id,"Oude router")[0]["id"],"Migratietest") == "oud-geheim"
+    old_entry=vault.search(old_customer.id,"Oude router")[0]["id"]
+    old_call=telephony.register_call("0611111111",external_id="vault-migratie-test")
+    old_verification=vault.record_verification(old_entry,old_call,"Oude Contact","Contactpersoon en controlevraag","Migratietest toegang",True,True)
+    assert vault.reveal(old_entry,"Migratietest",old_verification) == "oud-geheim"
     repeated = migration.import_database(legacy,legacy_key)
     assert repeated["created"]["customers"] == repeated["created"]["contacts"] == repeated["created"]["secrets"] == 0
     with db.transaction() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 5
+        assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] >= 8
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
     assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
 
@@ -331,7 +342,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     with import_db.transaction() as conn:
         assert conn.execute("SELECT active FROM customers WHERE customer_number='OUD-1'").fetchone()[0]==0
         assert "fax-negeren" not in str(dict(conn.execute("SELECT * FROM customers WHERE id=?",(imported_customer.id,)).fetchone()))
-        assert 21 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
+        assert 22 in [row[0] for row in conn.execute("SELECT version FROM schema_versions")]
     assert importer.history()[0]["unchanged_count"]==0
     assert {item["action"] for item in importer.changes(result["run_id"])}=={"nieuw","gedeactiveerd"}
     export_file=importer.export_active(tmp_path/"actieve-klanten.xlsx")
