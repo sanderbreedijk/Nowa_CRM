@@ -216,6 +216,11 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert any(row["name"]=="Testupdate" for row in documents.templates())
     branded_pdf=export_proposal_pdf(proposals,proposal_id,tmp_path/"branded-pdf")
     assert branded_pdf.read_bytes().startswith(b"%PDF")
+    assert workspace.global_search("Printer")[0]["kind"] == "Ticket"
+    assert workspace.global_search("Netwerkplan")[0]["kind"] == "Document"
+    assert any(row["kind"]=="E-mail" and row["entity_id"]==incoming_id for row in workspace.global_search("Akkoord"))
+    assert any(row["kind"]=="Gesprek" and row["entity_id"]==call_id for row in workspace.global_search("Servicevraag"))
+    assert workspace.global_search("heel-geheim") == []
     dossier_service = Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,assets,servicedesk,reporting)
     dossier_assets = dossier_service.snapshot(customer_id)
     assert dossier_assets["locations"][0]["id"] == location_id
