@@ -17,6 +17,10 @@ from nowa_crm.core.paths import data_dir
 
 class MailService:
     STATUSES = ("concept","klaar","verzonden","ontvangen","gearchiveerd")
+    TRIAGE_STATES = ("open","wacht_op_klant","afgerond")
+    PRIORITIES = ("Laag","Normaal","Hoog","Kritiek")
+    PUBLIC_DOMAINS = {"gmail.com","hotmail.com","outlook.com","live.nl","live.com","icloud.com",
+                      "yahoo.com","yahoo.nl","proton.me","protonmail.com","ziggo.nl","kpnmail.nl"}
 
     def __init__(self, db: Database, actor: str, root: Path | None = None):
         self.db, self.actor = db, actor
@@ -90,24 +94,33 @@ class MailService:
         email=address.strip().lower()
         domain=email.split("@",1)[1] if "@" in email else ""
         with self.db.transaction() as conn:
+            alias=conn.execute("SELECT customer_id FROM mail_customer_aliases WHERE email_address=?",(email,)).fetchone()
+            if alias:return int(alias["customer_id"]),None
             contact=conn.execute("SELECT id,customer_id FROM contacts WHERE lower(email)=?",(email,)).fetchone()
             if contact:return int(contact["customer_id"]),int(contact["id"])
             customer=conn.execute("SELECT id FROM customers WHERE lower(email)=?",(email,)).fetchone()
             if customer:return int(customer["id"]),None
-            if domain:
-                customer=conn.execute("""SELECT id FROM customers WHERE lower(email) LIKE ?
+            if domain and domain not in self.PUBLIC_DOMAINS:
+                matches=conn.execute("""SELECT DISTINCT id FROM customers WHERE active=1 AND (lower(email) LIKE ?
                     OR EXISTS(SELECT 1 FROM contacts WHERE contacts.customer_id=customers.id AND lower(contacts.email) LIKE ?)
-                    ORDER BY id LIMIT 1""",(f"%@{domain}",f"%@{domain}")).fetchone()
-                if customer:return int(customer["id"]),None
+                    OR EXISTS(SELECT 1 FROM mail_customer_aliases a WHERE a.customer_id=customers.id AND lower(a.email_address) LIKE ?))
+                    ORDER BY id LIMIT 2""",(f"%@{domain}",f"%@{domain}",f"%@{domain}")).fetchall()
+                if len(matches)==1:return int(matches[0]["id"]),None
         return None,None
 
-    def list_messages(self, customer_id: int | None = None, query: str = "") -> list[dict]:
+    def list_messages(self, customer_id: int | None = None, query: str = "", queue: str = "alle") -> list[dict]:
         term=f"%{query.strip()}%"; clauses=["(?='' OR m.subject LIKE ? OR m.recipients LIKE ? OR m.sender LIKE ? OR m.body LIKE ?)"]; values=[query.strip(),term,term,term,term]
         if customer_id is not None:clauses.append("m.customer_id=?"); values.append(customer_id)
+        if queue=="open":clauses.append("m.direction='inkomend' AND m.triage_state<>'afgerond'")
+        elif queue=="ongekoppeld":clauses.append("m.customer_id IS NULL")
+        elif queue=="afgerond":clauses.append("m.triage_state='afgerond'")
+        elif queue=="concepten":clauses.append("m.direction='uitgaand' AND m.status IN ('concept','klaar')")
         with self.db.transaction() as conn:
             return [dict(row) for row in conn.execute("""SELECT m.id,m.customer_id,COALESCE(c.name,'Ongekoppeld') customer_name,m.direction,m.status,
-                m.sender,m.recipients,m.subject,m.occurred_at,m.updated_at FROM mail_messages m LEFT JOIN customers c ON c.id=m.customer_id
-                WHERE """+" AND ".join(clauses)+" ORDER BY m.occurred_at DESC,m.id DESC LIMIT 500",values)]
+                m.sender,m.recipients,m.subject,m.occurred_at,m.updated_at,m.triage_state,m.priority,m.assigned_to,m.follow_up_at
+                FROM mail_messages m LEFT JOIN customers c ON c.id=m.customer_id
+                WHERE """+" AND ".join(clauses)+""" ORDER BY CASE m.priority WHEN 'Kritiek' THEN 0 WHEN 'Hoog' THEN 1
+                WHEN 'Normaal' THEN 2 ELSE 3 END,m.occurred_at DESC,m.id DESC LIMIT 500""",values)]
 
     def get(self, message_id: int) -> dict | None:
         with self.db.transaction() as conn:
@@ -183,6 +196,39 @@ class MailService:
         with self.db.transaction() as conn:
             if not conn.execute("SELECT 1 FROM customers WHERE id=?",(customer_id,)).fetchone():raise ValueError("Klant niet gevonden")
             conn.execute("UPDATE mail_messages SET customer_id=?,contact_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,contact_id,message_id))
+            message=conn.execute("SELECT sender,direction FROM mail_messages WHERE id=?",(message_id,)).fetchone()
+            if message and message["direction"]=="inkomend" and "@" in message["sender"]:
+                conn.execute("""INSERT INTO mail_customer_aliases(customer_id,email_address,source,created_by)
+                    VALUES(?,?,'mailkoppeling',?) ON CONFLICT(email_address) DO UPDATE SET customer_id=excluded.customer_id,
+                    source=excluded.source,created_by=excluded.created_by""",
+                    (customer_id,message["sender"].strip().lower(),self.actor))
+
+    def triage(self, message_id: int, state: str = "open", priority: str = "Normaal",
+               assigned_to: str = "", follow_up_at: str = "") -> None:
+        if state not in self.TRIAGE_STATES:raise ValueError("Ongeldige mailboxstatus.")
+        if priority not in self.PRIORITIES:raise ValueError("Ongeldige prioriteit.")
+        if follow_up_at:
+            try:datetime.fromisoformat(follow_up_at)
+            except ValueError:raise ValueError("Opvolgdatum moet jjjj-mm-dd of jjjj-mm-dd uu:mm zijn.")
+        with self.db.transaction() as conn:
+            conn.execute("""UPDATE mail_messages SET triage_state=?,priority=?,assigned_to=?,follow_up_at=?,
+                handled_at=CASE WHEN ?='afgerond' THEN CURRENT_TIMESTAMP ELSE NULL END,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (state,priority,assigned_to.strip(),follow_up_at.strip(),state,message_id))
+
+    def reply_draft(self, message_id: int) -> int:
+        source=self.get(message_id)
+        if not source or source["direction"]!="inkomend":raise ValueError("Selecteer een ontvangen bericht.")
+        if source["customer_id"] is None:raise ValueError("Koppel het bericht eerst aan een klant.")
+        subject=source["subject"] if source["subject"].lower().startswith("re:") else f"Re: {source['subject']}"
+        body=f"\n\n--- Oorspronkelijk bericht ---\nVan: {source['sender']}\nDatum: {source['occurred_at']}\n\n{source['body']}"
+        return self.create_draft(source["customer_id"],source["sender"],subject,body,source["contact_id"])
+
+    def queue_stats(self) -> dict:
+        with self.db.transaction() as conn:
+            row=conn.execute("""SELECT COUNT(*) total,SUM(direction='inkomend' AND triage_state<>'afgerond') open,
+                SUM(customer_id IS NULL) unlinked,SUM(priority IN ('Hoog','Kritiek') AND triage_state<>'afgerond') urgent,
+                SUM(follow_up_at<>'' AND triage_state<>'afgerond') followups FROM mail_messages""").fetchone()
+        return {key:int(row[key] or 0) for key in ("total","open","unlinked","urgent","followups")}
 
     def dossier_stats(self) -> dict:
         with self.db.transaction() as conn:
@@ -221,3 +267,4 @@ class _Safe(dict):
 def _safe_filename(value: str) -> str:
     cleaned="".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in value).strip("-")
     return cleaned[:60] or "concept"
+
