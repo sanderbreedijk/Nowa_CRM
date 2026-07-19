@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import json
 
 from nowa_crm.core.database import Database
 
@@ -159,7 +160,24 @@ class ProposalService:
 
     def templates(self) -> list[dict]:
         with self.db.transaction() as conn:
-            return [dict(row) for row in conn.execute("SELECT id,name,description,introduction,terms FROM proposal_templates ORDER BY name COLLATE NOCASE")]
+            return [dict(row) for row in conn.execute(
+                "SELECT id,name,description,introduction,terms,sections_json,calculation_json "
+                "FROM proposal_templates ORDER BY name COLLATE NOCASE"
+            )]
+
+    def template_configuration(self, template_id: int) -> dict:
+        with self.db.transaction() as conn:
+            row=conn.execute(
+                "SELECT name,sections_json,calculation_json FROM proposal_templates WHERE id=?",
+                (template_id,),
+            ).fetchone()
+        if not row:
+            raise ValueError("Offertesjabloon niet gevonden")
+        return {
+            "name": row["name"],
+            "sections": json.loads(row["sections_json"] or "[]"),
+            "calculation": json.loads(row["calculation_json"] or "{}"),
+        }
 
     def apply_template(self, proposal_id: int, template_id: int) -> None:
         with self.db.transaction() as conn:
