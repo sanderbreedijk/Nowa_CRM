@@ -19,9 +19,9 @@ class MailPage(QWidget):
         root=QVBoxLayout(self); title=QLabel("Mail"); title.setObjectName("Title"); root.addWidget(title)
         sub=QLabel("Lokale klantmail, concepten, sjablonen en historie. Exporteer naar EML om veilig in Outlook te openen."); sub.setObjectName("Subtitle"); root.addWidget(sub)
         filterrow=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek in onderwerp, afzender, ontvanger of inhoud…"); self.search.textChanged.connect(self.refresh_history)
-        self.filter_customer=QComboBox(); self.filter_customer.currentIndexChanged.connect(self.refresh_history); filterrow.addWidget(self.search,1); filterrow.addWidget(self.filter_customer); root.addLayout(filterrow)
+        self.filter_customer=QComboBox(); self.filter_customer.currentIndexChanged.connect(self.refresh_history);self.dossier_status=QLabel();filterrow.addWidget(self.search,1);filterrow.addWidget(self.filter_customer);filterrow.addWidget(self.dossier_status); root.addLayout(filterrow)
         split=QSplitter(); history=QWidget(); hl=QVBoxLayout(history); self.table=QTableWidget(0,7); self.table.setHorizontalHeaderLabels(["Datum","Klant","Richting","Status","Onderwerp","Adres","ID"]); self.table.setColumnHidden(6,True); self.table.horizontalHeader().setStretchLastSection(True); self.table.doubleClicked.connect(self.load_selected); hl.addWidget(self.table)
-        incoming=QPushButton("Ontvangen mail registreren"); incoming.clicked.connect(self.record_incoming); hl.addWidget(incoming)
+        incomingbar=QHBoxLayout();incoming=QPushButton("Ontvangen mail registreren"); incoming.clicked.connect(self.record_incoming);link=QPushButton("Geselecteerde mail aan klant koppelen");link.clicked.connect(self.link_selected);incomingbar.addWidget(incoming);incomingbar.addWidget(link);hl.addLayout(incomingbar)
         editor=QWidget(); form=QFormLayout(editor); self.customer=QComboBox(); self.customer.currentIndexChanged.connect(self.reload_contacts); self.contact=QComboBox()
         self.template=QComboBox(); self.template.currentIndexChanged.connect(self.apply_template); self.to=QLineEdit(); self.cc=QLineEdit(); self.subject=QLineEdit(); self.body=QTextEdit()
         form.addRow("Klant",self.customer); form.addRow("Contact",self.contact); form.addRow("Sjabloon",self.template); form.addRow("Aan",self.to); form.addRow("CC",self.cc); form.addRow("Onderwerp",self.subject); form.addRow("Bericht",self.body)
@@ -93,6 +93,15 @@ class MailPage(QWidget):
         for r,row in enumerate(rows):
             address=row["sender"] if row["direction"]=="inkomend" else row["recipients"]
             for c,value in enumerate((row["occurred_at"],row["customer_name"],row["direction"],row["status"],row["subject"],address,row["id"])):self.table.setItem(r,c,QTableWidgetItem(str(value or "")))
+        stats=self.mail.dossier_stats();self.dossier_status.setText(f"{stats['linked']} gekoppeld · {stats['unlinked']} te koppelen")
+
+    def link_selected(self):
+        row=self.table.currentRow();item=self.table.item(row,6) if row>=0 else None
+        if not item:return
+        customers=self.customers.search();labels=[f"{x.customer_number} — {x.name}" for x in customers]
+        if not labels:return
+        label,ok=QInputDialog.getItem(self,"Mail aan klant koppelen","Klant",labels,0,False)
+        if ok:self.mail.link_customer(int(item.text()),customers[labels.index(label)].id);self.refresh_history()
 
     def load_selected(self,*_):
         row=self.table.currentRow(); item=self.table.item(row,6) if row>=0 else None
