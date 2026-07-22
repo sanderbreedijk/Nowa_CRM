@@ -32,6 +32,7 @@ from nowa_crm.modules.integrations.service import IntegrationService
 from nowa_crm.modules.daystart.service import DaystartService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
+from nowa_crm.ui.vault_verification_dialog import VaultVerificationDialog
 from nowa_crm.ui.operations_page import OperationsPage
 from nowa_crm.ui.workspace_page import WorkspacePage
 from nowa_crm.ui.mail_page import MailPage
@@ -235,7 +236,7 @@ class MainWindow(QMainWindow):
         page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; zoek ook rechtstreeks op telefoonnummer.");searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Veilige zoekopdracht")); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, telefoon, account, host, gebruikersnaam of domein…"); self.vault_search.textChanged.connect(self.refresh_vault);row.addWidget(self.vault_search,1);box.addWidget(searchbar)
         body=QHBoxLayout();self.vault_table=QTableWidget(0,10); self.vault_table.setHorizontalHeaderLabels(["Klant","Klantnr.","Categorie","Groep","Omschrijving","Gebruikersnaam","Host / IP","URL","Klant-ID","ID"]); self.vault_table.setColumnHidden(8,True);self.vault_table.setColumnHidden(9,True); self.vault_table.horizontalHeader().setStretchLastSection(True);self.vault_table.setAlternatingRowColors(True); self.vault_table.doubleClicked.connect(self.reveal_secret)
         actions=QFrame();actions.setObjectName("LeftActionPanel");side=QVBoxLayout(actions);side.setContentsMargins(16,16,16,16);side.setSpacing(10);head=QLabel("Kluis-acties");head.setObjectName("PanelTitle");side.addWidget(head);sub=QLabel("Wachtwoorden worden alleen vrijgegeven na de telefonische verificatiestappen.");sub.setObjectName("PanelText");sub.setWordWrap(True);side.addWidget(sub)
-        for symbol,text,handler,primary in (("+","Nieuw kluisitem",self.add_vault,True),("PW","Wachtwoord tonen",self.reveal_secret,False),("US","Gebruikersnaam kopiëren",self.copy_vault_username,False),("360","Open klantdossier",self.open_vault_customer,False),("KP","KeePass importeren",self.import_keepass,False)):
+        for symbol,text,handler,primary in (("+","Nieuw kluisitem",self.add_vault,True),("PW","Veilige verstrekking",self.reveal_secret,False),("US","Gebruikersnaam kopiëren",self.copy_vault_username,False),("360","Open klantdossier",self.open_vault_customer,False),("KP","KeePass importeren",self.import_keepass,False)):
             button=QPushButton(text);button.setObjectName("SidePrimary" if primary else "SideAction");button.setIcon(nav_icon(symbol));button.setIconSize(QSize(28,28));button.clicked.connect(handler);side.addWidget(button)
         side.addStretch();notice=QLabel("Lokaal versleuteld\nGeen credentials in GitHub");notice.setObjectName("SecurityNote");notice.setWordWrap(True);side.addWidget(notice);actions.setFixedWidth(245);body.addWidget(actions);body.addWidget(self.vault_table,1);box.addLayout(body,1);return page
     def _selected_id(self,table,col):
@@ -483,21 +484,14 @@ class MainWindow(QMainWindow):
         if not call or not entry:return
         if call["customer_id"]!=entry["customer_id"]:
             QMessageBox.warning(self,"Veilige wachtwoordverstrekking",f"De beller is gekoppeld aan {call['customer_name']}, maar het kluisitem hoort bij {entry['customer_name']}. Er wordt niets getoond.");return
-        requester,ok=QInputDialog.getText(self,"Stap 1 van 5 — Aanvrager","Naam van de persoon die het wachtwoord aanvraagt")
-        if not ok:return
-        methods=list(self.vault.VERIFICATION_METHODS);method,ok=QInputDialog.getItem(self,"Stap 2 van 5 — Verificatie","Gebruikte verificatiemethode",methods,0,False)
-        if not ok:return
-        reason,ok=QInputDialog.getText(self,"Stap 3 van 5 — Reden","Waarom heeft de beller dit wachtwoord nodig?")
-        if not ok:return
-        identity=QMessageBox.question(self,"Stap 4 van 5 — Identiteit","Is de identiteit daadwerkelijk gecontroleerd met de gekozen methode?",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
-        authority=QMessageBox.question(self,"Stap 5 van 5 — Bevoegdheid","Is vastgesteld dat deze persoon dit specifieke wachtwoord mag ontvangen?",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
+        verification=VaultVerificationDialog(entry,call,self.customers.contacts(entry["customer_id"]),list(self.vault.VERIFICATION_METHODS),self)
+        if not verification.exec():return
         try:
-            verification_id=self.vault.record_verification(entry_id,call_id,requester,method,reason,identity,authority)
-            if not identity or not authority:
-                QMessageBox.warning(self,"Verificatie mislukt","Identiteit en bevoegdheid moeten beide bevestigd zijn. De mislukte poging is lokaal vastgelegd; het wachtwoord blijft verborgen.");return
-            if QMessageBox.question(self,"Laatste bevestiging",f"Toon het wachtwoord van ‘{entry['label']}’ voor {requester}?\n\nDeze inzage wordt lokaal gelogd.",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)!=QMessageBox.Yes:return
-            secret=self.vault.reveal(entry_id,reason,verification_id); QApplication.clipboard().setText(secret); alphabet="  ".join(f"{ch} — {self._spell(ch)}" for ch in secret); QMessageBox.information(self,"Wachtwoord",f"{secret}\n\nSpelalfabet:\n{alphabet}\n\nHet wachtwoord staat 30 seconden op het klembord.")
-            QTimer.singleShot(30000,lambda:self._clear_clipboard(secret))
+            verification_id=self.vault.record_verification(entry_id,call_id,verification.requester_name,verification.method.currentText(),verification.request_reason,True,True)
+            secret=self.vault.reveal(entry_id,verification.request_reason,verification_id);alphabet="  ".join(f"{ch} — {self._spell(ch)}" for ch in secret);copied=verification.delivery_mode=="copy"
+            if copied:QApplication.clipboard().setText(secret);QTimer.singleShot(30000,lambda:self._clear_clipboard(secret))
+            tail="\n\nHet wachtwoord staat 30 seconden op het klembord." if copied else "\n\nHet wachtwoord is niet naar het klembord gekopieerd."
+            QMessageBox.information(self,"Veilig vrijgegeven",f"{secret}\n\nSpelalfabet:\n{alphabet}{tail}")
         except Exception as e: QMessageBox.warning(self,"IT Kluis",str(e))
     def copy_vault_username(self):
         row=self.vault_table.currentRow();item=self.vault_table.item(row,5) if row>=0 else None
