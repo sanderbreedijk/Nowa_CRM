@@ -712,6 +712,23 @@ CREATE TABLE IF NOT EXISTS legacy_proposal_imports (
 CREATE INDEX IF NOT EXISTS idx_legacy_proposal_import_customer ON legacy_proposal_imports(customer_id,imported_at DESC);
 """
 
+PROPOSAL_EDITOR_330_SCHEMA = """
+ALTER TABLE proposals ADD COLUMN sections_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE proposal_lines ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE proposal_lines ADD COLUMN billing_period TEXT NOT NULL DEFAULT 'eenmalig';
+ALTER TABLE proposal_lines ADD COLUMN group_name TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS proposal_revisions (
+    id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+    revision_number INTEGER NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(proposal_id, revision_number)
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_revisions ON proposal_revisions(proposal_id,revision_number DESC);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -720,5 +737,7 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (14, FOLLOWUP_220_SCHEMA), (15, PROPOSALS_230_SCHEMA), (16, MAIL_DOSSIER_240_SCHEMA),
     (17, CUSTOMER_IMPORT_250_SCHEMA), (18, CUSTOMER_IMPORT_260_SCHEMA), (19, MAILBOX_270_SCHEMA),
     (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA), (22, VAULT_VERIFICATION_300_SCHEMA),
-    (23, PROPOSAL_TEMPLATE_310_SCHEMA), (24, LEGACY_PROPOSAL_IMPORT_320_SCHEMA)
+    (23, PROPOSAL_TEMPLATE_310_SCHEMA), (24, LEGACY_PROPOSAL_IMPORT_320_SCHEMA),
+    (25, PROPOSAL_EDITOR_330_SCHEMA)
 )
+

@@ -19,6 +19,7 @@ class Proposal:
     total_cents: int
     introduction: str
     terms: str
+    sections_json: str
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,9 @@ class ProposalLine:
     quantity: float
     unit_price_cents: int
     sort_order: int
+    active: int
+    billing_period: str
+    group_name: str
 
     @property
     def line_total_cents(self) -> int:
@@ -38,6 +42,12 @@ class ProposalLine:
 
 class ProposalService:
     STATUSES = ("concept", "verzonden", "geaccepteerd", "afgewezen", "verlopen")
+    SECTION_TITLES = {
+        "management_summary": "Managementsamenvatting", "current_situation": "Huidige situatie",
+        "solution": "Voorgestelde oplossing", "planning": "Planning en oplevering",
+        "activities": "Werkzaamheden", "scope": "Scope en uitsluitingen",
+        "privacy": "AVG en gegevensbescherming", "disclaimer": "Disclaimer",
+    }
 
     def __init__(self, db: Database):
         self.db = db
@@ -56,7 +66,7 @@ class ProposalService:
         term = f"%{query.strip()}%"
         with self.db.transaction() as conn:
             rows = conn.execute(
-                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms
+                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms,p.sections_json
                    FROM proposals p JOIN customers c ON c.id=p.customer_id
                    WHERE ?='' OR p.number LIKE ? OR p.title LIKE ? OR c.name LIKE ?
                    ORDER BY p.updated_at DESC,p.id DESC""", (query.strip(), term, term, term)
@@ -72,7 +82,7 @@ class ProposalService:
     def get(self, proposal_id: int) -> Proposal | None:
         with self.db.transaction() as conn:
             row = conn.execute(
-                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms
+                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms,p.sections_json
                    FROM proposals p JOIN customers c ON c.id=p.customer_id WHERE p.id=?""", (proposal_id,)
             ).fetchone()
         return Proposal(**dict(row)) if row else None
@@ -80,20 +90,21 @@ class ProposalService:
     def lines(self, proposal_id: int) -> list[ProposalLine]:
         with self.db.transaction() as conn:
             rows = conn.execute(
-                "SELECT id,proposal_id,kind,description,quantity,unit_price_cents,sort_order FROM proposal_lines WHERE proposal_id=? ORDER BY sort_order,id",
+                "SELECT id,proposal_id,kind,description,quantity,unit_price_cents,sort_order,active,billing_period,group_name FROM proposal_lines WHERE proposal_id=? ORDER BY sort_order,id",
                 (proposal_id,),
             ).fetchall()
         return [ProposalLine(**dict(row)) for row in rows]
 
-    def add_line(self, proposal_id: int, kind: str, description: str, quantity: float, unit_price_cents: int) -> int:
+    def add_line(self, proposal_id: int, kind: str, description: str, quantity: float, unit_price_cents: int,
+                 billing_period: str = "eenmalig", group_name: str = "") -> int:
         if not description.strip(): raise ValueError("Omschrijving is verplicht")
         if quantity <= 0: raise ValueError("Aantal moet groter zijn dan nul")
         if unit_price_cents < 0: raise ValueError("Prijs mag niet negatief zijn")
         with self.db.transaction() as conn:
             order = int(conn.execute("SELECT COALESCE(MAX(sort_order),0)+10 FROM proposal_lines WHERE proposal_id=?",(proposal_id,)).fetchone()[0])
             cur = conn.execute(
-                "INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order) VALUES(?,?,?,?,?,?)",
-                (proposal_id,kind,description.strip(),quantity,unit_price_cents,order),
+                "INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,billing_period,group_name) VALUES(?,?,?,?,?,?,?,?)",
+                (proposal_id,kind,description.strip(),quantity,unit_price_cents,order,billing_period,group_name.strip()),
             )
             line_id=int(cur.lastrowid); self._recalculate(conn,proposal_id); return line_id
 
@@ -123,13 +134,106 @@ class ProposalService:
     def save_texts(self, proposal_id: int, introduction: str, terms: str) -> None:
         with self.db.transaction() as conn:conn.execute("UPDATE proposals SET introduction=?,terms=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(introduction.strip(),terms.strip(),proposal_id))
 
+    def sections(self, proposal_id: int) -> dict[str, str]:
+        proposal = self.get(proposal_id)
+        stored = json.loads(proposal.sections_json or "{}") if proposal else {}
+        defaults = {
+            "management_summary": proposal.introduction if proposal else "",
+            "current_situation": "De huidige omgeving en uitgangspunten zijn tijdens de klantintake vastgelegd.",
+            "solution": "NOWA levert, configureert, test en documenteert de overeengekomen oplossing.",
+            "planning": "De definitieve planning wordt in overleg met de opdrachtgever vastgesteld.",
+            "activities": "De werkzaamheden worden gecontroleerd uitgevoerd en met de klant opgeleverd.",
+            "scope": "Alleen de beschreven werkzaamheden en aantallen vallen binnen deze offerte.",
+            "privacy": "Persoonsgegevens worden uitsluitend verwerkt voor uitvoering, beheer en ondersteuning.",
+            "disclaimer": proposal.terms if proposal else "",
+        }
+        defaults.update({k: str(v) for k, v in stored.items() if k in self.SECTION_TITLES})
+        return defaults
+
+    def save_sections(self, proposal_id: int, sections: dict[str, str]) -> None:
+        payload={k:str(sections.get(k," ")).strip() for k in self.SECTION_TITLES}
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE proposals SET sections_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(json.dumps(payload,ensure_ascii=False),proposal_id))
+
+    def set_line_active(self, line_id: int, active: bool) -> None:
+        with self.db.transaction() as conn:
+            row=conn.execute("SELECT proposal_id FROM proposal_lines WHERE id=?",(line_id,)).fetchone()
+            if not row: raise KeyError(line_id)
+            conn.execute("UPDATE proposal_lines SET active=? WHERE id=?",(int(active),line_id));self._recalculate(conn,int(row[0]))
+
+    def move_line(self, line_id: int, direction: int) -> None:
+        with self.db.transaction() as conn:
+            line=conn.execute("SELECT proposal_id,sort_order FROM proposal_lines WHERE id=?",(line_id,)).fetchone()
+            if not line: raise KeyError(line_id)
+            op="<" if direction<0 else ">"; order="DESC" if direction<0 else "ASC"
+            other=conn.execute(f"SELECT id,sort_order FROM proposal_lines WHERE proposal_id=? AND sort_order {op} ? ORDER BY sort_order {order},id {order} LIMIT 1",(line["proposal_id"],line["sort_order"])).fetchone()
+            if other:
+                conn.execute("UPDATE proposal_lines SET sort_order=? WHERE id=?",(other["sort_order"],line_id))
+                conn.execute("UPDATE proposal_lines SET sort_order=? WHERE id=?",(line["sort_order"],other["id"]))
+
+    def add_customer_assets(self, proposal_id: int) -> dict[str,int]:
+        proposal=self.get(proposal_id)
+        if not proposal: raise ValueError("Offerte niet gevonden")
+        added={"licenses":0,"hardware":0}
+        with self.db.transaction() as conn:
+            licenses=conn.execute("SELECT * FROM customer_licenses WHERE customer_id=? AND included_in_proposal=1",(proposal.customer_id,)).fetchall()
+            hardware=conn.execute("SELECT * FROM customer_hardware WHERE customer_id=?",(proposal.customer_id,)).fetchall()
+        existing={x.description.lower() for x in self.lines(proposal_id)}
+        for x in licenses:
+            if x["product"].lower() not in existing:
+                self.add_line(proposal_id,"licentie",x["product"],x["quantity"],x["unit_price_cents"],"maandelijks","Licenties");added["licenses"]+=1
+        for x in hardware:
+            description=" ".join(v for v in (x["brand"],x["model"],x["kind"]) if v).strip()
+            if description and description.lower() not in existing:
+                self.add_line(proposal_id,"hardware",description,x["quantity"],x["sales_price_cents"],"eenmalig","Hardware");added["hardware"]+=1
+        return added
+
+    def calculate_from_intake(self, proposal_id: int, hourly_rate_cents: int = 9400) -> float:
+        proposal=self.get(proposal_id)
+        with self.db.transaction() as conn:
+            intake=conn.execute("SELECT * FROM project_intakes WHERE customer_id=?",(proposal.customer_id,)).fetchone() if proposal else None
+            if not intake: raise ValueError("Vul eerst de projectintake van deze klant in")
+            conn.execute("DELETE FROM proposal_lines WHERE proposal_id=? AND group_name='Automatische calculatie'",(proposal_id,))
+        work=[("Projectvoorbereiding",3), ("Technisch ontwerp",2),
+              ("Gebruikers en mailboxen inrichten",max(1,intake["users_count"]*.35+intake["shared_mailboxes"]*.25)),
+              ("Apparaten configureren en testen",max(1,intake["devices_count"]*1.25)),
+              ("Teams en SharePoint inrichten",intake["teams_count"]*.75+intake["sharepoint_sites"]*1.5),
+              ("Documentatie, oplevering en instructie",8)]
+        base=sum(hours for _,hours in work); work.extend([("Projectmanagement",base*.10),("Risico- en wijzigingsbuffer",base*.08)])
+        total=0.0
+        for description,hours in work:
+            rounded=max(.25,round(hours*4)/4);total+=rounded
+            self.add_line(proposal_id,"uren",description,rounded,hourly_rate_cents,"eenmalig","Automatische calculatie")
+        return total
+
+    def create_revision(self, proposal_id: int, label: str = "") -> int:
+        proposal=self.get(proposal_id)
+        if not proposal: raise ValueError("Offerte niet gevonden")
+        revision=proposal.revision+1
+        snapshot={"proposal":proposal.__dict__,"lines":[x.__dict__ for x in self.lines(proposal_id)],"sections":self.sections(proposal_id)}
+        with self.db.transaction() as conn:
+            conn.execute("INSERT INTO proposal_revisions(proposal_id,revision_number,label,snapshot_json) VALUES(?,?,?,?)",(proposal_id,revision,label.strip(),json.dumps(snapshot,ensure_ascii=False)))
+            conn.execute("UPDATE proposals SET revision=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(revision,proposal_id))
+        return revision
+
+    def revisions(self, proposal_id: int) -> list[dict]:
+        with self.db.transaction() as conn:return [dict(x) for x in conn.execute("SELECT id,revision_number,label,created_at FROM proposal_revisions WHERE proposal_id=? ORDER BY revision_number DESC",(proposal_id,))]
+
+    def validate(self, proposal_id: int) -> list[str]:
+        proposal=self.get(proposal_id);lines=[x for x in self.lines(proposal_id) if x.active]
+        warnings=[]
+        if not lines:warnings.append("De offerte bevat geen actieve regels.")
+        if any(x.unit_price_cents==0 for x in lines):warnings.append("Een of meer actieve regels hebben een prijs van EUR 0,00.")
+        if proposal and not self.sections(proposal_id)["management_summary"]:warnings.append("De managementsamenvatting is leeg.")
+        return warnings
+
     def duplicate(self, proposal_id: int) -> int:
         source=self.get(proposal_id)
         if not source:raise ValueError("Offerte niet gevonden")
         new_id=self.create(source.customer_id,f"Kopie van {source.title}")
         with self.db.transaction() as conn:
-            conn.execute("UPDATE proposals SET introduction=?,terms=? WHERE id=?",(source.introduction,source.terms,new_id))
-            conn.execute("INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id) SELECT ?,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id FROM proposal_lines WHERE proposal_id=?",(new_id,proposal_id));self._recalculate(conn,new_id)
+            conn.execute("UPDATE proposals SET introduction=?,terms=?,sections_json=? WHERE id=?",(source.introduction,source.terms,source.sections_json,new_id))
+            conn.execute("INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id,active,billing_period,group_name) SELECT ?,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id,active,billing_period,group_name FROM proposal_lines WHERE proposal_id=?",(new_id,proposal_id));self._recalculate(conn,new_id)
         return new_id
 
     def save_as_template(self, proposal_id: int, name: str) -> int:
@@ -146,13 +250,16 @@ class ProposalService:
             conn.execute("DELETE FROM proposal_lines WHERE id=?",(line_id,)); self._recalculate(conn,int(row[0]))
 
     def _recalculate(self, conn, proposal_id: int) -> None:
-        total=conn.execute("SELECT COALESCE(SUM(ROUND(quantity*unit_price_cents)),0) FROM proposal_lines WHERE proposal_id=?",(proposal_id,)).fetchone()[0]
+        total=conn.execute("SELECT COALESCE(SUM(ROUND(quantity*unit_price_cents)),0) FROM proposal_lines WHERE proposal_id=? AND active=1 AND billing_period='eenmalig'",(proposal_id,)).fetchone()[0]
         conn.execute("UPDATE proposals SET total_cents=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(int(total),proposal_id))
 
     def totals(self, proposal_id: int, vat_rate: float = 0.21) -> dict[str,int]:
         proposal=self.get(proposal_id)
         subtotal=proposal.total_cents if proposal else 0; vat=round(subtotal*vat_rate)
         return {"subtotal_cents":subtotal,"vat_cents":vat,"total_cents":subtotal+vat}
+
+    def monthly_total(self, proposal_id: int) -> int:
+        with self.db.transaction() as conn:return int(conn.execute("SELECT COALESCE(SUM(ROUND(quantity*unit_price_cents)),0) FROM proposal_lines WHERE proposal_id=? AND active=1 AND billing_period='maandelijks'",(proposal_id,)).fetchone()[0])
 
     def count_open(self) -> int:
         with self.db.transaction() as conn:
@@ -189,3 +296,4 @@ class ProposalService:
             self._recalculate(conn, proposal_id)
             template=conn.execute("SELECT introduction,terms FROM proposal_templates WHERE id=?",(template_id,)).fetchone()
             if template:conn.execute("UPDATE proposals SET introduction=CASE WHEN introduction='' THEN ? ELSE introduction END,terms=CASE WHEN terms='' THEN ? ELSE terms END WHERE id=?",(template["introduction"],template["terms"],proposal_id))
+
