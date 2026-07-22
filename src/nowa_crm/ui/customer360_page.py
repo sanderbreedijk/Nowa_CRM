@@ -13,11 +13,11 @@ class Customer360Page(QWidget):
     """Compact klantwerkblad met directe acties en één chronologische tijdlijn."""
 
     def __init__(self, customers: CustomerService, service: Customer360Service, open_vault,
-                 open_proposal, start_mail, start_followup, parent=None):
+                 open_proposal, start_mail, start_followup, start_proposal, parent=None):
         super().__init__(parent)
         self.customers, self.service = customers, service
         self.open_vault, self.open_proposal = open_vault, open_proposal
-        self.start_mail, self.start_followup = start_mail, start_followup
+        self.start_mail, self.start_followup, self.start_proposal = start_mail, start_followup, start_proposal
 
         root=QVBoxLayout(self); root.setContentsMargins(34,28,34,28); root.setSpacing(14)
         heading=QHBoxLayout(); titles=QVBoxLayout(); title=QLabel("360° klantdossier"); title.setObjectName("Title"); titles.addWidget(title)
@@ -28,7 +28,7 @@ class Customer360Page(QWidget):
         badge=QLabel("360"); badge.setObjectName("CustomerBadge"); hero_box.addWidget(badge)
         identity_box=QVBoxLayout(); self.identity=QLabel(); self.identity.setObjectName("CustomerName"); self.identity.setWordWrap(True); identity_box.addWidget(self.identity)
         self.contactline=QLabel(); self.contactline.setObjectName("CustomerMeta"); self.contactline.setWordWrap(True); identity_box.addWidget(self.contactline); hero_box.addLayout(identity_box,1)
-        for symbol,text,handler in (("ML","Nieuwe mail",self._mail),("OP","Opvolging",self._followup),("KV","IT-kluis",self._vault)):
+        for symbol,text,handler in (("OF","Nieuwe offerte",self._proposal),("ML","Nieuwe mail",self._mail),("OP","Opvolging",self._followup),("KV","IT-kluis",self._vault)):
             button=QPushButton(text); button.setIcon(nav_icon(symbol)); button.setIconSize(QSize(24,24)); button.clicked.connect(handler); hero_box.addWidget(button)
         root.addWidget(hero)
 
@@ -82,3 +82,5 @@ class Customer360Page(QWidget):
         if self.customer.currentData():self.start_mail(self.customer.currentData())
     def _followup(self):
         if self.customer.currentData():self.start_followup(self.customer.currentData())
+    def _proposal(self):
+        if self.customer.currentData():self.start_proposal(self.customer.currentData())

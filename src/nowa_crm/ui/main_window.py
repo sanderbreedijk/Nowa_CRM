@@ -13,6 +13,7 @@ from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.customers.importer import CustomerImportService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.proposals.legacy_importer import LegacyProposalImportService
+from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.modules.vault.service import VaultService
 from nowa_crm.modules.operations.service import OperationsService
 from nowa_crm.modules.workspace.service import WorkspaceService
@@ -73,7 +74,7 @@ class MainWindow(QMainWindow):
         self.integrations_page=IntegrationsPage(self.integration_service,self.open_call,self)
         self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
-        self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self.start_customer_mail,self.start_customer_followup,self)
+        self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self.start_customer_mail,self.start_customer_followup,self.add_proposal_for_customer,self)
         self.servicedesk_page=ServiceDeskPage(customers,self.servicedesk_service,self)
         self.assets_page=CustomerAssetsPage(customers,self.assets_service,self)
         self.reporting_page=ReportingPage(customers,self.reporting_service,self.open_mail_message,self)
@@ -224,10 +225,10 @@ class MainWindow(QMainWindow):
         importbar=QFrame();importbar.setObjectName("ActionBar");tools=QHBoxLayout(importbar);tools.setContentsMargins(12,8,12,8);tools.addWidget(QLabel("Gegevensbeheer"));tools.addStretch();tools.addWidget(import_btn);tools.addWidget(history_btn);tools.addWidget(export_btn);tools.addWidget(reactivate_btn);box.addWidget(importbar)
         self.customer_table=QTableWidget(0,10); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","Status","Labels","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(9,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
-        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Offerteoverzicht")); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals);self.proposal_status=QComboBox();self.proposal_status.addItems(["Alle statussen","concept","verzonden","geaccepteerd","afgewezen","verlopen"]);self.proposal_status.currentTextChanged.connect(self.refresh_proposals);row.addWidget(self.proposal_search,1);row.addWidget(self.proposal_status);box.addWidget(searchbar)
+        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Offerteoverzicht")); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals);self.proposal_customer=QComboBox();self.proposal_customer.addItem("Alle klanten",None);[self.proposal_customer.addItem(c.name,c.id) for c in self.customers.search()];self.proposal_customer.currentIndexChanged.connect(self.refresh_proposals);self.proposal_status=QComboBox();self.proposal_status.addItems(["Alle statussen","concept","verzonden","geaccepteerd","afgewezen","verlopen"]);self.proposal_status.currentTextChanged.connect(self.refresh_proposals);self.proposal_period=QComboBox();self.proposal_period.addItems(["Alle perioden","Deze maand","Dit jaar"]);self.proposal_period.currentTextChanged.connect(self.refresh_proposals);row.addWidget(self.proposal_search,1);row.addWidget(self.proposal_customer);row.addWidget(self.proposal_status);row.addWidget(self.proposal_period);box.addWidget(searchbar)
         body=QHBoxLayout();self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True);self.proposal_table.setAlternatingRowColors(True); self.proposal_table.doubleClicked.connect(self.edit_proposal)
         actions=QFrame();actions.setObjectName("LeftActionPanel");side=QVBoxLayout(actions);side.setContentsMargins(16,16,16,16);side.setSpacing(10);head=QLabel("Offerte-acties");head.setObjectName("PanelTitle");side.addWidget(head);sub=QLabel("Selecteer een offerte voor de acties hieronder.");sub.setObjectName("PanelText");sub.setWordWrap(True);side.addWidget(sub)
-        for symbol,text,handler,primary in (("+","Nieuwe offerte",self.add_proposal,True),("OP","Openen",self.edit_proposal,False),("KO","Dupliceren",self.duplicate_proposal,False),("RV","Nieuwe revisie",self.revise_proposal,False),("CK","Controleer offerte",self.validate_proposal,False),("IM","Oude offerte importeren",self.import_legacy_proposal,False)):
+        for symbol,text,handler,primary in (("+","Nieuwe offerte",self.add_proposal,True),("OP","Openen",self.edit_proposal,False),("PDF","Controleer & PDF",self.export_selected_proposal,False),("KO","Dupliceren",self.duplicate_proposal,False),("RV","Nieuwe revisie",self.revise_proposal,False),("CK","Controleer offerte",self.validate_proposal,False),("IM","Oude offerte importeren",self.import_legacy_proposal,False)):
             button=QPushButton(text);button.setObjectName("SidePrimary" if primary else "SideAction");button.setIcon(nav_icon(symbol));button.setIconSize(QSize(28,28));button.clicked.connect(handler);side.addWidget(button)
         side.addStretch();actions.setFixedWidth(245);body.addWidget(actions);body.addWidget(self.proposal_table,1);box.addLayout(body,1);return page
     def _vault_page(self):
@@ -273,6 +274,13 @@ class MainWindow(QMainWindow):
             try:
                 proposal_id=self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all(); ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
             except Exception as e: QMessageBox.critical(self,"Offerte",str(e))
+    def add_proposal_for_customer(self,customer_id):
+        customer=self.customers.get(customer_id)
+        if not customer:return
+        title,ok=QInputDialog.getText(self,"Nieuwe offerte",f"Titel voor {customer.name}")
+        if ok and title.strip():
+            try:proposal_id=self.proposals.create(customer_id,title);self.refresh_all();ProposalDialog(self.proposals,proposal_id,self).exec();self.refresh_all()
+            except Exception as exc:QMessageBox.warning(self,"Nieuwe offerte",str(exc))
     def import_legacy_proposal(self):
         filename,_=QFileDialog.getOpenFileName(self,"Geëxtraheerde oude offerte selecteren","","NOWA-offertepakket (*.zip)")
         if not filename:return
@@ -392,6 +400,15 @@ class MainWindow(QMainWindow):
         proposal_id=self._selected_id(self.proposal_table,6)
         if not proposal_id:return
         warnings=self.proposals.validate(proposal_id);QMessageBox.information(self,"Offertecontrole","\n".join(f"• {x}" for x in warnings) if warnings else "De offerte is volledig en bevat geen bekende aandachtspunten.")
+    def export_selected_proposal(self):
+        proposal_id=self._selected_id(self.proposal_table,6)
+        if not proposal_id:return
+        warnings=self.proposals.validate(proposal_id)
+        if warnings and QMessageBox.question(self,"Offertecontrole","\n".join(f"• {x}" for x in warnings)+"\n\nToch een PDF maken?")!=QMessageBox.Yes:return
+        try:
+            path=export_proposal_pdf(self.proposals,proposal_id)
+            if QMessageBox.question(self,"PDF gereed",f"PDF lokaal opgeslagen:\n{path}\n\nNu openen?")==QMessageBox.Yes:QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        except Exception as exc:QMessageBox.warning(self,"PDF export",str(exc))
     def open_proposal(self,proposal_id):
         ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
     def open_customer(self,customer_id):
@@ -546,8 +563,12 @@ class MainWindow(QMainWindow):
                 self.customer_table.setItem(r,c,item)
     def refresh_proposals(self,*_):
         if not hasattr(self,"proposal_table"):return
-        rows=self.proposals.list(self.proposal_search.text());status=self.proposal_status.currentText() if hasattr(self,"proposal_status") else "Alle statussen"
+        from datetime import datetime
+        rows=self.proposals.list(self.proposal_search.text());status=self.proposal_status.currentText() if hasattr(self,"proposal_status") else "Alle statussen";customer_id=self.proposal_customer.currentData() if hasattr(self,"proposal_customer") else None;period=self.proposal_period.currentText() if hasattr(self,"proposal_period") else "Alle perioden";today=datetime.now().strftime("%Y-%m")
+        if customer_id:rows=[x for x in rows if x.customer_id==customer_id]
         if status!="Alle statussen":rows=[x for x in rows if x.status==status]
+        if period=="Deze maand":rows=[x for x in rows if x.created_at.startswith(today)]
+        elif period=="Dit jaar":rows=[x for x in rows if x.created_at.startswith(today[:4])]
         self.proposal_table.setRowCount(len(rows));colors={"concept":"#6B7280","verzonden":"#1265C4","geaccepteerd":"#16815F","afgewezen":"#B42318","verlopen":"#9A4B11"}
         for r,x in enumerate(rows):
             vals=(x.number,x.customer_name,x.title,x.status,str(x.revision),f"€ {x.total_cents/100:,.2f}",str(x.id))
