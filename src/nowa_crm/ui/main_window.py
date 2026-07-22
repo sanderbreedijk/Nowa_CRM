@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
         self.integrations_page=IntegrationsPage(self.integration_service,self.open_call,self)
         self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
-        self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self)
+        self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self.start_customer_mail,self.start_customer_followup,self)
         self.servicedesk_page=ServiceDeskPage(customers,self.servicedesk_service,self)
         self.assets_page=CustomerAssetsPage(customers,self.assets_service,self)
         self.reporting_page=ReportingPage(customers,self.reporting_service,self.open_mail_message,self)
@@ -210,14 +210,19 @@ class MainWindow(QMainWindow):
         selected=self.selected_daystart()
         if selected:self.daystart_service.dismiss(selected[0],selected[1]);self.refresh_daystart()
     def _customer_page(self):
-        page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
-        add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts)
+        page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules.")
+        toolbar=QFrame();toolbar.setObjectName("Toolbar");row=QHBoxLayout(toolbar);row.setContentsMargins(12,9,12,9);row.setSpacing(9); label=QLabel("Klantbestand");label.setObjectName("ToolbarTitle");row.addWidget(label)
+        self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek naam, klantnummer, telefoon, e-mail of contactpersoon…"); self.customer_search.textChanged.connect(self.refresh_customers)
+        add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.setIcon(nav_icon("+")); add.setIconSize(QSize(24,24)); add.clicked.connect(self.add_customer)
+        dossier=QPushButton("Open dossier");dossier.setIcon(nav_icon("360"));dossier.setIconSize(QSize(24,24));dossier.clicked.connect(self.open_selected_customer)
+        edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts)
         import_btn=QPushButton("Excel synchroniseren");import_btn.clicked.connect(self.import_customers)
         history_btn=QPushButton("Importhistorie");history_btn.clicked.connect(self.customer_import_history)
         export_btn=QPushButton("Exporteren");export_btn.clicked.connect(self.export_customers)
         reactivate_btn=QPushButton("Heractiveren");reactivate_btn.clicked.connect(self.reactivate_customer)
-        row.addWidget(self.customer_search,1); row.addWidget(import_btn); row.addWidget(history_btn); row.addWidget(export_btn); row.addWidget(reactivate_btn); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
-        self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
+        row.addWidget(self.customer_search,1); row.addWidget(dossier); row.addWidget(edit); row.addWidget(contacts); row.addWidget(add); box.addWidget(toolbar)
+        importbar=QFrame();importbar.setObjectName("ActionBar");tools=QHBoxLayout(importbar);tools.setContentsMargins(12,8,12,8);tools.addWidget(QLabel("Gegevensbeheer"));tools.addStretch();tools.addWidget(import_btn);tools.addWidget(history_btn);tools.addWidget(export_btn);tools.addWidget(reactivate_btn);box.addWidget(importbar)
+        self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); import_old=QPushButton("Oude offerte importeren"); import_old.clicked.connect(self.import_legacy_proposal); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(import_old); row.addWidget(add); box.addLayout(row)
         self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); self.proposal_table.doubleClicked.connect(self.edit_proposal); box.addWidget(self.proposal_table,1); return page
@@ -226,6 +231,9 @@ class MainWindow(QMainWindow):
         self.vault_table=QTableWidget(0,9); self.vault_table.setHorizontalHeaderLabels(["Klant","Klantnr.","Categorie","Groep","Omschrijving","Gebruikersnaam","Host / IP","URL","ID"]); self.vault_table.setColumnHidden(8,True); self.vault_table.horizontalHeader().setStretchLastSection(True); self.vault_table.doubleClicked.connect(self.reveal_secret); box.addWidget(self.vault_table,1); return page
     def _selected_id(self,table,col):
         row=table.currentRow(); item=table.item(row,col) if row>=0 else None; return int(item.text()) if item else None
+    def open_selected_customer(self,*_):
+        customer_id=self._selected_id(self.customer_table,7)
+        if customer_id:self.open_customer(customer_id)
     def add_customer(self):
         dlg=CustomerDialog(self)
         if dlg.exec():
@@ -366,6 +374,14 @@ class MainWindow(QMainWindow):
         ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
     def open_customer(self,customer_id):
         if self.customers.get(customer_id):self.customer360.select_customer(customer_id); self._show(3)
+    def start_customer_mail(self,customer_id):
+        self.mail_page.reload(); index=self.mail_page.customer.findData(customer_id)
+        if index>=0:self.mail_page.customer.setCurrentIndex(index)
+        self.mail_page.clear();self._show(7);self.mail_page.subject.setFocus()
+    def start_customer_followup(self,customer_id):
+        self.workspace_page.reload_customers();index=self.workspace_page.customer.findData(customer_id)
+        if index>=0:self.workspace_page.customer.setCurrentIndex(index)
+        self._show(1);self.workspace_page.add_action();self.refresh_all()
     def open_vault(self,query):
         self.vault_search.setText(query); self._show(6)
     def open_mail_message(self,message_id):
