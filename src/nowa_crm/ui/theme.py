@@ -47,7 +47,7 @@ QLabel#MiniKpiIcon[accent="orange"] { background-color: #FFF0DE; color: #B75B13;
 QLabel#MiniKpi { color: #102A4C; font-size: 20px; font-weight: 750; }
 QLabel#SectionTitle { color: #183453; font-size: 16px; font-weight: 750; }
 QLabel#AttentionBanner { background-color: #FFF4E6; color: #9A4B11; border: 1px solid #F4D7B2; border-radius: 10px; padding: 10px 13px; font-weight: 650; }
-QFrame#RightActionPanel { background-color: #EAF2FB; border: 1px solid #CFDDEB; border-radius: 15px; }
+QFrame#LeftActionPanel { background-color: #EAF2FB; border: 1px solid #CFDDEB; border-radius: 15px; }
 QLabel#PanelTitle { color: #102A4C; font-size: 18px; font-weight: 750; padding: 2px 2px 0 2px; }
 QLabel#PanelText { color: #68788D; font-size: 12px; padding: 0 2px 8px 2px; }
 QPushButton#SideAction, QPushButton#SidePrimary { text-align: left; border-radius: 11px; padding: 10px 13px; min-height: 28px; }
