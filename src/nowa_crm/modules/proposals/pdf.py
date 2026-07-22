@@ -9,6 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
@@ -53,19 +54,17 @@ def _page(story,title,s):
     story.append(PageBreak());_title(story,title,s)
 
 def _background(canvas,doc,profile,proposal,cover=False):
-    canvas.saveState();w,h=A4
-    if doc.page==1:
-        canvas.setFillColor(BLUE);canvas.setFont("Helvetica-Bold",14);canvas.drawString(17*mm,h-18*mm,profile.get("company_name") or "NOWA Solutions")
-        canvas.setFillColor(TEXT);canvas.setFont("Helvetica",6.8)
-        contact_bits=[profile.get("address") or "",profile.get("postal_city") or "",profile.get("phone") or "",profile.get("website") or "",profile.get("email") or ""]
-        canvas.drawRightString(w-17*mm,h-18*mm,"   |   ".join(x for x in contact_bits if x))
-        canvas.setFillColor(BLUE);canvas.rect(0,0,w,28*mm,fill=1,stroke=0)
-        canvas.setFillColor(colors.white);canvas.setFont("Helvetica",7.5)
-        footer=[profile.get("address") or profile.get("footer_text") or "NOWA Solutions",profile.get("phone") or "",profile.get("email") or profile.get("website") or ""]
-        canvas.drawString(17*mm,14*mm,footer[0]);canvas.drawCentredString(w/2,14*mm,footer[1]);canvas.drawRightString(w-17*mm,14*mm,footer[2])
-    else:
-        canvas.setStrokeColor(LINE);canvas.line(17*mm,h-22*mm,w-17*mm,h-22*mm)
-        canvas.setFillColor(BLUE);canvas.setFont("Helvetica-Bold",8);canvas.drawRightString(w-17*mm,h-16*mm,profile.get("company_name") or "NOWA Solutions")
+    canvas.saveState();w,h=A4;assets=Path(__file__).resolve().parents[2]/"assets"
+    canvas.setFillColor(colors.white);canvas.rect(0,0,w,h,fill=1,stroke=0)
+    if doc.page==1 and (assets/"briefhoofd.png").exists():
+        canvas.drawImage(ImageReader(str(assets/"briefhoofd.png")),0,0,width=w,height=h,preserveAspectRatio=False,mask="auto")
+    elif doc.page>1:
+        canvas.setStrokeColor(LINE);canvas.setLineWidth(.35);canvas.line(17*mm,h-22*mm,w-17*mm,h-22*mm)
+        canvas.setFillColor(BLUE);canvas.setFont("Helvetica-Bold",8);canvas.drawRightString(w-17*mm,h-17*mm,profile.get("company_name") or "NOWA Solutions")
+        watermark=assets/"nowa_background_watermark.png"
+        if watermark.exists():
+            wm_w=(1055-575)/1055*w;wm_h=(1115-515)/1491*h;x=575/1055*w;y=h-(1115/1491*h)
+            canvas.drawImage(ImageReader(str(watermark)),x,y,width=wm_w,height=wm_h,preserveAspectRatio=True,mask="auto")
         canvas.setFillColor(colors.HexColor("#6B7F8E"));canvas.setFont("Helvetica",7.5);canvas.drawString(17*mm,11*mm,profile.get("footer_text") or "NOWA Solutions");canvas.drawRightString(w-17*mm,11*mm,f"{proposal.number} | Pagina {doc.page}")
     canvas.restoreState()
 

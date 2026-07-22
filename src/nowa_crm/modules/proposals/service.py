@@ -222,12 +222,20 @@ class ProposalService:
             intake=conn.execute("SELECT * FROM project_intakes WHERE customer_id=?",(proposal.customer_id,)).fetchone() if proposal else None
             if not intake: raise ValueError("Vul eerst de projectintake van deze klant in")
             conn.execute("DELETE FROM proposal_lines WHERE proposal_id=? AND group_name='Automatische calculatie'",(proposal_id,))
-        work=[("Projectvoorbereiding",3), ("Technisch ontwerp",2),
-              ("Gebruikers en mailboxen inrichten",max(1,intake["users_count"]*.35+intake["shared_mailboxes"]*.25)),
-              ("Apparaten configureren en testen",max(1,intake["devices_count"]*1.25)),
-              ("Teams en SharePoint inrichten",intake["teams_count"]*.75+intake["sharepoint_sites"]*1.5),
-              ("Documentatie, oplevering en instructie",8)]
-        base=sum(hours for _,hours in work); work.extend([("Projectmanagement",base*.10),("Risico- en wijzigingsbuffer",base*.08)])
+        users=float(intake["users_count"] or 0);devices=float(intake["devices_count"] or 0)
+        shared=float(intake["shared_mailboxes"] or 0);sites=float(intake["sharepoint_sites"] or 0)
+        # Exacte commerciële normtijden uit het oorspronkelijke NOWA Workspace-pakket.
+        exchange=1.5+users*.35+shared*.25+.75  # één domein als veilige standaard
+        sharepoint=4.0+sites*1.5+(sites*2)*.4+((sites+2) if sites else 0)*.5+(2 if sites else 0)*.75
+        mfa=1.0+users*.10+(2 if users else 0)*.5
+        hardware=devices*1.25
+        work=[("Exchange Online inrichting en migratie",exchange),("SharePoint inrichting",sharepoint),
+              ("MFA en hardware tokens",mfa),("Hardware implementatie en werkplekken",hardware),
+              ("Projectvoorbereiding en technisch ontwerp",6.0),("Documentatie, oplevering en instructie",12.0)]
+        base=sum(hours for _,hours in work)
+        management=base*.10;buffer=base*.08;total_before_minimum=base+management+buffer
+        work.append(("Projectmanagement, afstemming en buffer",management+buffer))
+        if total_before_minimum<56:work.append(("Afronding minimale projectomvang",56-total_before_minimum))
         total=0.0
         for description,hours in work:
             rounded=max(.25,round(hours*4)/4);total+=rounded
@@ -344,4 +352,3 @@ class ProposalService:
             self._recalculate(conn, proposal_id)
             template=conn.execute("SELECT introduction,terms FROM proposal_templates WHERE id=?",(template_id,)).fetchone()
             if template:conn.execute("UPDATE proposals SET introduction=CASE WHEN introduction='' THEN ? ELSE introduction END,terms=CASE WHEN terms='' THEN ? ELSE terms END WHERE id=?",(template["introduction"],template["terms"],proposal_id))
-
