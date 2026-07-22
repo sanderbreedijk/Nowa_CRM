@@ -21,7 +21,7 @@ class Customer360Page(QWidget):
 
         root=QVBoxLayout(self); root.setContentsMargins(34,28,34,28); root.setSpacing(14)
         heading=QHBoxLayout(); titles=QVBoxLayout(); title=QLabel("360° klantdossier"); title.setObjectName("Title"); titles.addWidget(title)
-        sub=QLabel("Contact, verkoop en service samen in één praktisch klantbeeld."); sub.setObjectName("Subtitle"); titles.addWidget(sub); heading.addLayout(titles); heading.addStretch()
+        sub=QLabel("Alle commerciële, operationele en service-informatie van één klant in één praktisch klantbeeld."); sub.setObjectName("Subtitle"); titles.addWidget(sub); heading.addLayout(titles); heading.addStretch()
         self.customer=QComboBox(); self.customer.setMinimumWidth(360); self.customer.currentIndexChanged.connect(self.reload); heading.addWidget(self.customer); root.addLayout(heading)
 
         hero=QFrame(); hero.setObjectName("CustomerHero"); hero_box=QHBoxLayout(hero); hero_box.setContentsMargins(20,16,20,16)
