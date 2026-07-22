@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt,QUrl,QTimer
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QComboBox,QDialog,QDialogButtonBox,QDoubleSpinBox,QFormLayout,
+from PySide6.QtWidgets import (QCheckBox,QComboBox,QDialog,QDialogButtonBox,QDoubleSpinBox,QFormLayout,
     QGridLayout,QGroupBox,QHeaderView,QHBoxLayout,QInputDialog,QLabel,QLineEdit,QMessageBox,
     QPushButton,QSplitter,QTableWidget,QTableWidgetItem,QTabWidget,QTextEdit,QVBoxLayout,
     QWidget,QAbstractItemView)
@@ -33,10 +33,10 @@ class ProposalDialog(QDialog):
 
         splitter=QSplitter(Qt.Vertical)
         lines=QGroupBox("Offerteregels");lines_box=QVBoxLayout(lines)
-        line_head=QHBoxLayout();line_head.addWidget(QLabel("Toon hoofdstuk"));self.group_filter=QComboBox();self.group_filter.addItem("Alle hoofdstukken",None);self.group_filter.currentIndexChanged.connect(self.refresh);line_head.addWidget(self.group_filter);line_head.addStretch();hint=QLabel("Dubbelklik een regel om deze te bewerken");hint.setObjectName("Subtitle");line_head.addWidget(hint);lines_box.addLayout(line_head)
-        self.table=QTableWidget(0,9);self.table.setHorizontalHeaderLabels(["Actief","Groep","Soort","Omschrijving","Aantal","Periode","Prijs","Totaal","ID"]);self.table.setColumnHidden(8,True)
+        line_head=QHBoxLayout();line_head.addWidget(QLabel("Toon hoofdstuk"));self.group_filter=QComboBox();self.group_filter.addItem("Alle hoofdstukken",None);self.group_filter.currentIndexChanged.connect(self.refresh);line_head.addWidget(self.group_filter);self.group_subtotal=QLabel();self.group_subtotal.setObjectName("SummaryPill");line_head.addWidget(self.group_subtotal);line_head.addStretch();hint=QLabel("Dubbelklik een regel om deze te bewerken");hint.setObjectName("Subtitle");line_head.addWidget(hint);lines_box.addLayout(line_head)
+        self.table=QTableWidget(0,10);self.table.setHorizontalHeaderLabels(["Actief","Optie","Groep","Soort","Omschrijving","Aantal","Periode","Prijs","Totaal","ID"]);self.table.setColumnHidden(9,True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows);self.table.setSelectionMode(QAbstractItemView.SingleSelection);self.table.setAlternatingRowColors(True);self.table.verticalHeader().setVisible(False)
-        header=self.table.horizontalHeader();header.setSectionResizeMode(QHeaderView.ResizeToContents);header.setSectionResizeMode(3,QHeaderView.Stretch);header.setMinimumSectionSize(72)
+        header=self.table.horizontalHeader();header.setSectionResizeMode(QHeaderView.ResizeToContents);header.setSectionResizeMode(4,QHeaderView.Stretch);header.setMinimumSectionSize(72)
         self.table.doubleClicked.connect(self._load_selected);lines_box.addWidget(self.table);splitter.addWidget(lines)
 
         lower=QTabWidget();lower.setDocumentMode(True)
@@ -45,7 +45,7 @@ class ProposalDialog(QDialog):
         form.addWidget(QLabel("Groep"),0,0);form.addWidget(self.group,0,1);form.addWidget(QLabel("Soort"),0,2);form.addWidget(self.kind,0,3)
         form.addWidget(QLabel("Omschrijving"),1,0);form.addWidget(self.description,1,1,1,3)
         form.addWidget(QLabel("Aantal"),2,0);form.addWidget(self.quantity,2,1);form.addWidget(QLabel("Facturatie"),2,2);form.addWidget(self.period,2,3)
-        form.addWidget(QLabel("Prijs excl. btw"),3,0);form.addWidget(self.price,3,1)
+        form.addWidget(QLabel("Prijs excl. btw"),3,0);form.addWidget(self.price,3,1);self.optional=QCheckBox("Optionele regel — niet meetellen in offertetotaal");form.addWidget(self.optional,3,2,1,2)
         line_actions=QGridLayout()
         for index,(label,callback) in enumerate((("Nieuwe regel toevoegen",self._add),("Wijzig geselecteerde",self._update),("Dupliceren",self._duplicate_line),("Verwijderen",self._delete),("In-/uitschakelen",self._toggle),("Omhoog",lambda:self._move(-1)),("Omlaag",lambda:self._move(1)))):
             b=QPushButton(label);b.clicked.connect(callback);line_actions.addWidget(b,index//4,index%4)
@@ -62,6 +62,7 @@ class ProposalDialog(QDialog):
         for field in (self.group,self.description):field.textEdited.connect(self._schedule_autosave)
         for field in (self.kind,self.period):field.currentTextChanged.connect(self._schedule_autosave)
         for field in (self.quantity,self.price):field.valueChanged.connect(self._schedule_autosave)
+        self.optional.toggled.connect(self._schedule_autosave)
 
         self.total=QLabel();self.total.setWordWrap(True);self.total.setStyleSheet("font-size:17px;font-weight:700;color:#0B2342;padding:6px 2px");box.addWidget(self.total)
         buttons=QDialogButtonBox(QDialogButtonBox.Close);buttons.rejected.connect(self.reject);box.addWidget(buttons);self.refresh()
@@ -80,25 +81,29 @@ class ProposalDialog(QDialog):
             if index>=0:self.group_filter.setCurrentIndex(index)
         self.group_filter.blockSignals(False);current_group=self.group_filter.currentData();lines=[x for x in all_lines if not current_group or x.group_name==current_group];self.table.setRowCount(len(lines))
         for r,x in enumerate(lines):
-            for c,v in enumerate(("Ja" if x.active else "Nee",x.group_name,x.kind,x.description,f"{x.quantity:g}",x.billing_period,money(x.unit_price_cents),money(x.line_total_cents),str(x.id))):self.table.setItem(r,c,QTableWidgetItem(v))
+            for c,v in enumerate(("Ja" if x.active else "Nee","Ja" if x.optional else "Nee",x.group_name,x.kind,x.description,f"{x.quantity:g}",x.billing_period,money(x.unit_price_cents),money(x.line_total_cents),str(x.id))):self.table.setItem(r,c,QTableWidgetItem(v))
         t=self.service.totals(self.proposal_id);monthly=self.service.monthly_total(self.proposal_id);self.total.setText(f"Eenmalig excl. btw: {money(t['subtotal_cents'])}  |  incl. btw: {money(t['total_cents'])}  |  maandelijks excl. btw: {money(monthly)}")
-        self.once_total.setText(f"EENMALIG\n{money(t['subtotal_cents'])} excl. btw");self.month_total.setText(f"PER MAAND\n{money(monthly)} excl. btw");self.line_count.setText(f"OFFERTEREGELS\n{len([x for x in all_lines if x.active])} actief · {len(all_lines)} totaal")
+        option_count=len([x for x in all_lines if x.active and x.optional]);self.once_total.setText(f"EENMALIG\n{money(t['subtotal_cents'])} excl. btw");self.month_total.setText(f"PER MAAND\n{money(monthly)} excl. btw");self.line_count.setText(f"OFFERTEREGELS\n{len([x for x in all_lines if x.active])} actief · {option_count} optie(s)")
+        group_totals=self.service.group_totals(self.proposal_id);self.total.setToolTip("\n".join(f"{name}: {money(values['eenmalig'])} eenmalig · {money(values['maandelijks'])} p/m" for name,values in group_totals.items()))
+        if current_group and current_group in group_totals:
+            values=group_totals[current_group];self.group_subtotal.setText(f"Subtotaal {money(values['eenmalig'])} · {money(values['maandelijks'])} p/m")
+        else:self.group_subtotal.setText(f"{len(group_totals)} hoofdstukken")
 
     def _selected(self):
-        row=self.table.currentRow();item=self.table.item(row,8) if row>=0 else None;return int(item.text()) if item else None
+        row=self.table.currentRow();item=self.table.item(row,9) if row>=0 else None;return int(item.text()) if item else None
     def _status(self,value):self.service.set_status(self.proposal_id,value);self.refresh()
     def _add(self):
-        try:self.service.add_line(self.proposal_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text());self.editing_line_id=None;self.description.clear();self.refresh()
+        try:self.service.add_line(self.proposal_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text(),self.optional.isChecked());self.editing_line_id=None;self.description.clear();self.optional.setChecked(False);self.refresh()
         except Exception as e:QMessageBox.warning(self,"Offerteregel",str(e))
     def _load_selected(self,*_):
         line_id=self._selected()
         if not line_id:return
         line=next(x for x in self.service.lines(self.proposal_id) if x.id==line_id);self._loading_form=True;self.editing_line_id=line_id
-        self.group.setText(line.group_name);self.kind.setCurrentText(line.kind);self.description.setText(line.description);self.quantity.setValue(line.quantity);self.period.setCurrentText(line.billing_period);self.price.setValue(line.unit_price_cents/100);self._loading_form=False;self.save_state.setText("Regel geopend · wijzigingen worden automatisch opgeslagen")
+        self.group.setText(line.group_name);self.kind.setCurrentText(line.kind);self.description.setText(line.description);self.quantity.setValue(line.quantity);self.period.setCurrentText(line.billing_period);self.price.setValue(line.unit_price_cents/100);self.optional.setChecked(bool(line.optional));self._loading_form=False;self.save_state.setText("Regel geopend · wijzigingen worden automatisch opgeslagen")
     def _update(self):
         line_id=self._selected()
         if not line_id:QMessageBox.information(self,"Offerteregel","Selecteer eerst een regel.");return
-        try:self.service.update_line(line_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text());self.refresh()
+        try:self.service.update_line(line_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text(),self.optional.isChecked());self.refresh()
         except Exception as e:QMessageBox.warning(self,"Offerteregel",str(e))
     def _duplicate_line(self):
         if self._selected():self.service.duplicate_line(self._selected());self.refresh()
@@ -116,7 +121,7 @@ class ProposalDialog(QDialog):
     def _autosave_selected(self):
         if not self.editing_line_id or not self.description.text().strip():return
         try:
-            self.service.update_line(self.editing_line_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text());self.save_state.setText("Alle wijzigingen lokaal opgeslagen");self.refresh()
+            self.service.update_line(self.editing_line_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text(),self.optional.isChecked());self.save_state.setText("Alle wijzigingen lokaal opgeslagen");self.refresh()
         except Exception as e:self.save_state.setText("Opslaan niet gelukt");QMessageBox.warning(self,"Automatisch opslaan",str(e))
     def _toggle_fullscreen(self):
         if self.isFullScreen():self.showMaximized();self.fullscreen.setText("Volledig scherm")
