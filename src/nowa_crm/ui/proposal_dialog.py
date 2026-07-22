@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt,QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QComboBox,QDialog,QDialogButtonBox,QDoubleSpinBox,QFormLayout,
-    QHBoxLayout,QInputDialog,QLabel,QLineEdit,QMessageBox,QPushButton,QTableWidget,
-    QTableWidgetItem,QTabWidget,QTextEdit,QVBoxLayout)
+    QGridLayout,QGroupBox,QHeaderView,QHBoxLayout,QInputDialog,QLabel,QLineEdit,QMessageBox,
+    QPushButton,QSplitter,QTableWidget,QTableWidgetItem,QTabWidget,QTextEdit,QVBoxLayout,
+    QWidget,QAbstractItemView)
 
 from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.modules.proposals.service import ProposalService
@@ -15,24 +16,41 @@ def money(cents:int)->str:
 class ProposalDialog(QDialog):
     def __init__(self,service:ProposalService,proposal_id:int,parent=None):
         super().__init__(parent);self.service=service;self.proposal_id=proposal_id
-        self.setWindowTitle("Professionele offerte-editor");self.resize(1220,760);box=QVBoxLayout(self)
-        self.heading=QLabel();self.heading.setObjectName("Title");box.addWidget(self.heading)
-        row=QHBoxLayout();row.addWidget(QLabel("Status"));self.status=QComboBox();self.status.addItems(service.STATUSES);self.status.currentTextChanged.connect(self._status);row.addWidget(self.status);row.addStretch();box.addLayout(row)
-        self.table=QTableWidget(0,9);self.table.setHorizontalHeaderLabels(["Actief","Groep","Soort","Omschrijving","Aantal","Periode","Prijs","Totaal","ID"]);self.table.setColumnHidden(8,True);self.table.horizontalHeader().setStretchLastSection(True);self.table.doubleClicked.connect(self._load_selected);box.addWidget(self.table,1)
-        form=QFormLayout();self.group=QLineEdit();self.group.setPlaceholderText("Bijvoorbeeld Migratie, Licenties of Hardware");self.kind=QComboBox();self.kind.addItems(["dienst","uren","licentie","hardware","korting"]);self.description=QLineEdit();self.quantity=QDoubleSpinBox();self.quantity.setRange(.01,99999);self.quantity.setDecimals(2);self.quantity.setValue(1);self.period=QComboBox();self.period.addItems(["eenmalig","maandelijks"]);self.price=QDoubleSpinBox();self.price.setRange(0,9999999);self.price.setDecimals(2);self.price.setPrefix("EUR ")
-        for label,widget in (("Groep",self.group),("Soort",self.kind),("Omschrijving",self.description),("Aantal",self.quantity),("Facturatie",self.period),("Eenheidsprijs excl. btw",self.price)):form.addRow(label,widget)
-        box.addLayout(form)
-        catalogrow=QHBoxLayout();self.catalog=QComboBox();self.catalog.setMinimumWidth(300);self._reload_catalog();catalogrow.addWidget(QLabel("Catalogus"));catalogrow.addWidget(self.catalog,1);b=QPushButton("Toevoegen uit catalogus");b.clicked.connect(self._add_catalog);catalogrow.addWidget(b);box.addLayout(catalogrow)
-        actions=QHBoxLayout()
-        for label,callback in (("Regel toevoegen",self._add),("Wijzig geselecteerde",self._update),("Dupliceren",self._duplicate_line),("Verwijderen",self._delete),("In-/uitschakelen",self._toggle),("Omhoog",lambda:self._move(-1)),("Omlaag",lambda:self._move(1))):
-            b=QPushButton(label);b.clicked.connect(callback);actions.addWidget(b)
-        actions.addStretch();box.addLayout(actions)
-        actions=QHBoxLayout();self.template=QComboBox();self.template.addItem("Kies sjabloon...",None)
+        self.setWindowTitle("Professionele offerte-editor")
+        self.setWindowFlags(Qt.Window|Qt.WindowMinMaxButtonsHint|Qt.WindowCloseButtonHint)
+        self.setMinimumSize(980,680);self.resize(1280,820)
+        box=QVBoxLayout(self);box.setContentsMargins(18,16,18,14);box.setSpacing(10)
+        top=QHBoxLayout();self.heading=QLabel();self.heading.setObjectName("Title");self.heading.setWordWrap(True);top.addWidget(self.heading,1)
+        top.addWidget(QLabel("Status"));self.status=QComboBox();self.status.setMinimumWidth(140);self.status.addItems(service.STATUSES);self.status.currentTextChanged.connect(self._status);top.addWidget(self.status);box.addLayout(top)
+
+        splitter=QSplitter(Qt.Vertical)
+        lines=QGroupBox("Offerteregels — dubbelklik een regel om deze te bewerken");lines_box=QVBoxLayout(lines)
+        self.table=QTableWidget(0,9);self.table.setHorizontalHeaderLabels(["Actief","Groep","Soort","Omschrijving","Aantal","Periode","Prijs","Totaal","ID"]);self.table.setColumnHidden(8,True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows);self.table.setSelectionMode(QAbstractItemView.SingleSelection);self.table.setAlternatingRowColors(True);self.table.verticalHeader().setVisible(False)
+        header=self.table.horizontalHeader();header.setSectionResizeMode(QHeaderView.ResizeToContents);header.setSectionResizeMode(3,QHeaderView.Stretch);header.setMinimumSectionSize(72)
+        self.table.doubleClicked.connect(self._load_selected);lines_box.addWidget(self.table);splitter.addWidget(lines)
+
+        lower=QWidget();lower_box=QHBoxLayout(lower);lower_box.setContentsMargins(0,0,0,0);lower_box.setSpacing(10)
+        edit_group=QGroupBox("Regel bewerken");form=QGridLayout(edit_group);form.setHorizontalSpacing(10);form.setVerticalSpacing(8)
+        self.group=QLineEdit();self.group.setPlaceholderText("Bijvoorbeeld Migratie, Licenties of Hardware");self.kind=QComboBox();self.kind.addItems(["dienst","uren","licentie","hardware","korting"]);self.description=QLineEdit();self.description.setPlaceholderText("Duidelijke omschrijving voor de klant");self.quantity=QDoubleSpinBox();self.quantity.setRange(.01,99999);self.quantity.setDecimals(2);self.quantity.setValue(1);self.period=QComboBox();self.period.addItems(["eenmalig","maandelijks"]);self.price=QDoubleSpinBox();self.price.setRange(0,9999999);self.price.setDecimals(2);self.price.setPrefix("EUR ")
+        form.addWidget(QLabel("Groep"),0,0);form.addWidget(self.group,0,1);form.addWidget(QLabel("Soort"),0,2);form.addWidget(self.kind,0,3)
+        form.addWidget(QLabel("Omschrijving"),1,0);form.addWidget(self.description,1,1,1,3)
+        form.addWidget(QLabel("Aantal"),2,0);form.addWidget(self.quantity,2,1);form.addWidget(QLabel("Facturatie"),2,2);form.addWidget(self.period,2,3)
+        form.addWidget(QLabel("Prijs excl. btw"),3,0);form.addWidget(self.price,3,1)
+        line_actions=QGridLayout()
+        for index,(label,callback) in enumerate((("Nieuwe regel toevoegen",self._add),("Wijzig geselecteerde",self._update),("Dupliceren",self._duplicate_line),("Verwijderen",self._delete),("In-/uitschakelen",self._toggle),("Omhoog",lambda:self._move(-1)),("Omlaag",lambda:self._move(1)))):
+            b=QPushButton(label);b.clicked.connect(callback);line_actions.addWidget(b,index//4,index%4)
+        form.addLayout(line_actions,4,0,1,4);lower_box.addWidget(edit_group,3)
+
+        tools=QGroupBox("Offertehulpmiddelen");toolbox=QGridLayout(tools);self.catalog=QComboBox();self._reload_catalog();toolbox.addWidget(QLabel("Productcatalogus"),0,0,1,2);toolbox.addWidget(self.catalog,1,0);b=QPushButton("Toevoegen");b.clicked.connect(self._add_catalog);toolbox.addWidget(b,1,1)
+        self.template=QComboBox();self.template.addItem("Kies sjabloon...",None)
         for x in service.templates():self.template.addItem(x["name"],x["id"])
-        actions.addWidget(self.template)
-        for label,callback in (("Sjabloon toepassen",self._apply_template),("Hoofdstukken",self._sections),("Licenties/hardware uit dossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Revisiegeschiedenis",self._revision_history),("Voorbeeld / PDF",self._pdf)):
-            b=QPushButton(label);b.clicked.connect(callback);actions.addWidget(b)
-        box.addLayout(actions);self.total=QLabel();self.total.setStyleSheet("font-size:18px;font-weight:700;color:#0B2342");box.addWidget(self.total)
+        toolbox.addWidget(QLabel("Offertesjabloon"),2,0,1,2);toolbox.addWidget(self.template,3,0);b=QPushButton("Toepassen");b.clicked.connect(self._apply_template);toolbox.addWidget(b,3,1)
+        for index,(label,callback) in enumerate((("Hoofdstukken",self._sections),("Uit klantdossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Revisiegeschiedenis",self._revision_history),("Voorbeeld / PDF",self._pdf))):
+            b=QPushButton(label);b.clicked.connect(callback);toolbox.addWidget(b,4+index//2,index%2)
+        lower_box.addWidget(tools,2);splitter.addWidget(lower);splitter.setStretchFactor(0,3);splitter.setStretchFactor(1,2);splitter.setSizes([430,270]);box.addWidget(splitter,1)
+
+        self.total=QLabel();self.total.setWordWrap(True);self.total.setStyleSheet("font-size:17px;font-weight:700;color:#0B2342;padding:6px 2px");box.addWidget(self.total)
         buttons=QDialogButtonBox(QDialogButtonBox.Close);buttons.rejected.connect(self.reject);box.addWidget(buttons);self.refresh()
 
     def refresh(self):
