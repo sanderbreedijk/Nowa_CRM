@@ -224,7 +224,12 @@ class MainWindow(QMainWindow):
         reactivate_btn=QPushButton("Heractiveren");reactivate_btn.clicked.connect(self.reactivate_customer)
         row.addWidget(self.customer_search,1); row.addWidget(dossier); row.addWidget(edit); row.addWidget(contacts); row.addWidget(add); box.addWidget(toolbar)
         importbar=QFrame();importbar.setObjectName("ActionBar");tools=QHBoxLayout(importbar);tools.setContentsMargins(12,8,12,8);tools.addWidget(QLabel("Gegevensbeheer"));tools.addStretch();tools.addWidget(import_btn);tools.addWidget(history_btn);tools.addWidget(export_btn);tools.addWidget(reactivate_btn);box.addWidget(importbar)
-        self.customer_table=QTableWidget(0,10); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","Status","Labels","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(9,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer); box.addWidget(self.customer_table,1); return page
+        self.customer_card=QFrame();self.customer_card.setObjectName("CustomerHero");card=QHBoxLayout(self.customer_card);card.setContentsMargins(18,14,18,14)
+        badge=QLabel("KL");badge.setObjectName("CustomerBadge");card.addWidget(badge);identity=QVBoxLayout();self.customer_card_name=QLabel("Selecteer een klant");self.customer_card_name.setObjectName("CustomerName");identity.addWidget(self.customer_card_name);self.customer_card_meta=QLabel("De belangrijkste gegevens en acties verschijnen hier.");self.customer_card_meta.setObjectName("CustomerMeta");self.customer_card_meta.setWordWrap(True);identity.addWidget(self.customer_card_meta);self.customer_card_warning=QLabel();self.customer_card_warning.setObjectName("AttentionBanner");self.customer_card_warning.setWordWrap(True);self.customer_card_warning.hide();identity.addWidget(self.customer_card_warning);card.addLayout(identity,1)
+        for symbol,text,handler in (("360","Dossier",self.open_selected_customer),("OF","Offerte",self.customer_quick_proposal),("ML","Mail",self.customer_quick_mail),("KV","IT-kluis",self.customer_quick_vault)):
+            button=QPushButton(text);button.setIcon(nav_icon(symbol));button.setIconSize(QSize(24,24));button.clicked.connect(handler);card.addWidget(button)
+        box.addWidget(self.customer_card)
+        self.customer_table=QTableWidget(0,10); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","Status","Labels","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(9,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer);self.customer_table.itemSelectionChanged.connect(self.refresh_customer_card); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Offerteoverzicht")); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals);self.proposal_customer=QComboBox();self.proposal_customer.addItem("Alle klanten",None);[self.proposal_customer.addItem(c.name,c.id) for c in self.customers.search()];self.proposal_customer.currentIndexChanged.connect(self.refresh_proposals);self.proposal_status=QComboBox();self.proposal_status.addItems(["Alle statussen","concept","verzonden","geaccepteerd","afgewezen","verlopen"]);self.proposal_status.currentTextChanged.connect(self.refresh_proposals);self.proposal_period=QComboBox();self.proposal_period.addItems(["Alle perioden","Deze maand","Dit jaar"]);self.proposal_period.currentTextChanged.connect(self.refresh_proposals);row.addWidget(self.proposal_search,1);row.addWidget(self.proposal_customer);row.addWidget(self.proposal_status);row.addWidget(self.proposal_period);box.addWidget(searchbar)
         body=QHBoxLayout();self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True);self.proposal_table.setAlternatingRowColors(True); self.proposal_table.doubleClicked.connect(self.edit_proposal)
@@ -244,6 +249,27 @@ class MainWindow(QMainWindow):
     def open_selected_customer(self,*_):
         customer_id=self._selected_id(self.customer_table,9)
         if customer_id:self.open_customer(customer_id)
+    def refresh_customer_card(self):
+        customer_id=self._selected_id(self.customer_table,9)
+        customer=self.customers.get(customer_id) if customer_id else None
+        if not customer:self.customer_card_name.setText("Selecteer een klant");self.customer_card_meta.setText("De belangrijkste gegevens en acties verschijnen hier.");self.customer_card_warning.hide();return
+        contacts=self.customers.contacts(customer.id);self.customer_card_name.setText(f"{customer.name}  ·  {customer.customer_number}  ·  {customer.status}")
+        address=" ".join(x for x in (customer.street,customer.postal_code,customer.city,customer.country) if x);details=[customer.phone or customer.mobile_phone,customer.email,address,f"{len(contacts)} contactperso{'on' if len(contacts)==1 else 'nen'}",customer.tags]
+        self.customer_card_meta.setText("   ·   ".join(x for x in details if x) or "Nog geen contactgegevens vastgelegd")
+        missing=[]
+        if not (customer.phone or customer.mobile_phone):missing.append("telefoonnummer ontbreekt")
+        if not customer.email:missing.append("e-mailadres ontbreekt")
+        if not contacts:missing.append("geen contactpersoon")
+        self.customer_card_warning.setText("Aanvullen  ·  "+"  ·  ".join(missing));self.customer_card_warning.setVisible(bool(missing))
+    def customer_quick_proposal(self):
+        customer_id=self._selected_id(self.customer_table,9)
+        if customer_id:self.add_proposal_for_customer(customer_id)
+    def customer_quick_mail(self):
+        customer_id=self._selected_id(self.customer_table,9)
+        if customer_id:self.start_customer_mail(customer_id)
+    def customer_quick_vault(self):
+        customer_id=self._selected_id(self.customer_table,9);customer=self.customers.get(customer_id) if customer_id else None
+        if customer:self.open_vault(customer.name)
     def add_customer(self):
         dlg=CustomerDialog(self)
         if dlg.exec():
@@ -549,12 +575,16 @@ class MainWindow(QMainWindow):
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
         if not hasattr(self,"customer_table"):return
-        rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows))
+        selected_id=self._selected_id(self.customer_table,9);rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows));selected_row=-1
         for r,x in enumerate(rows):
             for c,v in enumerate((x.customer_number,x.name,x.status,x.tags,x.email,x.phone,x.mobile_phone,x.city,x.country,str(x.id))):
                 item=QTableWidgetItem(v)
                 if c==2:item.setForeground(QColor({"actief":"#16815F","prospect":"#1265C4","tijdelijk gestopt":"#9A4B11","uitgeschreven":"#6B7280"}.get(x.status,"#344259")))
                 self.customer_table.setItem(r,c,item)
+            if x.id==selected_id:selected_row=r
+        if selected_row>=0:self.customer_table.selectRow(selected_row)
+        elif rows:self.customer_table.selectRow(0)
+        else:self.refresh_customer_card()
     def refresh_proposals(self,*_):
         if not hasattr(self,"proposal_table"):return
         from datetime import datetime
