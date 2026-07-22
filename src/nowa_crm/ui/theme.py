@@ -42,4 +42,3 @@ QToolTip { background-color: #0C213B; color: #FFFFFF; border: 1px solid #3477B7;
 QDialog { background-color: #F3F6FA; }
 QMessageBox QLabel { color: #172238; background-color: transparent; }
 """
-
