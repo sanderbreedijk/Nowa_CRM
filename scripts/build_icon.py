@@ -19,4 +19,3 @@ if pixmap.isNull() or not pixmap.save(str(png), "PNG"):
 with Image.open(png) as image:
     image.save(ico, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 print(ico)
-
