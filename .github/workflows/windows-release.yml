@@ -45,7 +45,7 @@ jobs:
           python -m PyInstaller --noconfirm --clean --windowed --onedir `
             --name NOWA_CRM --paths src `
             --icon build/nowa_crm_app.ico `
-            --add-data "src/nowa_crm/assets/nowa_crm_app.svg;nowa_crm/assets" `
+            --add-data "src/nowa_crm/assets;nowa_crm/assets" `
             src/nowa_crm/app.py
           $forbidden = Get-ChildItem -Recurse dist/NOWA_CRM -File |
             Where-Object { $_.Name -match '\.(sqlite3|db)$' -or $_.Name -eq 'vault.key' }
