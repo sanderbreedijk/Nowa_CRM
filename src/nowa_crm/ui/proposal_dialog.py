@@ -18,19 +18,19 @@ class ProposalDialog(QDialog):
         self.setWindowTitle("Professionele offerte-editor");self.resize(1220,760);box=QVBoxLayout(self)
         self.heading=QLabel();self.heading.setObjectName("Title");box.addWidget(self.heading)
         row=QHBoxLayout();row.addWidget(QLabel("Status"));self.status=QComboBox();self.status.addItems(service.STATUSES);self.status.currentTextChanged.connect(self._status);row.addWidget(self.status);row.addStretch();box.addLayout(row)
-        self.table=QTableWidget(0,9);self.table.setHorizontalHeaderLabels(["Actief","Groep","Soort","Omschrijving","Aantal","Periode","Prijs","Totaal","ID"]);self.table.setColumnHidden(8,True);self.table.horizontalHeader().setStretchLastSection(True);box.addWidget(self.table,1)
+        self.table=QTableWidget(0,9);self.table.setHorizontalHeaderLabels(["Actief","Groep","Soort","Omschrijving","Aantal","Periode","Prijs","Totaal","ID"]);self.table.setColumnHidden(8,True);self.table.horizontalHeader().setStretchLastSection(True);self.table.doubleClicked.connect(self._load_selected);box.addWidget(self.table,1)
         form=QFormLayout();self.group=QLineEdit();self.group.setPlaceholderText("Bijvoorbeeld Migratie, Licenties of Hardware");self.kind=QComboBox();self.kind.addItems(["dienst","uren","licentie","hardware","korting"]);self.description=QLineEdit();self.quantity=QDoubleSpinBox();self.quantity.setRange(.01,99999);self.quantity.setDecimals(2);self.quantity.setValue(1);self.period=QComboBox();self.period.addItems(["eenmalig","maandelijks"]);self.price=QDoubleSpinBox();self.price.setRange(0,9999999);self.price.setDecimals(2);self.price.setPrefix("EUR ")
         for label,widget in (("Groep",self.group),("Soort",self.kind),("Omschrijving",self.description),("Aantal",self.quantity),("Facturatie",self.period),("Eenheidsprijs excl. btw",self.price)):form.addRow(label,widget)
         box.addLayout(form)
         catalogrow=QHBoxLayout();self.catalog=QComboBox();self.catalog.setMinimumWidth(300);self._reload_catalog();catalogrow.addWidget(QLabel("Catalogus"));catalogrow.addWidget(self.catalog,1);b=QPushButton("Toevoegen uit catalogus");b.clicked.connect(self._add_catalog);catalogrow.addWidget(b);box.addLayout(catalogrow)
         actions=QHBoxLayout()
-        for label,callback in (("Regel toevoegen",self._add),("Verwijderen",self._delete),("In-/uitschakelen",self._toggle),("Omhoog",lambda:self._move(-1)),("Omlaag",lambda:self._move(1))):
+        for label,callback in (("Regel toevoegen",self._add),("Wijzig geselecteerde",self._update),("Dupliceren",self._duplicate_line),("Verwijderen",self._delete),("In-/uitschakelen",self._toggle),("Omhoog",lambda:self._move(-1)),("Omlaag",lambda:self._move(1))):
             b=QPushButton(label);b.clicked.connect(callback);actions.addWidget(b)
         actions.addStretch();box.addLayout(actions)
         actions=QHBoxLayout();self.template=QComboBox();self.template.addItem("Kies sjabloon...",None)
         for x in service.templates():self.template.addItem(x["name"],x["id"])
         actions.addWidget(self.template)
-        for label,callback in (("Sjabloon toepassen",self._apply_template),("Hoofdstukken",self._sections),("Licenties/hardware uit dossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Voorbeeld / PDF",self._pdf)):
+        for label,callback in (("Sjabloon toepassen",self._apply_template),("Hoofdstukken",self._sections),("Licenties/hardware uit dossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Revisiegeschiedenis",self._revision_history),("Voorbeeld / PDF",self._pdf)):
             b=QPushButton(label);b.clicked.connect(callback);actions.addWidget(b)
         box.addLayout(actions);self.total=QLabel();self.total.setStyleSheet("font-size:18px;font-weight:700;color:#0B2342");box.addWidget(self.total)
         buttons=QDialogButtonBox(QDialogButtonBox.Close);buttons.rejected.connect(self.reject);box.addWidget(buttons);self.refresh()
@@ -50,6 +50,18 @@ class ProposalDialog(QDialog):
     def _add(self):
         try:self.service.add_line(self.proposal_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text());self.description.clear();self.refresh()
         except Exception as e:QMessageBox.warning(self,"Offerteregel",str(e))
+    def _load_selected(self,*_):
+        line_id=self._selected()
+        if not line_id:return
+        line=next(x for x in self.service.lines(self.proposal_id) if x.id==line_id)
+        self.group.setText(line.group_name);self.kind.setCurrentText(line.kind);self.description.setText(line.description);self.quantity.setValue(line.quantity);self.period.setCurrentText(line.billing_period);self.price.setValue(line.unit_price_cents/100)
+    def _update(self):
+        line_id=self._selected()
+        if not line_id:QMessageBox.information(self,"Offerteregel","Selecteer eerst een regel.");return
+        try:self.service.update_line(line_id,self.kind.currentText(),self.description.text(),self.quantity.value(),round(self.price.value()*100),self.period.currentText(),self.group.text());self.refresh()
+        except Exception as e:QMessageBox.warning(self,"Offerteregel",str(e))
+    def _duplicate_line(self):
+        if self._selected():self.service.duplicate_line(self._selected());self.refresh()
     def _delete(self):
         if self._selected():self.service.delete_line(self._selected());self.refresh()
     def _toggle(self):
@@ -82,6 +94,20 @@ class ProposalDialog(QDialog):
     def _revision(self):
         label,ok=QInputDialog.getText(self,"Nieuwe revisie","Omschrijving van de wijziging")
         if ok:r=self.service.create_revision(self.proposal_id,label);self.refresh();QMessageBox.information(self,"Revisie",f"Revisie {r} is bewaard.")
+    def _revision_history(self):
+        revisions=self.service.revisions(self.proposal_id);dialog=QDialog(self);dialog.setWindowTitle("Revisiegeschiedenis");dialog.resize(680,420);layout=QVBoxLayout(dialog)
+        info=QLabel("Een revisie terugzetten vervangt de huidige regels en hoofdstukken. Eerst wordt automatisch een back-up gemaakt.");info.setWordWrap(True);layout.addWidget(info)
+        table=QTableWidget(len(revisions),4);table.setHorizontalHeaderLabels(["Revisie","Omschrijving","Bewaard op","ID"]);table.setColumnHidden(3,True);table.horizontalHeader().setStretchLastSection(True)
+        for row,item in enumerate(revisions):
+            for column,value in enumerate((str(item["revision_number"]),item["label"] or "Zonder omschrijving",item["created_at"],str(item["id"]))):table.setItem(row,column,QTableWidgetItem(value))
+        layout.addWidget(table,1);buttons=QHBoxLayout();restore=QPushButton("Geselecteerde revisie terugzetten");close=QPushButton("Sluiten");buttons.addStretch();buttons.addWidget(restore);buttons.addWidget(close);layout.addLayout(buttons);close.clicked.connect(dialog.reject)
+        def do_restore():
+            row=table.currentRow();item=table.item(row,3) if row>=0 else None
+            if not item:return
+            if QMessageBox.question(dialog,"Revisie terugzetten","De huidige offerte wordt eerst veilig als nieuwe revisie bewaard. Doorgaan?")!=QMessageBox.Yes:return
+            try:self.service.restore_revision(self.proposal_id,int(item.text()));dialog.accept();self.refresh();QMessageBox.information(self,"Revisie teruggezet","De gekozen revisie is hersteld. De vorige toestand staat in de revisiegeschiedenis.")
+            except Exception as e:QMessageBox.warning(dialog,"Revisie terugzetten",str(e))
+        restore.clicked.connect(do_restore);dialog.exec()
     def _pdf(self):
         try:
             warnings=self.service.validate(self.proposal_id)
