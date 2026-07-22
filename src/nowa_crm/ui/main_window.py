@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
                                QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
         if button:button.setChecked(True)
         self.refresh_all()
     def _page(self,title,subtitle=""):
-        page=QWidget(); box=QVBoxLayout(page); box.setContentsMargins(30,24,30,26); box.setSpacing(12)
+        page=QWidget(); box=QVBoxLayout(page); box.setContentsMargins(34,28,34,28); box.setSpacing(16)
         head_row=QHBoxLayout(); head=QLabel(title); head.setObjectName("Title"); head_row.addWidget(head); head_row.addStretch(); hint=QLabel("Ctrl+K  Zoeken"); hint.setObjectName("SearchHint"); head_row.addWidget(hint); box.addLayout(head_row)
         if subtitle: sub=QLabel(subtitle); sub.setObjectName("Subtitle"); sub.setWordWrap(True); box.addWidget(sub)
         return page,box
@@ -147,20 +147,30 @@ class MainWindow(QMainWindow):
         self.update_status=QLabel("Controleer GitHub Releases op een nieuwe, geteste Windows-versie."); self.update_status.setWordWrap(True); content.addWidget(self.update_status)
         row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.setObjectName("Primary"); check.clicked.connect(self.check_for_updates); releases=QPushButton("Releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL))); row.addWidget(check); row.addWidget(releases); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
     def _dashboard(self):
-        page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); self.kpis=[]
-        for i,title in enumerate(("Klanten","Open offertes","Kluisitems","Actieve gebruikers","Licenties","Hardware","Open taken","Actiepunten")):
-            card=QFrame(); card.setObjectName("Card"); c=QVBoxLayout(card); value=QLabel("0"); value.setObjectName("Kpi"); c.addWidget(value); c.addWidget(QLabel(title)); grid.addWidget(card,i//4,i%4); self.kpis.append(value)
+        page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); grid.setHorizontalSpacing(14); grid.setVerticalSpacing(14); self.kpis=[]
+        card_data=(("KL","Klanten","blue"),("OF","Open offertes","purple"),("KV","Kluisitems","teal"),("GB","Actieve gebruikers","orange"),("LI","Licenties","purple"),("HW","Hardware","blue"),("TK","Open taken","orange"),("AP","Actiepunten","teal"))
+        for i,(symbol,title,accent) in enumerate(card_data):
+            card=QFrame(); card.setObjectName("StatCard"); card.setProperty("accent",accent); card.setMinimumHeight(118)
+            c=QVBoxLayout(card); c.setContentsMargins(20,17,20,17); c.setSpacing(4); top=QHBoxLayout()
+            icon=QLabel(symbol); icon.setObjectName("KpiIcon"); icon.setProperty("accent",accent); value=QLabel("0"); value.setObjectName("Kpi")
+            top.addWidget(icon); top.addStretch(); top.addWidget(value); c.addLayout(top); label=QLabel(title); label.setObjectName("KpiLabel"); c.addWidget(label); grid.addWidget(card,i//4,i%4); self.kpis.append(value)
         box.addLayout(grid)
-        filters=QHBoxLayout();self.day_owner=QLineEdit();self.day_owner.setPlaceholderText("Filter op medewerker…");self.day_owner.textChanged.connect(self.refresh_daystart)
+        toolbar=QFrame(); toolbar.setObjectName("Toolbar"); filters=QHBoxLayout(toolbar); filters.setContentsMargins(12,9,12,9); filters.setSpacing(9); filter_label=QLabel("Werkbak"); filter_label.setObjectName("ToolbarTitle"); filters.addWidget(filter_label)
+        self.day_owner=QLineEdit();self.day_owner.setPlaceholderText("Zoek medewerker…");self.day_owner.textChanged.connect(self.refresh_daystart)
         self.day_priority=QComboBox();self.day_priority.addItems(["Alle","Kritiek","Hoog","Normaal","Laag"]);self.day_priority.currentIndexChanged.connect(self.refresh_daystart)
         self.day_period=QComboBox();self.day_period.addItems(["Actueel","Vandaag","Te laat"]);self.day_period.currentIndexChanged.connect(self.refresh_daystart);self.day_summary=QLabel()
-        filters.addWidget(self.day_owner,1);filters.addWidget(self.day_priority);filters.addWidget(self.day_period);filters.addWidget(self.day_summary);box.addLayout(filters)
+        self.day_summary.setObjectName("SummaryPill"); filters.addWidget(self.day_owner,1);filters.addWidget(self.day_priority);filters.addWidget(self.day_period);filters.addWidget(self.day_summary);box.addWidget(toolbar)
         self.day_table=QTableWidget(0,9);self.day_table.setHorizontalHeaderLabels(["Prioriteit","Soort","Deadline","Klant","Onderwerp","Toegewezen","Status / detail","Klant-ID","Item-ID"])
-        self.day_table.setColumnHidden(7,True);self.day_table.setColumnHidden(8,True);self.day_table.horizontalHeader().setStretchLastSection(True);self.day_table.doubleClicked.connect(self.open_daystart_customer);box.addWidget(self.day_table,1)
-        actions=QHBoxLayout()
-        for text,handler in (("Open klantdossier",self.open_daystart_customer),("Toewijzen",self.assign_daystart),("Uitstellen",self.snooze_daystart),("Melding afronden",self.dismiss_daystart)):
-            button=QPushButton(text);button.clicked.connect(handler);actions.addWidget(button)
-        actions.addStretch();box.addLayout(actions);return page
+        self.day_table.setColumnHidden(7,True);self.day_table.setColumnHidden(8,True);self.day_table.horizontalHeader().setStretchLastSection(True);self.day_table.doubleClicked.connect(self.open_daystart_customer)
+        empty=QFrame(); empty.setObjectName("EmptyState"); empty_box=QVBoxLayout(empty); empty_box.setAlignment(Qt.AlignCenter); empty_box.setSpacing(8)
+        empty_icon=QLabel("✓"); empty_icon.setObjectName("EmptyIcon"); empty_icon.setAlignment(Qt.AlignCenter); empty_title=QLabel("Alles bijgewerkt"); empty_title.setObjectName("EmptyTitle"); empty_title.setAlignment(Qt.AlignCenter)
+        empty_text=QLabel("Er staan geen open acties in je werkbak.\nNieuwe taken en meldingen verschijnen hier automatisch."); empty_text.setObjectName("EmptyText"); empty_text.setAlignment(Qt.AlignCenter)
+        empty_box.addStretch(); empty_box.addWidget(empty_icon,0,Qt.AlignCenter); empty_box.addWidget(empty_title); empty_box.addWidget(empty_text); empty_box.addStretch()
+        self.day_content=QStackedWidget(); self.day_content.addWidget(self.day_table); self.day_content.addWidget(empty); box.addWidget(self.day_content,1)
+        action_bar=QFrame(); action_bar.setObjectName("ActionBar"); actions=QHBoxLayout(action_bar); actions.setContentsMargins(12,9,12,9); self.day_action_buttons=[]
+        for symbol,text,handler in (("KL","Open klantdossier",self.open_daystart_customer),("TW","Toewijzen",self.assign_daystart),("UT","Uitstellen",self.snooze_daystart),("OK","Melding afronden",self.dismiss_daystart)):
+            button=QPushButton(text); button.setIcon(nav_icon(symbol)); button.setIconSize(QSize(24,24)); button.clicked.connect(handler);actions.addWidget(button);self.day_action_buttons.append(button)
+        self.day_action_buttons[0].setObjectName("Primary"); actions.addStretch();box.addWidget(action_bar);return page
 
     def selected_daystart(self):
         row=self.day_table.currentRow()
@@ -175,6 +185,8 @@ class MainWindow(QMainWindow):
             values=(item["priority"],item["kind"],item["due_at"],item["customer_name"],item["title"],item["assigned_to"],item["detail"],item["customer_id"] or "",item["entity_id"])
             for c,value in enumerate(values):self.day_table.setItem(r,c,QTableWidgetItem(str(value or "")))
         summary=self.daystart_service.summary();self.day_summary.setText(f"{summary['total']} open · {summary['overdue']} te laat · {summary['urgent']} urgent")
+        has_rows=bool(rows); self.day_content.setCurrentIndex(0 if has_rows else 1)
+        for button in self.day_action_buttons: button.setEnabled(has_rows)
 
     def open_daystart_customer(self,*_):
         selected=self.selected_daystart()
