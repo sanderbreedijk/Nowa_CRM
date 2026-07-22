@@ -78,4 +78,3 @@ jobs:
             gh release create $tag --target "${{ github.sha }}" --generate-notes --title "NOWA CRM $tag"
           }
           gh release upload $tag NOWA_CRM-Windows.zip --clobber
-
