@@ -747,6 +747,28 @@ PROPOSAL_OPTIONS_318_SCHEMA = """
 ALTER TABLE proposal_lines ADD COLUMN optional INTEGER NOT NULL DEFAULT 0;
 """
 
+PROPOSAL_APPROVAL_319_SCHEMA = """
+CREATE TABLE IF NOT EXISTS proposal_publications (
+    id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    token_hint TEXT NOT NULL,
+    recipient_email TEXT NOT NULL DEFAULT '',
+    expires_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'voorbereid',
+    package_path TEXT NOT NULL DEFAULT '',
+    snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TEXT,
+    accepted_at TEXT,
+    accepted_by TEXT NOT NULL DEFAULT '',
+    accepted_function TEXT NOT NULL DEFAULT '',
+    acceptance_comment TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_publications ON proposal_publications(proposal_id,created_at DESC);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -757,5 +779,5 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (20, TELEPHONY_280_SCHEMA), (21, DAYSTART_290_SCHEMA), (22, VAULT_VERIFICATION_300_SCHEMA),
     (23, PROPOSAL_TEMPLATE_310_SCHEMA), (24, LEGACY_PROPOSAL_IMPORT_320_SCHEMA),
     (25, PROPOSAL_EDITOR_330_SCHEMA), (26, CUSTOMER_QUALITY_313_SCHEMA),
-    (27, PROPOSAL_OPTIONS_318_SCHEMA)
+    (27, PROPOSAL_OPTIONS_318_SCHEMA), (28, PROPOSAL_APPROVAL_319_SCHEMA)
 )
