@@ -36,6 +36,7 @@ class ProposalLine:
     active: int
     billing_period: str
     group_name: str
+    optional: int
 
     @property
     def line_total_cents(self) -> int:
@@ -92,26 +93,26 @@ class ProposalService:
     def lines(self, proposal_id: int) -> list[ProposalLine]:
         with self.db.transaction() as conn:
             rows = conn.execute(
-                "SELECT id,proposal_id,kind,description,quantity,unit_price_cents,sort_order,active,billing_period,group_name FROM proposal_lines WHERE proposal_id=? ORDER BY sort_order,id",
+                "SELECT id,proposal_id,kind,description,quantity,unit_price_cents,sort_order,active,billing_period,group_name,optional FROM proposal_lines WHERE proposal_id=? ORDER BY sort_order,id",
                 (proposal_id,),
             ).fetchall()
         return [ProposalLine(**dict(row)) for row in rows]
 
     def add_line(self, proposal_id: int, kind: str, description: str, quantity: float, unit_price_cents: int,
-                 billing_period: str = "eenmalig", group_name: str = "") -> int:
+                 billing_period: str = "eenmalig", group_name: str = "", optional: bool = False) -> int:
         if not description.strip(): raise ValueError("Omschrijving is verplicht")
         if quantity <= 0: raise ValueError("Aantal moet groter zijn dan nul")
         if unit_price_cents < 0: raise ValueError("Prijs mag niet negatief zijn")
         with self.db.transaction() as conn:
             order = int(conn.execute("SELECT COALESCE(MAX(sort_order),0)+10 FROM proposal_lines WHERE proposal_id=?",(proposal_id,)).fetchone()[0])
             cur = conn.execute(
-                "INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,billing_period,group_name) VALUES(?,?,?,?,?,?,?,?)",
-                (proposal_id,kind,description.strip(),quantity,unit_price_cents,order,billing_period,group_name.strip()),
+                "INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,billing_period,group_name,optional) VALUES(?,?,?,?,?,?,?,?,?)",
+                (proposal_id,kind,description.strip(),quantity,unit_price_cents,order,billing_period,group_name.strip(),int(optional)),
             )
             line_id=int(cur.lastrowid); self._recalculate(conn,proposal_id); return line_id
 
     def update_line(self, line_id: int, kind: str, description: str, quantity: float,
-                    unit_price_cents: int, billing_period: str, group_name: str) -> None:
+                    unit_price_cents: int, billing_period: str, group_name: str, optional: bool = False) -> None:
         if not description.strip(): raise ValueError("Omschrijving is verplicht")
         if quantity <= 0: raise ValueError("Aantal moet groter zijn dan nul")
         if unit_price_cents < 0: raise ValueError("Prijs mag niet negatief zijn")
@@ -120,8 +121,8 @@ class ProposalService:
             row=conn.execute("SELECT proposal_id FROM proposal_lines WHERE id=?",(line_id,)).fetchone()
             if not row: raise KeyError(line_id)
             conn.execute("""UPDATE proposal_lines SET kind=?,description=?,quantity=?,unit_price_cents=?,
-                            billing_period=?,group_name=? WHERE id=?""",
-                         (kind,description.strip(),quantity,unit_price_cents,billing_period,group_name.strip(),line_id))
+                            billing_period=?,group_name=?,optional=? WHERE id=?""",
+                         (kind,description.strip(),quantity,unit_price_cents,billing_period,group_name.strip(),int(optional),line_id))
             self._recalculate(conn,int(row["proposal_id"]))
 
     def duplicate_line(self, line_id: int) -> int:
@@ -131,11 +132,11 @@ class ProposalService:
             order=int(source["sort_order"])+5
             conn.execute("UPDATE proposal_lines SET sort_order=sort_order+10 WHERE proposal_id=? AND sort_order>?",(source["proposal_id"],source["sort_order"]))
             cur=conn.execute("""INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,
-                               sort_order,catalog_item_id,active,billing_period,group_name)
-                               VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                               sort_order,catalog_item_id,active,billing_period,group_name,optional)
+                               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                              (source["proposal_id"],source["kind"],source["description"],source["quantity"],
                               source["unit_price_cents"],order,source["catalog_item_id"],source["active"],
-                              source["billing_period"],source["group_name"]))
+                              source["billing_period"],source["group_name"],source["optional"]))
             self._recalculate(conn,int(source["proposal_id"]));return int(cur.lastrowid)
 
     def catalog(self, query: str = "", include_inactive: bool = False) -> list[dict]:
@@ -270,10 +271,10 @@ class ProposalService:
                             json.dumps(snapshot.get("sections",{}),ensure_ascii=False),proposal_id))
             conn.execute("DELETE FROM proposal_lines WHERE proposal_id=?",(proposal_id,))
             conn.executemany("""INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,
-                               sort_order,active,billing_period,group_name) VALUES(?,?,?,?,?,?,?,?,?)""",
+                               sort_order,active,billing_period,group_name,optional) VALUES(?,?,?,?,?,?,?,?,?,?)""",
                              [(proposal_id,x.get("kind","dienst"),x.get("description",""),x.get("quantity",1),
                                x.get("unit_price_cents",0),x.get("sort_order",i*10),x.get("active",1),
-                               x.get("billing_period","eenmalig"),x.get("group_name","")) for i,x in enumerate(lines,1)])
+                               x.get("billing_period","eenmalig"),x.get("group_name",""),x.get("optional",0)) for i,x in enumerate(lines,1)])
             self._recalculate(conn,proposal_id)
         return new_revision
 
@@ -291,7 +292,7 @@ class ProposalService:
         new_id=self.create(source.customer_id,f"Kopie van {source.title}")
         with self.db.transaction() as conn:
             conn.execute("UPDATE proposals SET introduction=?,terms=?,sections_json=? WHERE id=?",(source.introduction,source.terms,source.sections_json,new_id))
-            conn.execute("INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id,active,billing_period,group_name) SELECT ?,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id,active,billing_period,group_name FROM proposal_lines WHERE proposal_id=?",(new_id,proposal_id));self._recalculate(conn,new_id)
+            conn.execute("INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id,active,billing_period,group_name,optional) SELECT ?,kind,description,quantity,unit_price_cents,sort_order,catalog_item_id,active,billing_period,group_name,optional FROM proposal_lines WHERE proposal_id=?",(new_id,proposal_id));self._recalculate(conn,new_id)
         return new_id
 
     def save_as_template(self, proposal_id: int, name: str) -> int:
@@ -308,7 +309,7 @@ class ProposalService:
             conn.execute("DELETE FROM proposal_lines WHERE id=?",(line_id,)); self._recalculate(conn,int(row[0]))
 
     def _recalculate(self, conn, proposal_id: int) -> None:
-        total=conn.execute("SELECT COALESCE(SUM(ROUND(quantity*unit_price_cents)),0) FROM proposal_lines WHERE proposal_id=? AND active=1 AND billing_period='eenmalig'",(proposal_id,)).fetchone()[0]
+        total=conn.execute("SELECT COALESCE(SUM(ROUND(quantity*unit_price_cents)),0) FROM proposal_lines WHERE proposal_id=? AND active=1 AND optional=0 AND billing_period='eenmalig'",(proposal_id,)).fetchone()[0]
         conn.execute("UPDATE proposals SET total_cents=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(int(total),proposal_id))
 
     def totals(self, proposal_id: int, vat_rate: float = 0.21) -> dict[str,int]:
@@ -317,7 +318,14 @@ class ProposalService:
         return {"subtotal_cents":subtotal,"vat_cents":vat,"total_cents":subtotal+vat}
 
     def monthly_total(self, proposal_id: int) -> int:
-        with self.db.transaction() as conn:return int(conn.execute("SELECT COALESCE(SUM(ROUND(quantity*unit_price_cents)),0) FROM proposal_lines WHERE proposal_id=? AND active=1 AND billing_period='maandelijks'",(proposal_id,)).fetchone()[0])
+        with self.db.transaction() as conn:return int(conn.execute("SELECT COALESCE(SUM(ROUND(quantity*unit_price_cents)),0) FROM proposal_lines WHERE proposal_id=? AND active=1 AND optional=0 AND billing_period='maandelijks'",(proposal_id,)).fetchone()[0])
+
+    def group_totals(self, proposal_id: int) -> dict[str, dict[str, int]]:
+        result={}
+        for line in self.lines(proposal_id):
+            if not line.active or line.optional:continue
+            group=line.group_name or line.kind.title();bucket=result.setdefault(group,{"eenmalig":0,"maandelijks":0});bucket[line.billing_period]+=line.line_total_cents
+        return result
 
     def count_open(self) -> int:
         with self.db.transaction() as conn:
