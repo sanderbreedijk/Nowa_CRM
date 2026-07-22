@@ -33,6 +33,20 @@ QFrame#EmptyState { background-color: #FFFFFF; border: 1px solid #DCE5EF; border
 QLabel#EmptyIcon { min-width: 64px; max-width: 64px; min-height: 64px; max-height: 64px; border-radius: 20px; background-color: #E4F6EE; color: #16815F; font-size: 31px; font-weight: 800; }
 QLabel#EmptyTitle { color: #183453; font-size: 21px; font-weight: 750; padding-top: 5px; }
 QLabel#EmptyText { color: #738196; font-size: 13px; }
+QFrame#CustomerHero { background-color: #FFFFFF; border: 1px solid #D8E4F0; border-radius: 15px; }
+QLabel#CustomerBadge { min-width: 54px; max-width: 54px; min-height: 54px; max-height: 54px; border-radius: 16px; background-color: #E5F1FF; color: #1265C4; font-size: 16px; font-weight: 800; qproperty-alignment: AlignCenter; }
+QLabel#CustomerName { color: #102A4C; font-size: 19px; font-weight: 750; }
+QLabel#CustomerMeta { color: #68788D; font-size: 12px; }
+QFrame#MiniStatCard { background-color: #FFFFFF; border: 1px solid #DEE6EF; border-radius: 12px; }
+QFrame#MiniStatCard:hover { border-color: #B7CBE0; background-color: #FBFDFF; }
+QLabel#MiniKpiIcon { min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px; border-radius: 10px; font-size: 10px; font-weight: 800; qproperty-alignment: AlignCenter; }
+QLabel#MiniKpiIcon[accent="blue"] { background-color: #E5F1FF; color: #1265C4; }
+QLabel#MiniKpiIcon[accent="purple"] { background-color: #F0EAFE; color: #6B43C5; }
+QLabel#MiniKpiIcon[accent="teal"] { background-color: #E1F6F2; color: #16796B; }
+QLabel#MiniKpiIcon[accent="orange"] { background-color: #FFF0DE; color: #B75B13; }
+QLabel#MiniKpi { color: #102A4C; font-size: 20px; font-weight: 750; }
+QLabel#SectionTitle { color: #183453; font-size: 16px; font-weight: 750; }
+QLabel#AttentionBanner { background-color: #FFF4E6; color: #9A4B11; border: 1px solid #F4D7B2; border-radius: 10px; padding: 10px 13px; font-weight: 650; }
 QGroupBox { margin-top: 10px; font-weight: 700; color: #203550; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 QFrame#Card QLabel { background-color: transparent; color: #344259; }
