@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QSize, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
                                QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -47,15 +47,18 @@ from nowa_crm.ui.documents_page import DocumentsPage
 from nowa_crm.ui.integrations_page import IntegrationsPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm import __version__
+from nowa_crm.ui.icons import app_icon, nav_icon
 
 
 class MainWindow(QMainWindow):
     def __init__(self, customers: CustomerService, proposals: ProposalService, vault: VaultService, operations: OperationsService, workspace: WorkspaceService, mail: MailService, telephony: TelephonyService):
         super().__init__(); self.customers=customers; self.proposals=proposals; self.vault=vault; self.operations=operations; self.workspace=workspace; self.mail=mail; self.telephony=telephony
         self.customer_import=CustomerImportService(customers.db,telephony.actor)
-        self.setWindowTitle("NOWA CRM"); self.resize(1380,860)
-        root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); sidebar=QFrame(); sidebar.setObjectName("Sidebar"); sidebar.setFixedWidth(230); nav=QVBoxLayout(sidebar)
-        brand=QLabel("NOWA CRM"); brand.setObjectName("Brand"); nav.addWidget(brand); self.stack=QStackedWidget()
+        self.setWindowTitle("NOWA CRM"); self.setWindowIcon(app_icon()); self.resize(1440,900); self.setMinimumSize(1024,700)
+        root=QWidget(); shell=QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); shell.setSpacing(0)
+        self.sidebar=QFrame(); self.sidebar.setObjectName("Sidebar"); self.sidebar.setFixedWidth(244); nav=QVBoxLayout(self.sidebar); nav.setContentsMargins(12,14,12,14); nav.setSpacing(4)
+        brand_row=QHBoxLayout(); brand_icon=QLabel("N"); brand_icon.setObjectName("BrandIcon"); brand=QLabel("NOWA\nCRM"); brand.setObjectName("Brand"); brand_row.addWidget(brand_icon); brand_row.addWidget(brand); brand_row.addStretch(); nav.addLayout(brand_row)
+        caption=QLabel("KLANTWERKPLEK"); caption.setObjectName("BrandCaption"); nav.addWidget(caption); self.stack=QStackedWidget(); self.stack.setObjectName("ContentStack")
         self.operations_page=OperationsPage(customers,operations,self)
         self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self.open_global_result,self)
         self.mail_page=MailPage(customers,mail,workspace,self)
@@ -83,10 +86,15 @@ class MainWindow(QMainWindow):
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
-        nav.addStretch(); shell.addWidget(sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
+        nav.addStretch(); version=QLabel(f"Versie {__version__}  •  lokaal"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
         self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
         self.refresh_all()
         QTimer.singleShot(800,self.show_followup_reminder)
+
+    def resizeEvent(self,event):
+        """Keep navigation balanced on both laptop and full-HD displays."""
+        self.sidebar.setFixedWidth(214 if event.size().width()<1250 else 244)
+        super().resizeEvent(event)
 
     def show_followup_reminder(self):
         stats=self.workspace.action_summary()
@@ -100,15 +108,16 @@ class MainWindow(QMainWindow):
     def _build_navigation(self,nav,pages):
         groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,17)),
                 ("Service",(16,6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(18,7,14,15)))
+        symbols=("OV","WK","KL","360","BP","OF","KV","ML","TEL","SD","RP","PL","BV","AS","IM","UP","CM","DC","IN")
         self.nav_sections={};self.page_sections={};self.nav_buttons={}
         for section,indices in groups:
-            header=QPushButton(f"›  {section}");header.setObjectName("NavSection");nav.addWidget(header)
+            header=QPushButton(section.upper());header.setObjectName("NavSection");nav.addWidget(header)
             content=QWidget();content.setObjectName("NavSectionContent");box=QVBoxLayout(content)
             box.setContentsMargins(0,0,0,4);box.setSpacing(0);nav.addWidget(content)
             self.nav_sections[section]=(header,content)
             header.clicked.connect(lambda _,name=section:self._open_nav_section(name))
             for index in indices:
-                title=pages[index][0];button=QPushButton(title);button.setObjectName("Nav")
+                title=pages[index][0];button=QPushButton(title);button.setObjectName("Nav");button.setIcon(nav_icon(symbols[index]));button.setIconSize(QSize(28,28))
                 button.setCheckable(True);button.setChecked(index==0);self.nav_group.addButton(button,index)
                 button.clicked.connect(lambda _,x=index:self._show(x));box.addWidget(button)
                 self.page_sections[index]=section;self.nav_buttons[index]=button
@@ -116,7 +125,7 @@ class MainWindow(QMainWindow):
 
     def _open_nav_section(self,name):
         for section,(header,content) in self.nav_sections.items():
-            active=section==name;content.setVisible(active);header.setText(f"{'⌄' if active else '›'}  {section}")
+            active=section==name;content.setVisible(active);header.setText(f"{'—' if active else '+'}  {section.upper()}")
 
     def _show(self,index):
         self.stack.setCurrentIndex(index)
@@ -126,8 +135,9 @@ class MainWindow(QMainWindow):
         if button:button.setChecked(True)
         self.refresh_all()
     def _page(self,title,subtitle=""):
-        page=QWidget(); box=QVBoxLayout(page); head=QLabel(title); head.setObjectName("Title"); box.addWidget(head)
-        if subtitle: sub=QLabel(subtitle); sub.setObjectName("Subtitle"); box.addWidget(sub)
+        page=QWidget(); box=QVBoxLayout(page); box.setContentsMargins(30,24,30,26); box.setSpacing(12)
+        head_row=QHBoxLayout(); head=QLabel(title); head.setObjectName("Title"); head_row.addWidget(head); head_row.addStretch(); hint=QLabel("Ctrl+K  Zoeken"); hint.setObjectName("SearchHint"); head_row.addWidget(hint); box.addLayout(head_row)
+        if subtitle: sub=QLabel(subtitle); sub.setObjectName("Subtitle"); sub.setWordWrap(True); box.addWidget(sub)
         return page,box
     def _placeholder(self,title,text):
         page,box=self._page(title,text); box.addStretch(); return page

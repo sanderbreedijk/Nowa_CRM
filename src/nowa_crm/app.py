@@ -3,6 +3,8 @@ from __future__ import annotations
 import getpass
 import sys
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog
 
 from nowa_crm.core.database import Database
@@ -19,6 +21,7 @@ from nowa_crm.modules.telephony.service import TelephonyService
 from nowa_crm.ui.main_window import MainWindow
 from nowa_crm.ui.login import LoginDialog, SetupDialog
 from nowa_crm.ui.theme import THEME
+from nowa_crm.ui.icons import app_icon
 
 
 def build_services(session=None):
@@ -40,12 +43,13 @@ def _startup_phone(arguments: list[str]) -> str:
 
 
 def main() -> int:
-    app = QApplication(sys.argv); app.setStyleSheet(THEME)
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    app = QApplication(sys.argv); app.setApplicationName("NOWA CRM"); app.setWindowIcon(app_icon()); app.setStyleSheet(THEME)
     db, _, _, _, _, _, _, _ = build_services(); auth=AuthService(db)
     if not auth.has_users() and SetupDialog(auth).exec()!=QDialog.Accepted: return 0
     login=LoginDialog(auth)
     if login.exec()!=QDialog.Accepted or not login.session: return 0
-    _, customers, proposals, vault, operations, workspace, mail, telephony = build_services(login.session); window = MainWindow(customers, proposals, vault, operations, workspace, mail, telephony); window.show()
+    _, customers, proposals, vault, operations, workspace, mail, telephony = build_services(login.session); window = MainWindow(customers, proposals, vault, operations, workspace, mail, telephony); window.showMaximized()
     phone=_startup_phone(sys.argv[1:])
     if phone:window.handle_incoming_phone(phone)
     return app.exec()
@@ -53,4 +57,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

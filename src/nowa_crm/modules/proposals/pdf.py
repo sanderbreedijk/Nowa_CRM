@@ -52,41 +52,18 @@ def _bullets(story,items,s):
 def _page(story,title,s):
     story.append(PageBreak());_title(story,title,s)
 
-def _logo_mark(canvas,x,y,size):
-    canvas.saveState()
-    p=canvas.beginPath();p.moveTo(x,y+size*.72);p.lineTo(x+size*.46,y+size);p.lineTo(x+size,y+size*.83);p.lineTo(x+size*.53,y+size*.59);p.close()
-    canvas.setFillColor(colors.HexColor("#05A6DF"));canvas.drawPath(p,fill=1,stroke=0)
-    p=canvas.beginPath();p.moveTo(x,y+size*.72);p.lineTo(x+size*.53,y+size*.59);p.lineTo(x+size*.47,y);p.lineTo(x+size*.15,y+size*.18);p.close()
-    canvas.setFillColor(colors.HexColor("#D8DDE1"));canvas.drawPath(p,fill=1,stroke=0)
-    p=canvas.beginPath();p.moveTo(x+size*.53,y+size*.59);p.lineTo(x+size,y+size*.83);p.lineTo(x+size*.83,y+size*.32);p.lineTo(x+size*.47,y);p.close()
-    canvas.setFillColor(colors.HexColor("#F1F3F4"));canvas.drawPath(p,fill=1,stroke=0);canvas.restoreState()
-
-def _watermark(canvas,w,h,strong=False):
-    canvas.saveState()
-    top=colors.HexColor("#0AA6DF" if strong else "#E5F6FC")
-    left=colors.HexColor("#AEB9C1" if strong else "#F0F3F5")
-    right=colors.HexColor("#D6DDE2" if strong else "#F6F8F9")
-    x=w-78*mm;y=28*mm;size=76*mm
-    p=canvas.beginPath();p.moveTo(x,y+size*.72);p.lineTo(x+size*.48,y+size);p.lineTo(x+size*1.34,y+size*.80);p.lineTo(x+size*.62,y+size*.55);p.close();canvas.setFillColor(top);canvas.drawPath(p,fill=1,stroke=0)
-    p=canvas.beginPath();p.moveTo(x,y+size*.72);p.lineTo(x+size*.62,y+size*.55);p.lineTo(x+size*.58,y-size*.12);p.lineTo(x+size*.22,y+size*.08);p.close();canvas.setFillColor(left);canvas.drawPath(p,fill=1,stroke=0)
-    p=canvas.beginPath();p.moveTo(x+size*.62,y+size*.55);p.lineTo(x+size*1.34,y+size*.80);p.lineTo(x+size*.92,y+size*.20);p.lineTo(x+size*.58,y-size*.12);p.close();canvas.setFillColor(right);canvas.drawPath(p,fill=1,stroke=0)
-    canvas.restoreState()
-
 def _background(canvas,doc,profile,proposal,cover=False):
     canvas.saveState();w,h=A4
     if doc.page==1:
-        _logo_mark(canvas,7*mm,h-25*mm,14*mm)
-        canvas.setFillColor(BLUE);canvas.setFont("Helvetica-Bold",14);canvas.drawString(23*mm,h-18*mm,(profile.get("company_name") or "NOWA Solutions").lower())
+        canvas.setFillColor(BLUE);canvas.setFont("Helvetica-Bold",14);canvas.drawString(17*mm,h-18*mm,profile.get("company_name") or "NOWA Solutions")
         canvas.setFillColor(TEXT);canvas.setFont("Helvetica",6.8)
         contact_bits=[profile.get("address") or "",profile.get("postal_city") or "",profile.get("phone") or "",profile.get("website") or "",profile.get("email") or ""]
         canvas.drawRightString(w-17*mm,h-18*mm,"   |   ".join(x for x in contact_bits if x))
-        _watermark(canvas,w,h,True)
         canvas.setFillColor(BLUE);canvas.rect(0,0,w,28*mm,fill=1,stroke=0)
         canvas.setFillColor(colors.white);canvas.setFont("Helvetica",7.5)
         footer=[profile.get("address") or profile.get("footer_text") or "NOWA Solutions",profile.get("phone") or "",profile.get("email") or profile.get("website") or ""]
         canvas.drawString(17*mm,14*mm,footer[0]);canvas.drawCentredString(w/2,14*mm,footer[1]);canvas.drawRightString(w-17*mm,14*mm,footer[2])
     else:
-        _watermark(canvas,w,h,False)
         canvas.setStrokeColor(LINE);canvas.line(17*mm,h-22*mm,w-17*mm,h-22*mm)
         canvas.setFillColor(BLUE);canvas.setFont("Helvetica-Bold",8);canvas.drawRightString(w-17*mm,h-16*mm,profile.get("company_name") or "NOWA Solutions")
         canvas.setFillColor(colors.HexColor("#6B7F8E"));canvas.setFont("Helvetica",7.5);canvas.drawString(17*mm,11*mm,profile.get("footer_text") or "NOWA Solutions");canvas.drawRightString(w-17*mm,11*mm,f"{proposal.number} | Pagina {doc.page}")
@@ -200,4 +177,3 @@ def export_proposal_pdf(service:ProposalService,proposal_id:int,output_dir:Path|
     doc=BaseDocTemplate(str(target),pagesize=A4,title=f"Offerte {customer['name']}",author=profile.get("company_name") or "NOWA Solutions",leftMargin=17*mm,rightMargin=17*mm,topMargin=31*mm,bottomMargin=24*mm)
     frame=Frame(doc.leftMargin,doc.bottomMargin,A4[0]-doc.leftMargin-doc.rightMargin,A4[1]-doc.topMargin-doc.bottomMargin,leftPadding=0,rightPadding=0,topPadding=0,bottomPadding=0)
     doc.addPageTemplates([PageTemplate(id="NOWA",frames=[frame],onPage=lambda c,d:_background(c,d,profile,proposal))]);doc.build(story);return target
-
