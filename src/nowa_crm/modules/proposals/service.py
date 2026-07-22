@@ -108,6 +108,34 @@ class ProposalService:
             )
             line_id=int(cur.lastrowid); self._recalculate(conn,proposal_id); return line_id
 
+    def update_line(self, line_id: int, kind: str, description: str, quantity: float,
+                    unit_price_cents: int, billing_period: str, group_name: str) -> None:
+        if not description.strip(): raise ValueError("Omschrijving is verplicht")
+        if quantity <= 0: raise ValueError("Aantal moet groter zijn dan nul")
+        if unit_price_cents < 0: raise ValueError("Prijs mag niet negatief zijn")
+        if billing_period not in ("eenmalig", "maandelijks"): raise ValueError("Ongeldige facturatieperiode")
+        with self.db.transaction() as conn:
+            row=conn.execute("SELECT proposal_id FROM proposal_lines WHERE id=?",(line_id,)).fetchone()
+            if not row: raise KeyError(line_id)
+            conn.execute("""UPDATE proposal_lines SET kind=?,description=?,quantity=?,unit_price_cents=?,
+                            billing_period=?,group_name=? WHERE id=?""",
+                         (kind,description.strip(),quantity,unit_price_cents,billing_period,group_name.strip(),line_id))
+            self._recalculate(conn,int(row["proposal_id"]))
+
+    def duplicate_line(self, line_id: int) -> int:
+        with self.db.transaction() as conn:
+            source=conn.execute("SELECT * FROM proposal_lines WHERE id=?",(line_id,)).fetchone()
+            if not source: raise KeyError(line_id)
+            order=int(source["sort_order"])+5
+            conn.execute("UPDATE proposal_lines SET sort_order=sort_order+10 WHERE proposal_id=? AND sort_order>?",(source["proposal_id"],source["sort_order"]))
+            cur=conn.execute("""INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,
+                               sort_order,catalog_item_id,active,billing_period,group_name)
+                               VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                             (source["proposal_id"],source["kind"],source["description"],source["quantity"],
+                              source["unit_price_cents"],order,source["catalog_item_id"],source["active"],
+                              source["billing_period"],source["group_name"]))
+            self._recalculate(conn,int(source["proposal_id"]));return int(cur.lastrowid)
+
     def catalog(self, query: str = "", include_inactive: bool = False) -> list[dict]:
         term=f"%{query.strip()}%"; clauses=[]; values=[]
         if not include_inactive: clauses.append("active=1")
@@ -218,6 +246,26 @@ class ProposalService:
 
     def revisions(self, proposal_id: int) -> list[dict]:
         with self.db.transaction() as conn:return [dict(x) for x in conn.execute("SELECT id,revision_number,label,created_at FROM proposal_revisions WHERE proposal_id=? ORDER BY revision_number DESC",(proposal_id,))]
+
+    def restore_revision(self, proposal_id: int, revision_id: int) -> int:
+        with self.db.transaction() as conn:
+            row=conn.execute("SELECT snapshot_json FROM proposal_revisions WHERE id=? AND proposal_id=?",(revision_id,proposal_id)).fetchone()
+        if not row: raise ValueError("Revisie niet gevonden")
+        snapshot=json.loads(row["snapshot_json"]);proposal=snapshot.get("proposal",{});lines=snapshot.get("lines",[])
+        new_revision=self.create_revision(proposal_id,"Automatische back-up voor terugzetten")
+        with self.db.transaction() as conn:
+            conn.execute("""UPDATE proposals SET title=?,status=?,introduction=?,terms=?,sections_json=?,updated_at=CURRENT_TIMESTAMP
+                            WHERE id=?""",(proposal.get("title","Offerte"),proposal.get("status","concept"),
+                            proposal.get("introduction",""),proposal.get("terms",""),
+                            json.dumps(snapshot.get("sections",{}),ensure_ascii=False),proposal_id))
+            conn.execute("DELETE FROM proposal_lines WHERE proposal_id=?",(proposal_id,))
+            conn.executemany("""INSERT INTO proposal_lines(proposal_id,kind,description,quantity,unit_price_cents,
+                               sort_order,active,billing_period,group_name) VALUES(?,?,?,?,?,?,?,?,?)""",
+                             [(proposal_id,x.get("kind","dienst"),x.get("description",""),x.get("quantity",1),
+                               x.get("unit_price_cents",0),x.get("sort_order",i*10),x.get("active",1),
+                               x.get("billing_period","eenmalig"),x.get("group_name","")) for i,x in enumerate(lines,1)])
+            self._recalculate(conn,proposal_id)
+        return new_revision
 
     def validate(self, proposal_id: int) -> list[str]:
         proposal=self.get(proposal_id);lines=[x for x in self.lines(proposal_id) if x.active]
