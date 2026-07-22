@@ -61,10 +61,6 @@ def _background(canvas,doc,profile,proposal,cover=False):
     elif doc.page>1:
         canvas.setStrokeColor(LINE);canvas.setLineWidth(.35);canvas.line(17*mm,h-22*mm,w-17*mm,h-22*mm)
         canvas.setFillColor(BLUE);canvas.setFont("Helvetica-Bold",8);canvas.drawRightString(w-17*mm,h-17*mm,profile.get("company_name") or "NOWA Solutions")
-        watermark=assets/"nowa_background_watermark.png"
-        if watermark.exists():
-            wm_w=(1055-575)/1055*w;wm_h=(1115-515)/1491*h;x=575/1055*w;y=h-(1115/1491*h)
-            canvas.drawImage(ImageReader(str(watermark)),x,y,width=wm_w,height=wm_h,preserveAspectRatio=True,mask="auto")
         canvas.setFillColor(colors.HexColor("#6B7F8E"));canvas.setFont("Helvetica",7.5);canvas.drawString(17*mm,11*mm,profile.get("footer_text") or "NOWA Solutions");canvas.drawRightString(w-17*mm,11*mm,f"{proposal.number} | Pagina {doc.page}")
     canvas.restoreState()
 
