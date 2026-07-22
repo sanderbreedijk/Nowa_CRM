@@ -26,4 +26,3 @@ def nav_icon(symbol: str) -> QIcon:
     painter.drawText(pixmap.rect(), Qt.AlignCenter, symbol[:3].upper())
     painter.end()
     return QIcon(pixmap)
-
