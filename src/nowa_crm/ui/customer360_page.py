@@ -64,9 +64,9 @@ class Customer360Page(QWidget):
         customer_id=self.customer.currentData()
         if not customer_id:self.identity.setText("Voeg eerst een klant toe.");self.contactline.clear();self.timeline.setRowCount(0);return
         data=self.service.snapshot(customer_id);c=data["customer"]
-        self.identity.setText(f"{c.name}   ·   {c.customer_number}")
+        self.identity.setText(f"{c.name}   ·   {c.customer_number}   ·   {c.status}")
         address=" ".join(x for x in (c.street,c.postal_code,c.city,c.country) if x)
-        self.contactline.setText("   ·   ".join(x for x in (c.phone,c.mobile_phone,c.email,address) if x) or "Nog geen contactgegevens vastgelegd")
+        self.contactline.setText("   ·   ".join(x for x in (c.phone,c.mobile_phone,c.email,address,c.tags) if x) or "Nog geen contactgegevens vastgelegd")
         values=(len(data["contacts"]),len(data["proposals"]),len(data["vault"]),len(data["users"]),sum(int(x["quantity"]) for x in data["licenses"]),
                 sum(int(x["quantity"]) for x in data["hardware"]),len([x for x in data["actions"] if x["status"] not in ("Gereed","Geannuleerd")]),
                 len([x for x in data["tickets"] if x["status"] not in ("Opgelost","Gesloten")]),len(data["mail"]),len(data["documents"]))

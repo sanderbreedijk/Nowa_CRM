@@ -222,7 +222,7 @@ class MainWindow(QMainWindow):
         reactivate_btn=QPushButton("Heractiveren");reactivate_btn.clicked.connect(self.reactivate_customer)
         row.addWidget(self.customer_search,1); row.addWidget(dossier); row.addWidget(edit); row.addWidget(contacts); row.addWidget(add); box.addWidget(toolbar)
         importbar=QFrame();importbar.setObjectName("ActionBar");tools=QHBoxLayout(importbar);tools.setContentsMargins(12,8,12,8);tools.addWidget(QLabel("Gegevensbeheer"));tools.addStretch();tools.addWidget(import_btn);tools.addWidget(history_btn);tools.addWidget(export_btn);tools.addWidget(reactivate_btn);box.addWidget(importbar)
-        self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer); box.addWidget(self.customer_table,1); return page
+        self.customer_table=QTableWidget(0,10); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","Status","Labels","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(9,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Offerteoverzicht")); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals);self.proposal_status=QComboBox();self.proposal_status.addItems(["Alle statussen","concept","verzonden","geaccepteerd","afgewezen","verlopen"]);self.proposal_status.currentTextChanged.connect(self.refresh_proposals);row.addWidget(self.proposal_search,1);row.addWidget(self.proposal_status);box.addWidget(searchbar)
         body=QHBoxLayout();self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True);self.proposal_table.setAlternatingRowColors(True); self.proposal_table.doubleClicked.connect(self.edit_proposal)
@@ -240,7 +240,7 @@ class MainWindow(QMainWindow):
     def _selected_id(self,table,col):
         row=table.currentRow(); item=table.item(row,col) if row>=0 else None; return int(item.text()) if item else None
     def open_selected_customer(self,*_):
-        customer_id=self._selected_id(self.customer_table,7)
+        customer_id=self._selected_id(self.customer_table,9)
         if customer_id:self.open_customer(customer_id)
     def add_customer(self):
         dlg=CustomerDialog(self)
@@ -248,14 +248,14 @@ class MainWindow(QMainWindow):
             try:self.customers.create(*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def edit_customer(self,*_):
-        cid=self._selected_id(self.customer_table,7)
+        cid=self._selected_id(self.customer_table,9)
         if not cid:return
         customer=self.customers.get(cid); dlg=CustomerDialog(self,customer)
         if dlg.exec():
             try:self.customers.update(cid,*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def manage_contacts(self):
-        cid=self._selected_id(self.customer_table,7)
+        cid=self._selected_id(self.customer_table,9)
         if not cid: QMessageBox.information(self,"Contactpersonen","Selecteer eerst een klant."); return
         existing=self.customers.contacts(cid); summary="\n".join(f"• {x.name} — {x.role or 'contact'} — {x.phone or x.email}" for x in existing) or "Nog geen contactpersonen."
         if QMessageBox.question(self,"Contactpersonen",summary+"\n\nNieuwe contactpersoon toevoegen?")!=QMessageBox.Yes:return
@@ -540,7 +540,10 @@ class MainWindow(QMainWindow):
         if not hasattr(self,"customer_table"):return
         rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows))
         for r,x in enumerate(rows):
-            for c,v in enumerate((x.customer_number,x.name,x.email,x.phone,x.mobile_phone,x.city,x.country,str(x.id))):self.customer_table.setItem(r,c,QTableWidgetItem(v))
+            for c,v in enumerate((x.customer_number,x.name,x.status,x.tags,x.email,x.phone,x.mobile_phone,x.city,x.country,str(x.id))):
+                item=QTableWidgetItem(v)
+                if c==2:item.setForeground(QColor({"actief":"#16815F","prospect":"#1265C4","tijdelijk gestopt":"#9A4B11","uitgeschreven":"#6B7280"}.get(x.status,"#344259")))
+                self.customer_table.setItem(r,c,item)
     def refresh_proposals(self,*_):
         if not hasattr(self,"proposal_table"):return
         rows=self.proposals.list(self.proposal_search.text());status=self.proposal_status.currentText() if hasattr(self,"proposal_status") else "Alle statussen"

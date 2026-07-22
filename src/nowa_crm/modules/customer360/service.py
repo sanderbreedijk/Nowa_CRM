@@ -52,4 +52,5 @@ class Customer360Service:
         for x in data["documents"]:rows.append({"date":x["created_at"],"kind":"Document","title":x["title"],"detail":x["document_type"]})
         for x in data["tickets"]:rows.append({"date":x["updated_at"],"kind":"Ticket","title":f"{x['number']} · {x['subject']}","detail":x["status"]})
         for x in data["reports"]:rows.append({"date":x["created_at"],"kind":"Rapportage","title":x["subject"],"detail":f"{x['progress_percent']}% voortgang"})
+        for x in self.customers.history(customer_id):rows.append({"date":x["created_at"],"kind":"Klantwijziging","title":x["action"],"detail":x["changed_fields"]})
         return sorted(rows,key=lambda x:(x["date"] or "",x["title"]),reverse=True)
