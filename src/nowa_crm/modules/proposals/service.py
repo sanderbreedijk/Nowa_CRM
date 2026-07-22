@@ -20,6 +20,8 @@ class Proposal:
     introduction: str
     terms: str
     sections_json: str
+    created_at: str
+    updated_at: str
 
 
 @dataclass(frozen=True)
@@ -66,7 +68,7 @@ class ProposalService:
         term = f"%{query.strip()}%"
         with self.db.transaction() as conn:
             rows = conn.execute(
-                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms,p.sections_json
+                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms,p.sections_json,p.created_at,p.updated_at
                    FROM proposals p JOIN customers c ON c.id=p.customer_id
                    WHERE ?='' OR p.number LIKE ? OR p.title LIKE ? OR c.name LIKE ?
                    ORDER BY p.updated_at DESC,p.id DESC""", (query.strip(), term, term, term)
@@ -82,7 +84,7 @@ class ProposalService:
     def get(self, proposal_id: int) -> Proposal | None:
         with self.db.transaction() as conn:
             row = conn.execute(
-                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms,p.sections_json
+                """SELECT p.id,p.customer_id,c.name customer_name,p.number,p.title,p.status,p.revision,p.total_cents,p.introduction,p.terms,p.sections_json,p.created_at,p.updated_at
                    FROM proposals p JOIN customers c ON c.id=p.customer_id WHERE p.id=?""", (proposal_id,)
             ).fetchone()
         return Proposal(**dict(row)) if row else None
