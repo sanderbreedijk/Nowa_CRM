@@ -47,6 +47,15 @@ QLabel#MiniKpiIcon[accent="orange"] { background-color: #FFF0DE; color: #B75B13;
 QLabel#MiniKpi { color: #102A4C; font-size: 20px; font-weight: 750; }
 QLabel#SectionTitle { color: #183453; font-size: 16px; font-weight: 750; }
 QLabel#AttentionBanner { background-color: #FFF4E6; color: #9A4B11; border: 1px solid #F4D7B2; border-radius: 10px; padding: 10px 13px; font-weight: 650; }
+QFrame#LeftActionPanel { background-color: #EAF2FB; border: 1px solid #CFDDEB; border-radius: 15px; }
+QLabel#PanelTitle { color: #102A4C; font-size: 18px; font-weight: 750; padding: 2px 2px 0 2px; }
+QLabel#PanelText { color: #68788D; font-size: 12px; padding: 0 2px 8px 2px; }
+QPushButton#SideAction, QPushButton#SidePrimary { text-align: left; border-radius: 11px; padding: 10px 13px; min-height: 28px; }
+QPushButton#SideAction { background-color: #FFFFFF; border: 1px solid #C8D7E6; color: #203B5C; }
+QPushButton#SideAction:hover { background-color: #F7FBFF; border-color: #4A98F4; color: #0C5FB9; }
+QPushButton#SidePrimary { background-color: #1677E8; border: 1px solid #1677E8; color: #FFFFFF; }
+QPushButton#SidePrimary:hover { background-color: #0D65C8; border-color: #0D65C8; color: #FFFFFF; }
+QLabel#SecurityNote { background-color: #DDF4EB; color: #176B54; border: 1px solid #B8E1D3; border-radius: 10px; padding: 10px; font-size: 11px; font-weight: 650; }
 QGroupBox { margin-top: 10px; font-weight: 700; color: #203550; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 QFrame#Card QLabel { background-color: transparent; color: #344259; }

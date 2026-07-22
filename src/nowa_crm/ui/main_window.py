@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
                                QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
                                QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem,
@@ -224,11 +224,19 @@ class MainWindow(QMainWindow):
         importbar=QFrame();importbar.setObjectName("ActionBar");tools=QHBoxLayout(importbar);tools.setContentsMargins(12,8,12,8);tools.addWidget(QLabel("Gegevensbeheer"));tools.addStretch();tools.addWidget(import_btn);tools.addWidget(history_btn);tools.addWidget(export_btn);tools.addWidget(reactivate_btn);box.addWidget(importbar)
         self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
-        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); import_old=QPushButton("Oude offerte importeren"); import_old.clicked.connect(self.import_legacy_proposal); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(import_old); row.addWidget(add); box.addLayout(row)
-        self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); self.proposal_table.doubleClicked.connect(self.edit_proposal); box.addWidget(self.proposal_table,1); return page
+        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Offerteoverzicht")); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals);self.proposal_status=QComboBox();self.proposal_status.addItems(["Alle statussen","concept","verzonden","geaccepteerd","afgewezen","verlopen"]);self.proposal_status.currentTextChanged.connect(self.refresh_proposals);row.addWidget(self.proposal_search,1);row.addWidget(self.proposal_status);box.addWidget(searchbar)
+        body=QHBoxLayout();self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True);self.proposal_table.setAlternatingRowColors(True); self.proposal_table.doubleClicked.connect(self.edit_proposal)
+        actions=QFrame();actions.setObjectName("LeftActionPanel");side=QVBoxLayout(actions);side.setContentsMargins(16,16,16,16);side.setSpacing(10);head=QLabel("Offerte-acties");head.setObjectName("PanelTitle");side.addWidget(head);sub=QLabel("Selecteer een offerte voor de acties hieronder.");sub.setObjectName("PanelText");sub.setWordWrap(True);side.addWidget(sub)
+        for symbol,text,handler,primary in (("+","Nieuwe offerte",self.add_proposal,True),("OP","Openen",self.edit_proposal,False),("KO","Dupliceren",self.duplicate_proposal,False),("RV","Nieuwe revisie",self.revise_proposal,False),("CK","Controleer offerte",self.validate_proposal,False),("IM","Oude offerte importeren",self.import_legacy_proposal,False)):
+            button=QPushButton(text);button.setObjectName("SidePrimary" if primary else "SideAction");button.setIcon(nav_icon(symbol));button.setIconSize(QSize(28,28));button.clicked.connect(handler);side.addWidget(button)
+        side.addStretch();actions.setFixedWidth(245);body.addWidget(actions);body.addWidget(self.proposal_table,1);box.addLayout(body,1);return page
     def _vault_page(self):
-        page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; zoek ook rechtstreeks op telefoonnummer."); row=QHBoxLayout(); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, telefoon, account, host, gebruikersnaam of domein…"); self.vault_search.textChanged.connect(self.refresh_vault); reveal=QPushButton("Toon wachtwoord"); reveal.clicked.connect(self.reveal_secret); import_btn=QPushButton("KeePass CSV import"); import_btn.clicked.connect(self.import_keepass); add=QPushButton("Nieuw kluisitem"); add.setObjectName("Primary"); add.clicked.connect(self.add_vault); row.addWidget(self.vault_search,1); row.addWidget(import_btn); row.addWidget(reveal); row.addWidget(add); box.addLayout(row)
-        self.vault_table=QTableWidget(0,9); self.vault_table.setHorizontalHeaderLabels(["Klant","Klantnr.","Categorie","Groep","Omschrijving","Gebruikersnaam","Host / IP","URL","ID"]); self.vault_table.setColumnHidden(8,True); self.vault_table.horizontalHeader().setStretchLastSection(True); self.vault_table.doubleClicked.connect(self.reveal_secret); box.addWidget(self.vault_table,1); return page
+        page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; zoek ook rechtstreeks op telefoonnummer.");searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Veilige zoekopdracht")); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, telefoon, account, host, gebruikersnaam of domein…"); self.vault_search.textChanged.connect(self.refresh_vault);row.addWidget(self.vault_search,1);box.addWidget(searchbar)
+        body=QHBoxLayout();self.vault_table=QTableWidget(0,10); self.vault_table.setHorizontalHeaderLabels(["Klant","Klantnr.","Categorie","Groep","Omschrijving","Gebruikersnaam","Host / IP","URL","Klant-ID","ID"]); self.vault_table.setColumnHidden(8,True);self.vault_table.setColumnHidden(9,True); self.vault_table.horizontalHeader().setStretchLastSection(True);self.vault_table.setAlternatingRowColors(True); self.vault_table.doubleClicked.connect(self.reveal_secret)
+        actions=QFrame();actions.setObjectName("LeftActionPanel");side=QVBoxLayout(actions);side.setContentsMargins(16,16,16,16);side.setSpacing(10);head=QLabel("Kluis-acties");head.setObjectName("PanelTitle");side.addWidget(head);sub=QLabel("Wachtwoorden worden alleen vrijgegeven na de telefonische verificatiestappen.");sub.setObjectName("PanelText");sub.setWordWrap(True);side.addWidget(sub)
+        for symbol,text,handler,primary in (("+","Nieuw kluisitem",self.add_vault,True),("PW","Wachtwoord tonen",self.reveal_secret,False),("US","Gebruikersnaam kopiëren",self.copy_vault_username,False),("360","Open klantdossier",self.open_vault_customer,False),("KP","KeePass importeren",self.import_keepass,False)):
+            button=QPushButton(text);button.setObjectName("SidePrimary" if primary else "SideAction");button.setIcon(nav_icon(symbol));button.setIconSize(QSize(28,28));button.clicked.connect(handler);side.addWidget(button)
+        side.addStretch();notice=QLabel("Lokaal versleuteld\nGeen credentials in GitHub");notice.setObjectName("SecurityNote");notice.setWordWrap(True);side.addWidget(notice);actions.setFixedWidth(245);body.addWidget(actions);body.addWidget(self.vault_table,1);box.addLayout(body,1);return page
     def _selected_id(self,table,col):
         row=table.currentRow(); item=table.item(row,col) if row>=0 else None; return int(item.text()) if item else None
     def open_selected_customer(self,*_):
@@ -370,6 +378,20 @@ class MainWindow(QMainWindow):
     def edit_proposal(self,*_):
         proposal_id=self._selected_id(self.proposal_table,6)
         if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+    def duplicate_proposal(self):
+        proposal_id=self._selected_id(self.proposal_table,6)
+        if not proposal_id:return
+        try:new_id=self.proposals.duplicate(proposal_id);self.refresh_all();ProposalDialog(self.proposals,new_id,self).exec();self.refresh_all()
+        except Exception as exc:QMessageBox.warning(self,"Offerte dupliceren",str(exc))
+    def revise_proposal(self):
+        proposal_id=self._selected_id(self.proposal_table,6)
+        if not proposal_id:return
+        label,ok=QInputDialog.getText(self,"Nieuwe revisie","Omschrijving van deze revisie")
+        if ok:self.proposals.create_revision(proposal_id,label);self.refresh_proposals();QMessageBox.information(self,"Revisie opgeslagen","De huidige offerte is als nieuwe revisie vastgelegd.")
+    def validate_proposal(self):
+        proposal_id=self._selected_id(self.proposal_table,6)
+        if not proposal_id:return
+        warnings=self.proposals.validate(proposal_id);QMessageBox.information(self,"Offertecontrole","\n".join(f"• {x}" for x in warnings) if warnings else "De offerte is volledig en bevat geen bekende aandachtspunten.")
     def open_proposal(self,proposal_id):
         ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
     def open_customer(self,customer_id):
@@ -435,7 +457,7 @@ class MainWindow(QMainWindow):
             count=self.vault.import_keepass_csv(customers[labels.index(label)].id,Path(filename)); self.refresh_all(); QMessageBox.information(self,"KeePass import",f"{count} kluisitems veilig geïmporteerd.")
         except Exception as e: QMessageBox.warning(self,"KeePass import",str(e))
     def reveal_secret(self,*_):
-        entry_id=self._selected_id(self.vault_table,8)
+        entry_id=self._selected_id(self.vault_table,9)
         if not entry_id: QMessageBox.information(self,"IT Kluis","Selecteer eerst een kluisitem."); return
         call_id=self.telephony_page.call_id
         if not call_id:
@@ -460,6 +482,13 @@ class MainWindow(QMainWindow):
             secret=self.vault.reveal(entry_id,reason,verification_id); QApplication.clipboard().setText(secret); alphabet="  ".join(f"{ch} — {self._spell(ch)}" for ch in secret); QMessageBox.information(self,"Wachtwoord",f"{secret}\n\nSpelalfabet:\n{alphabet}\n\nHet wachtwoord staat 30 seconden op het klembord.")
             QTimer.singleShot(30000,lambda:self._clear_clipboard(secret))
         except Exception as e: QMessageBox.warning(self,"IT Kluis",str(e))
+    def copy_vault_username(self):
+        row=self.vault_table.currentRow();item=self.vault_table.item(row,5) if row>=0 else None
+        if not item:return
+        QApplication.clipboard().setText(item.text());QMessageBox.information(self,"IT Kluis","De gebruikersnaam is naar het klembord gekopieerd.")
+    def open_vault_customer(self):
+        customer_id=self._selected_id(self.vault_table,8)
+        if customer_id:self.open_customer(customer_id)
     def _polish_ui(self):
         for table in self.findChildren(QTableWidget):
             table.setAlternatingRowColors(True);table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -514,13 +543,18 @@ class MainWindow(QMainWindow):
             for c,v in enumerate((x.customer_number,x.name,x.email,x.phone,x.mobile_phone,x.city,x.country,str(x.id))):self.customer_table.setItem(r,c,QTableWidgetItem(v))
     def refresh_proposals(self,*_):
         if not hasattr(self,"proposal_table"):return
-        rows=self.proposals.list(self.proposal_search.text()); self.proposal_table.setRowCount(len(rows))
+        rows=self.proposals.list(self.proposal_search.text());status=self.proposal_status.currentText() if hasattr(self,"proposal_status") else "Alle statussen"
+        if status!="Alle statussen":rows=[x for x in rows if x.status==status]
+        self.proposal_table.setRowCount(len(rows));colors={"concept":"#6B7280","verzonden":"#1265C4","geaccepteerd":"#16815F","afgewezen":"#B42318","verlopen":"#9A4B11"}
         for r,x in enumerate(rows):
             vals=(x.number,x.customer_name,x.title,x.status,str(x.revision),f"€ {x.total_cents/100:,.2f}",str(x.id))
-            for c,v in enumerate(vals):self.proposal_table.setItem(r,c,QTableWidgetItem(v))
+            for c,v in enumerate(vals):
+                item=QTableWidgetItem(v)
+                if c==3:item.setForeground(QColor(colors.get(x.status,"#344259")))
+                self.proposal_table.setItem(r,c,item)
     def refresh_vault(self,*_):
         if not hasattr(self,"vault_table"):return
         rows=self.vault.search_all(self.vault_search.text()); self.vault_table.setRowCount(len(rows))
         for r,x in enumerate(rows):
-            vals=(x["customer_name"],x["customer_number"],x["category"],x["group_path"],x["label"],x["username"],x["host"],x["url"],str(x["id"]))
+            vals=(x["customer_name"],x["customer_number"],x["category"],x["group_path"],x["label"],x["username"],x["host"],x["url"],str(x["customer_id"]),str(x["id"]))
             for c,v in enumerate(vals):self.vault_table.setItem(r,c,QTableWidgetItem(v or ""))
