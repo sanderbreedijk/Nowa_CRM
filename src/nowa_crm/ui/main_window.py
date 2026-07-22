@@ -173,4 +173,324 @@ class MainWindow(QMainWindow):
         rows=self.daystart_service.items(self.day_owner.text(),self.day_priority.currentText(),self.day_period.currentText());self.day_table.setRowCount(len(rows))
         for r,item in enumerate(rows):
             values=(item["priority"],item["kind"],item["due_at"],item["customer_name"],item["title"],item["assigned_to"],item["detail"],item["customer_id"] or "",item["entity_id"])
-            for c,value in e
+            for c,value in enumerate(values):self.day_table.setItem(r,c,QTableWidgetItem(str(value or "")))
+        summary=self.daystart_service.summary();self.day_summary.setText(f"{summary['total']} open · {summary['overdue']} te laat · {summary['urgent']} urgent")
+
+    def open_daystart_customer(self,*_):
+        selected=self.selected_daystart()
+        if selected and selected[2]:self.open_customer(selected[2])
+
+    def assign_daystart(self):
+        selected=self.selected_daystart()
+        if not selected:return
+        owner,ok=QInputDialog.getText(self,"Dagstart toewijzen","Medewerker")
+        if ok:self.daystart_service.assign(selected[0],selected[1],owner);self.refresh_daystart()
+
+    def snooze_daystart(self):
+        selected=self.selected_daystart()
+        if not selected:return
+        until,ok=QInputDialog.getText(self,"Melding uitstellen","Tonen vanaf (jjjj-mm-dd)")
+        if ok:
+            try:self.daystart_service.snooze(selected[0],selected[1],until);self.refresh_daystart()
+            except Exception as exc:QMessageBox.warning(self,"Melding uitstellen",str(exc))
+
+    def dismiss_daystart(self):
+        selected=self.selected_daystart()
+        if selected:self.daystart_service.dismiss(selected[0],selected[1]);self.refresh_daystart()
+    def _customer_page(self):
+        page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules."); row=QHBoxLayout(); self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek op naam, nummer, telefoon, e-mail of plaats…"); self.customer_search.textChanged.connect(self.refresh_customers)
+        add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.clicked.connect(self.add_customer); edit=QPushButton("Bewerken"); edit.clicked.connect(self.edit_customer); contacts=QPushButton("Contactpersonen"); contacts.clicked.connect(self.manage_contacts)
+        import_btn=QPushButton("Excel synchroniseren");import_btn.clicked.connect(self.import_customers)
+        history_btn=QPushButton("Importhistorie");history_btn.clicked.connect(self.customer_import_history)
+        export_btn=QPushButton("Exporteren");export_btn.clicked.connect(self.export_customers)
+        reactivate_btn=QPushButton("Heractiveren");reactivate_btn.clicked.connect(self.reactivate_customer)
+        row.addWidget(self.customer_search,1); row.addWidget(import_btn); row.addWidget(history_btn); row.addWidget(export_btn); row.addWidget(reactivate_btn); row.addWidget(contacts); row.addWidget(edit); row.addWidget(add); box.addLayout(row)
+        self.customer_table=QTableWidget(0,8); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(7,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.doubleClicked.connect(self.edit_customer); box.addWidget(self.customer_table,1); return page
+    def _proposal_page(self):
+        page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); row=QHBoxLayout(); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals); import_old=QPushButton("Oude offerte importeren"); import_old.clicked.connect(self.import_legacy_proposal); add=QPushButton("Nieuwe offerte"); add.setObjectName("Primary"); add.clicked.connect(self.add_proposal); row.addWidget(self.proposal_search,1); row.addWidget(import_old); row.addWidget(add); box.addLayout(row)        self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True); self.proposal_table.doubleClicked.connect(self.edit_proposal); box.addWidget(self.proposal_table,1); return page
+    def _vault_page(self):
+        page,box=self._page("IT Kluis","Vind tijdens een klantgesprek snel het juiste gegeven; zoek ook rechtstreeks op telefoonnummer."); row=QHBoxLayout(); self.vault_search=QLineEdit(); self.vault_search.setPlaceholderText("Zoek klant, telefoon, account, host, gebruikersnaam of domein…"); self.vault_search.textChanged.connect(self.refresh_vault); reveal=QPushButton("Toon wachtwoord"); reveal.clicked.connect(self.reveal_secret); import_btn=QPushButton("KeePass CSV import"); import_btn.clicked.connect(self.import_keepass); add=QPushButton("Nieuw kluisitem"); add.setObjectName("Primary"); add.clicked.connect(self.add_vault); row.addWidget(self.vault_search,1); row.addWidget(import_btn); row.addWidget(reveal); row.addWidget(add); box.addLayout(row)
+        self.vault_table=QTableWidget(0,9); self.vault_table.setHorizontalHeaderLabels(["Klant","Klantnr.","Categorie","Groep","Omschrijving","Gebruikersnaam","Host / IP","URL","ID"]); self.vault_table.setColumnHidden(8,True); self.vault_table.horizontalHeader().setStretchLastSection(True); self.vault_table.doubleClicked.connect(self.reveal_secret); box.addWidget(self.vault_table,1); return page
+    def _selected_id(self,table,col):
+        row=table.currentRow(); item=table.item(row,col) if row>=0 else None; return int(item.text()) if item else None
+    def add_customer(self):
+        dlg=CustomerDialog(self)
+        if dlg.exec():
+            try:self.customers.create(*dlg.values()); self.refresh_all(); self.mail_page.reload()
+            except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
+    def edit_customer(self,*_):
+        cid=self._selected_id(self.customer_table,7)
+        if not cid:return
+        customer=self.customers.get(cid); dlg=CustomerDialog(self,customer)
+        if dlg.exec():
+            try:self.customers.update(cid,*dlg.values()); self.refresh_all(); self.mail_page.reload()
+            except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
+    def manage_contacts(self):
+        cid=self._selected_id(self.customer_table,7)
+        if not cid: QMessageBox.information(self,"Contactpersonen","Selecteer eerst een klant."); return
+        existing=self.customers.contacts(cid); summary="\n".join(f"• {x.name} — {x.role or 'contact'} — {x.phone or x.email}" for x in existing) or "Nog geen contactpersonen."
+        if QMessageBox.question(self,"Contactpersonen",summary+"\n\nNieuwe contactpersoon toevoegen?")!=QMessageBox.Yes:return
+        dlg=ContactDialog(self)
+        if dlg.exec():
+            try:self.customers.save_contact(cid,*dlg.values()); self.refresh_customers()
+            except Exception as e: QMessageBox.warning(self,"Contactpersoon",str(e))
+    def add_proposal(self):
+        customers=self.customers.search();
+        if not customers: QMessageBox.information(self,"Offerte","Voeg eerst een klant toe."); return
+        labels=[f"{c.customer_number} — {c.name}" for c in customers]; label,ok=QInputDialog.getItem(self,"Nieuwe offerte","Klant",labels,0,False)
+        if not ok:return
+        title,ok=QInputDialog.getText(self,"Nieuwe offerte","Titel")
+        if ok:
+            try:
+                proposal_id=self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all(); ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+            except Exception as e: QMessageBox.critical(self,"Offerte",str(e))
+    def import_legacy_proposal(self):
+        filename,_=QFileDialog.getOpenFileName(self,"Geëxtraheerde oude offerte selecteren","","NOWA-offertepakket (*.zip)")
+        if not filename:return
+        try:
+            preview=self.legacy_proposal_import.preview(Path(filename))
+            customers=self.customers.search()
+            if not customers:
+                QMessageBox.information(self,"Oude offerte importeren","Voeg eerst de klant toe waaraan de offerte gekoppeld moet worden.");return
+            labels=[f"{customer.customer_number} — {customer.name}" for customer in customers]
+            label,ok=QInputDialog.getItem(self,"Klant voor oude offerte",f"Kies de klant voor {preview.source_number} — {preview.title}",labels,0,False)
+            if not ok:return
+            customer=customers[labels.index(label)]
+            line_summary="\n".join(
+                f"• {line['description']}: {line['quantity']:g} × € {line['unit_price_cents']/100:,.2f}"
+                for line in preview.lines[:12]
+            )
+            message=(
+                f"GEKOZEN KLANT\n{customer.customer_number} — {customer.name}\n\n"
+                f"OUDE OFFERTE\nNummer: {preview.source_number}\nDatum: {preview.source_date or 'onbekend'}\n"
+                f"Titel: {preview.title}\nUren: {preview.labor_hours:g}\n"
+                f"Totaal excl. btw: € {preview.subtotal_cents/100:,.2f}\n\n"
+                f"KOPPELING AAN KLANT\nGebruikers: {preview.intake.get('users_count',0)}\n"
+                f"Apparaten: {preview.intake.get('devices_count',0)}\n"
+                f"Gedeelde mailboxen: {preview.intake.get('shared_mailboxes',0)}\n"
+                f"Licentieregels: {len(preview.licenses)}\nHardwareregels: {len(preview.hardware)}\n"
+                f"Originele PDF: {'ja' if preview.pdf_file else 'nee'}\n\n"
+                f"OFFERTEREGELS\n{line_summary}\n\n"
+                "Bestaande klantgegevens worden behouden. Nieuwe gegevens worden toegevoegd; verschillen worden gemeld.\n"
+                "Vooraf wordt automatisch een lokale back-up gemaakt.\n\nImport uitvoeren?"
+            )
+            if QMessageBox.question(self,"Oude offerte controleren",message)!=QMessageBox.Yes:return
+            result=self.legacy_proposal_import.apply(preview,customer.id)
+            self.refresh_all();self.assets_page.reload();self.customer360.reload()
+            warning_text=("\n\nAandachtspunten:\n"+"\n".join(f"• {x}" for x in result["warnings"])) if result["warnings"] else ""
+            QMessageBox.information(
+                self,"Oude offerte geïmporteerd",
+                f"Offerte gekoppeld aan {customer.name}.\n\nOfferteregels: {result['lines']}\n"
+                f"Nieuwe licenties: {result['licenses']}\nNieuwe hardware: {result['hardware']}\n"
+                f"PDF in documentcentrum: {'ja' if result['document_id'] else 'nee'}\n\n"
+                f"Back-up:\n{result['backup']}{warning_text}",
+            )
+            ProposalDialog(self.proposals,result["proposal_id"],self).exec();self.refresh_all()
+        except Exception as exc:
+            QMessageBox.warning(self,"Oude offerte importeren",str(exc))
+    def import_customers(self):
+        filename,_=QFileDialog.getOpenFileName(self,"Excel-adressenlijst selecteren","","Excel-bestanden (*.xlsx)")
+        if not filename:return
+        try:
+            preview=self.customer_import.preview(Path(filename))
+            detail="\n".join(f"• {item['action']}: {item['customer_number']} — {item['name']} ({item['fields']})" for item in preview.changes[:25])
+            if len(preview.changes)>25:detail+=f"\n• … en nog {len(preview.changes)-25} wijzigingen"
+            warnings=("\n\nWAARSCHUWINGEN\n"+"\n".join(f"• {text}" for text in preview.warnings)) if preview.warnings else ""
+            message=(f"Bronregels: {len(preview.rows)}\n\n"
+                     f"Nieuw: {preview.created}\nBijwerken: {preview.updated}\nOngewijzigd: {preview.unchanged}\n"
+                     f"Niet meer aanwezig (uit actieve klantenlijst): {preview.archived}\n\n"
+                     f"WIJZIGINGEN\n{detail or 'Geen wijzigingen.'}{warnings}\n\n"
+                     "Fax en krediettermijn worden genegeerd.\n"
+                     "Vóór uitvoering wordt automatisch een lokale back-up gemaakt.\n\nSynchronisatie uitvoeren?")
+            if QMessageBox.question(self,"Klantimport controleren",message)!=QMessageBox.Yes:return
+            result=self.customer_import.apply(preview);self.refresh_all();self.mail_page.reload()
+            QMessageBox.information(self,"Klantimport voltooid",
+                f"{result['created']} toegevoegd\n{result['updated']} bijgewerkt\n{result['archived']} uitgefaseerd\n"
+                f"{result['unchanged']} ongewijzigd\n\nBack-up:\n{result['backup']}")
+        except Exception as exc:QMessageBox.warning(self,"Klantimport",str(exc))
+    def customer_import_history(self):
+        runs=self.customer_import.history()
+        if not runs:
+            QMessageBox.information(self,"Importhistorie","Er zijn nog geen klantimports uitgevoerd.");return
+        labels=[f"#{run['id']} — {run['created_at']} — {run['source_name']} — {run['status']}" for run in runs]
+        label,ok=QInputDialog.getItem(self,"Importhistorie","Import bekijken",labels,0,False)
+        if not ok:return
+        run=runs[labels.index(label)];changes=self.customer_import.changes(run["id"])
+        lines=[f"{item['action'].capitalize()}: {item['customer_number']} — {item['customer_name']}"
+               +(f" ({item['changed_fields']})" if item["changed_fields"] else "") for item in changes if item["action"]!="ongewijzigd"]
+        summary=(f"Bestand: {run['source_name']}\nDatum: {run['created_at']}\nDoor: {run['performed_by'] or 'onbekend'}\n"
+                 f"Status: {run['status']}\n\nNieuw: {run['created_count']}\nBijgewerkt: {run['updated_count']}\n"
+                 f"Gedeactiveerd: {run['archived_count']}\nOngewijzigd: {run['unchanged_count']}\n\n"
+                 +"Wijzigingen:\n"+("\n".join(lines[:40]) or "Geen wijzigingen."))
+        if len(lines)>40:summary+=f"\n… en nog {len(lines)-40}"
+        if run["status"]=="uitgevoerd":
+            answer=QMessageBox.question(self,"Importverslag",summary+"\n\nDeze laatste import ongedaan maken?")
+            if answer==QMessageBox.Yes:
+                try:
+                    result=self.customer_import.undo(run["id"]);self.refresh_all();self.mail_page.reload()
+                    QMessageBox.information(self,"Import hersteld",f"{result['restored']} klantwijzigingen zijn lokaal teruggedraaid.")
+                except Exception as exc:QMessageBox.warning(self,"Import herstellen",str(exc))
+        else:QMessageBox.information(self,"Importverslag",summary)
+    def export_customers(self):
+        filename,_=QFileDialog.getSaveFileName(self,"Actieve klanten exporteren",f"NOWA-klanten-{__version__}.xlsx","Excel-bestanden (*.xlsx)")
+        if not filename:return
+        if not filename.lower().endswith(".xlsx"):filename+=".xlsx"
+        try:
+            path=self.customer_import.export_active(Path(filename))
+            QMessageBox.information(self,"Klanten geëxporteerd",f"De actuele actieve klantenlijst is opgeslagen:\n{path}")
+        except Exception as exc:QMessageBox.warning(self,"Klanten exporteren",str(exc))
+    def reactivate_customer(self):
+        number,ok=QInputDialog.getText(self,"Klant opnieuw activeren","Klantnummer")
+        if ok and number.strip():
+            try:
+                self.customer_import.reactivate(number);self.refresh_all()
+                QMessageBox.information(self,"Klant geactiveerd",f"Klant {number.strip()} staat weer in de actieve klantenlijst.")
+            except Exception as exc:QMessageBox.warning(self,"Klant activeren",str(exc))
+    def edit_proposal(self,*_):
+        proposal_id=self._selected_id(self.proposal_table,6)
+        if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+    def open_proposal(self,proposal_id):
+        ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+    def open_customer(self,customer_id):
+        if self.customers.get(customer_id):self.customer360.select_customer(customer_id); self._show(3)
+    def open_vault(self,query):
+        self.vault_search.setText(query); self._show(6)
+    def open_mail_message(self,message_id):
+        if message_id is not None:self.mail_page.open_message(message_id)
+        self._show(7)
+    def open_call(self,call_id):
+        if call_id is not None:self.telephony_page.open_call(call_id)
+        self._show(8)
+    def create_ticket_from_communication(self,customer_id,subject,description,source_type,source_id):
+        try:
+            ticket_id=self.servicedesk_service.create_from_source(customer_id,subject or "Servicevraag",description,source_type,source_id)
+            self.servicedesk_page.open_ticket(ticket_id);self._show(9)
+        except Exception as exc:QMessageBox.warning(self,"Serviceticket",str(exc))
+    def open_global_search(self):
+        self._show(1);self.workspace_page.search.setFocus();self.workspace_page.search.selectAll()
+    def open_global_result(self,kind,entity_id,customer_id,title):
+        if kind=="Offerte" and entity_id:self.open_proposal(entity_id)
+        elif kind=="Ticket" and entity_id:self.servicedesk_page.open_ticket(entity_id);self._show(9)
+        elif kind=="E-mail" and entity_id:self.open_mail_message(entity_id)
+        elif kind=="Gesprek" and entity_id:self.open_call(entity_id)
+        elif kind=="Kluis":self.open_vault(title.split(" · ",1)[0])
+        elif kind=="Document":
+            self.documents_page.search.setText(title);self._show(17)
+        elif kind=="Projecttaak":
+            self.planning_page.reload_customers()
+            index=self.planning_page.customer.findData(customer_id)
+            if index>=0:self.planning_page.customer.setCurrentIndex(index)
+            self._show(11)
+        elif kind=="Actie":
+            index=self.workspace_page.customer.findData(customer_id)
+            if index>=0:self.workspace_page.customer.setCurrentIndex(index)
+            self._show(1)
+        elif customer_id:self.open_customer(customer_id)
+    def handle_incoming_phone(self,phone):
+        self.telephony_page.phone.setText(phone); self.telephony_page.incoming_call(); self._show(8); self.raise_(); self.activateWindow()
+    def add_vault(self):
+        customers=self.customers.search()
+        if not customers: QMessageBox.information(self,"IT Kluis","Voeg eerst een klant toe."); return
+        dlg=VaultDialog(customers,self)
+        if dlg.exec():
+            try:self.vault.add(dlg.customer.currentData(),dlg.label.text(),dlg.username.text(),dlg.secret.text(),dlg.category.currentText(),dlg.url.text(),dlg.group_path.text(),dlg.host.text(),dlg.notes.toPlainText()); self.refresh_all()
+            except Exception as e: QMessageBox.critical(self,"IT Kluis",str(e))
+    def import_keepass(self):
+        customers=self.customers.search()
+        if not customers: QMessageBox.information(self,"KeePass import","Voeg eerst een klant toe."); return
+        labels=[f"{c.customer_number} — {c.name}" for c in customers]; label,ok=QInputDialog.getItem(self,"KeePass import","Importeer gegevens voor klant",labels,0,False)
+        if not ok:return
+        filename,_=QFileDialog.getOpenFileName(self,"KeePass CSV selecteren","","CSV-bestanden (*.csv)")
+        if not filename:return
+        try:
+            count=self.vault.import_keepass_csv(customers[labels.index(label)].id,Path(filename)); self.refresh_all(); QMessageBox.information(self,"KeePass import",f"{count} kluisitems veilig geïmporteerd.")
+        except Exception as e: QMessageBox.warning(self,"KeePass import",str(e))
+    def reveal_secret(self,*_):
+        entry_id=self._selected_id(self.vault_table,8)        if not entry_id: QMessageBox.information(self,"IT Kluis","Selecteer eerst een kluisitem."); return
+        call_id=self.telephony_page.call_id
+        if not call_id:
+            QMessageBox.warning(self,"Veilige wachtwoordverstrekking","Start of selecteer eerst het telefoongesprek in Telefonie. Zonder gekoppeld gesprek blijft het wachtwoord verborgen.");return
+        call=self.telephony.get(call_id);entry=self.vault.entry_info(entry_id)
+        if not call or not entry:return
+        if call["customer_id"]!=entry["customer_id"]:
+            QMessageBox.warning(self,"Veilige wachtwoordverstrekking",f"De beller is gekoppeld aan {call['customer_name']}, maar het kluisitem hoort bij {entry['customer_name']}. Er wordt niets getoond.");return
+        requester,ok=QInputDialog.getText(self,"Stap 1 van 5 — Aanvrager","Naam van de persoon die het wachtwoord aanvraagt")
+        if not ok:return
+        methods=list(self.vault.VERIFICATION_METHODS);method,ok=QInputDialog.getItem(self,"Stap 2 van 5 — Verificatie","Gebruikte verificatiemethode",methods,0,False)
+        if not ok:return
+        reason,ok=QInputDialog.getText(self,"Stap 3 van 5 — Reden","Waarom heeft de beller dit wachtwoord nodig?")
+        if not ok:return
+        identity=QMessageBox.question(self,"Stap 4 van 5 — Identiteit","Is de identiteit daadwerkelijk gecontroleerd met de gekozen methode?",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
+        authority=QMessageBox.question(self,"Stap 5 van 5 — Bevoegdheid","Is vastgesteld dat deze persoon dit specifieke wachtwoord mag ontvangen?",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
+        try:
+            verification_id=self.vault.record_verification(entry_id,call_id,requester,method,reason,identity,authority)
+            if not identity or not authority:
+                QMessageBox.warning(self,"Verificatie mislukt","Identiteit en bevoegdheid moeten beide bevestigd zijn. De mislukte poging is lokaal vastgelegd; het wachtwoord blijft verborgen.");return
+            if QMessageBox.question(self,"Laatste bevestiging",f"Toon het wachtwoord van ‘{entry['label']}’ voor {requester}?\n\nDeze inzage wordt lokaal gelogd.",QMessageBox.Yes|QMessageBox.No,QMessageBox.No)!=QMessageBox.Yes:return
+            secret=self.vault.reveal(entry_id,reason,verification_id); QApplication.clipboard().setText(secret); alphabet="  ".join(f"{ch} — {self._spell(ch)}" for ch in secret); QMessageBox.information(self,"Wachtwoord",f"{secret}\n\nSpelalfabet:\n{alphabet}\n\nHet wachtwoord staat 30 seconden op het klembord.")
+            QTimer.singleShot(30000,lambda:self._clear_clipboard(secret))
+        except Exception as e: QMessageBox.warning(self,"IT Kluis",str(e))
+    def _polish_ui(self):
+        for table in self.findChildren(QTableWidget):
+            table.setAlternatingRowColors(True);table.setSelectionBehavior(QAbstractItemView.SelectRows)
+            table.setSelectionMode(QAbstractItemView.SingleSelection);table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            table.verticalHeader().setVisible(False);table.verticalHeader().setDefaultSectionSize(36)
+    def _clear_clipboard(self,secret):
+        if QApplication.clipboard().text()==secret: QApplication.clipboard().clear()
+    @staticmethod
+    def _spell(char):
+        words=dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",("Anton Bernard Cornelis Dirk Eduard Ferdinand Gerard Hendrik Izaak Johan Karel Lodewijk Maria Nico Otto Pieter Quotiënt Rudolf Simon Theodoor Utrecht Victor Willem Xantippe Ypsilon Zacharias").split()))
+        if char.upper() in words:return words[char.upper()]
+        if char.isdigit():return ("nul","één","twee","drie","vier","vijf","zes","zeven","acht","negen")[int(char)]
+        return {"@":"apenstaartje",".":"punt","-":"streepje","_":"laag streepje"}.get(char,"teken")
+    def check_for_updates(self):
+        self.update_status.setText("GitHub wordt gecontroleerd…"); QApplication.processEvents()
+        try:
+            release=UpdateService().latest()
+            if not release:
+                self.update_status.setText("Er is nog geen GitHub Release gepubliceerd."); return
+            if not release.is_newer:
+                self.update_status.setText(f"Versie {__version__} is actueel. Nieuwste release: {release.version}."); return
+            if not release.asset_url:
+                self.update_status.setText(f"Release {release.version} heeft nog geen Windows-pakket."); return
+            answer=QMessageBox.question(self,"NOWA CRM bijwerken",f"Versie {release.version} is beschikbaar. Nu downloaden en installeren?\n\nKlantgegevens blijven lokaal behouden.")
+            if answer!=QMessageBox.Yes:return
+            self.update_status.setText(f"Versie {release.version} wordt gedownload…"); QApplication.processEvents()
+            package=UpdateService().download(release); UpdateService().install_after_exit(package)
+            QMessageBox.information(self,"Update gereed","NOWA CRM sluit nu af en start automatisch opnieuw met de nieuwe versie."); QApplication.quit()
+        except Exception as exc:
+            self.update_status.setText(f"Updatecontrole mislukt: {exc}")
+    def refresh_all(self):
+        self.refresh_customers(); self.refresh_proposals(); self.refresh_vault()
+        if hasattr(self,"operations_page"):self.operations_page.reload_customers()
+        if hasattr(self,"workspace_page"):self.workspace_page.reload_customers()
+        if hasattr(self,"telephony_page"):self.telephony_page.reload_customers()
+        if hasattr(self,"customer360"):self.customer360.reload_customers()
+        if hasattr(self,"assets_page"):self.assets_page.reload_customers()
+        if hasattr(self,"servicedesk_page"):self.servicedesk_page.reload_customers()
+        if hasattr(self,"reporting_page"):self.reporting_page.reload_customers()
+        if hasattr(self,"planning_page"):self.planning_page.reload_customers()
+        if hasattr(self,"security_page"):self.security_page.reload_customers()
+        if hasattr(self,"communications_page"):self.communications_page.reload_customers()
+        if hasattr(self,"documents_page"):self.documents_page.reload_customers()
+        if hasattr(self,"integrations_page"):self.integrations_page.reload()
+        if hasattr(self,"day_table"):self.refresh_daystart()
+        stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
+        for label,value in zip(self.kpis,values):label.setText(str(value))
+    def refresh_customers(self,*_):
+        if not hasattr(self,"customer_table"):return
+        rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows))
+        for r,x in enumerate(rows):
+            for c,v in enumerate((x.customer_number,x.name,x.email,x.phone,x.mobile_phone,x.city,x.country,str(x.id))):self.customer_table.setItem(r,c,QTableWidgetItem(v))
+    def refresh_proposals(self,*_):
+        if not hasattr(self,"proposal_table"):return
+        rows=self.proposals.list(self.proposal_search.text()); self.proposal_table.setRowCount(len(rows))
+        for r,x in enumerate(rows):
+            vals=(x.number,x.customer_name,x.title,x.status,str(x.revision),f"€ {x.total_cents/100:,.2f}",str(x.id))
+            for c,v in enumerate(vals):self.proposal_table.setItem(r,c,QTableWidgetItem(v))
+    def refresh_vault(self,*_):
+        if not hasattr(self,"vault_table"):return
+        rows=self.vault.search_all(self.vault_search.text()); self.vault_table.setRowCount(len(rows))
+        for r,x in enumerate(rows):
+            vals=(x["customer_name"],x["customer_number"],x["category"],x["group_path"],x["label"],x["username"],x["host"],x["url"],str(x["id"]))
+            for c,v in enumerate(vals):self.vault_table.setItem(r,c,QTableWidgetItem(v or ""))
