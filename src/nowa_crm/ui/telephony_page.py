@@ -9,8 +9,9 @@ from nowa_crm.modules.telephony.service import TelephonyService
 
 
 class TelephonyPage(QWidget):
-    def __init__(self, customers: CustomerService, service: TelephonyService, open_customer, open_vault, parent=None):
+    def __init__(self, customers: CustomerService, service: TelephonyService, open_customer, open_vault, create_ticket=None, parent=None):
         super().__init__(parent); self.customers=customers; self.service=service; self.open_customer=open_customer; self.open_vault=open_vault; self.call_id=None
+        self.create_ticket=create_ticket
         root=QVBoxLayout(self); title=QLabel("Telefonie en Coligo"); title.setObjectName("Title"); root.addWidget(title)
         sub=QLabel("Herken inkomende nummers, open direct het klantdossier of de IT-kluis en registreer het gesprek."); sub.setObjectName("Subtitle"); root.addWidget(sub)
         lookup=QHBoxLayout(); self.phone=QLineEdit(); self.phone.setPlaceholderText("Telefoonnummer uit Coligo of handmatig…"); self.phone.returnPressed.connect(self.incoming_call)
@@ -19,8 +20,9 @@ class TelephonyPage(QWidget):
         missed=QPushButton("Gemiste oproep");missed.clicked.connect(self.missed_call)
         lookup.addWidget(self.phone,1); lookup.addWidget(incoming); lookup.addWidget(outgoing);lookup.addWidget(missed); root.addLayout(lookup)
         self.match=QLabel("Nog geen actief gesprek."); self.match.setWordWrap(True); self.match.setStyleSheet("font-size:16px;font-weight:700;color:#0B2342"); root.addWidget(self.match)
-        quick=QHBoxLayout(); dossier=QPushButton("Open klantdossier"); dossier.clicked.connect(self._open_customer); vault=QPushButton("Open IT-kluis"); vault.clicked.connect(self._open_vault); link=QPushButton("Koppel aan klant"); link.clicked.connect(self.link_customer)
-        quick.addWidget(dossier); quick.addWidget(vault); quick.addWidget(link); quick.addStretch(); root.addLayout(quick)
+        quick=QHBoxLayout(); dossier=QPushButton("Open klantdossier"); dossier.clicked.connect(self._open_customer); vault=QPushButton("Open IT-kluis"); vault.clicked.connect(self._open_vault); link=QPushButton("Onbekend nummer toevoegen"); link.clicked.connect(self.link_customer)
+        ticket=QPushButton("Maak serviceticket");ticket.clicked.connect(self.create_call_ticket)
+        quick.addWidget(dossier); quick.addWidget(vault); quick.addWidget(link);quick.addWidget(ticket); quick.addStretch(); root.addLayout(quick)
         split=QSplitter(); formbox=QWidget(); form=QFormLayout(formbox); self.subject=QLineEdit(); self.notes=QTextEdit(); self.outcome=QComboBox(); self.outcome.addItems(["Beantwoord","Informatie verstrekt","Afspraak gemaakt","Doorgezet","Geen gehoor","Overig"])
         self.priority=QComboBox();self.priority.addItems(["Laag","Normaal","Hoog","Kritiek"]);self.assigned=QLineEdit();self.assigned.setText(self.service.actor)
         self.callback=QCheckBox("Terugbelactie maken"); self.callback_due=QLineEdit(); self.callback_due.setPlaceholderText("jjjj-mm-dd")
@@ -54,7 +56,11 @@ class TelephonyPage(QWidget):
     def start_call(self,direction):
         if not self.phone.text().strip():return
         try:
-            self.call_id=self.service.register_call(self.phone.text(),direction); call=self.service.get(self.call_id)
+            recognition=self.service.recognize(self.phone.text())
+            self.call_id=self.service.register_call(self.phone.text(),direction)
+            if len(recognition.get("matches",[]))>1 and not self.choose_recognized_customer(recognition["matches"]):
+                self.match.setText(f"Meerdere klanten gevonden · nog niet gekozen\n{self.phone.text()}")
+            call=self.service.get(self.call_id)
             contact=f" · {call['contact_name']}" if call["contact_name"] else ""
             self.match.setText(f"{call['customer_name']}{contact}\n{call['phone_number']}")
             self.subject.clear(); self.notes.clear(); self.callback.setChecked(False); self.refresh_history()
@@ -72,8 +78,34 @@ class TelephonyPage(QWidget):
         customers=self.customers.search(); labels=[f"{x.customer_number} — {x.name}" for x in customers]
         if not customers:QMessageBox.information(self,"Gesprek koppelen","Er zijn nog geen klanten om te koppelen."); return
         label,ok=QInputDialog.getItem(self,"Gesprek koppelen","Klant",labels,0,False)
-        if ok:
-            customer=customers[labels.index(label)]; self.service.link_customer(self.call_id,customer.id); self.match.setText(f"{customer.name}\n{self.phone.text()}"); self.refresh_history()
+        if not ok:return
+        name,ok=QInputDialog.getText(self,"Onbekend nummer toevoegen","Naam of herkenbare omschrijving")
+        if not ok or not name.strip():return
+        description,ok=QInputDialog.getText(self,"Onbekend nummer toevoegen","Functie / toelichting (optioneel)")
+        if not ok:return
+        customer=customers[labels.index(label)]
+        self.service.link_customer(self.call_id,customer.id,contact_name=name,description=description)
+        self.match.setText(f"{customer.name} · {name}\n{self.phone.text()}");self.refresh_history()
+        QMessageBox.information(self,"Nummer opgeslagen",f"{self.phone.text()} wordt voortaan als {name} bij {customer.name} herkend.")
+
+    def choose_recognized_customer(self,matches):
+        labels=[f"{item['customer_number']} — {item['customer_name']}" +
+                (f" · {item['contact_name']}" if item.get("contact_name") else "") for item in matches]
+        label,ok=QInputDialog.getItem(self,"Meerdere klanten gevonden","Bij welke klant hoort dit gesprek?",labels,0,False)
+        if not ok:return False
+        match=matches[labels.index(label)]
+        self.service.select_match(self.call_id,match["customer_id"],match.get("contact_id"))
+        self.open_customer(match["customer_id"])
+        return True
+
+    def create_call_ticket(self):
+        if not self.call_id or not self.create_ticket:return
+        call=self.service.get(self.call_id)
+        if not call or not call["customer_id"]:
+            QMessageBox.information(self,"Serviceticket","Kies of koppel eerst de juiste klant.");return
+        subject=self.subject.text().strip() or call["subject"] or f"Telefoongesprek {call['contact_name'] or call['phone_number']}"
+        description=self.notes.toPlainText().strip() or f"Bron: telefoongesprek met {call['contact_name'] or call['phone_number']}"
+        self.create_ticket(call["customer_id"],subject,description,"Telefoon",self.call_id)
 
     def refresh_history(self,*_):
         rows=self.service.history(self.filter_customer.currentData(),self.search.text(),self.queue.currentData() or "alle"); self.table.setRowCount(len(rows))
@@ -108,4 +140,3 @@ class TelephonyPage(QWidget):
 
     def _open_vault(self):
         if self.phone.text().strip():self.open_vault(self.phone.text())
-
