@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from cryptography.fernet import Fernet, InvalidToken
 
 from nowa_crm.core.database import Database
 from nowa_crm.modules.mail.service import MailService
@@ -10,7 +11,7 @@ from nowa_crm.modules.telephony.service import TelephonyService
 
 
 class IntegrationService:
-    PROVIDERS = ("outlook", "coligo")
+    PROVIDERS = ("outlook", "coligo", "sip")
 
     def __init__(self, db: Database, mail: MailService, telephony: TelephonyService, actor: str):
         self.db, self.mail, self.telephony, self.actor = db, mail, telephony, actor
@@ -35,6 +36,22 @@ class IntegrationService:
                 settings_json=excluded.settings_json,updated_at=CURRENT_TIMESTAMP""",
                 (provider, int(enabled), json.dumps(safe, ensure_ascii=False)))
         self.log(provider, "instellingen", "actief" if enabled else "uitgeschakeld", True)
+
+    def save_sip(self, enabled: bool, settings: dict, password: str = "") -> None:
+        current=self.settings("sip")["settings"]
+        safe=dict(settings)
+        if password:safe["password_token"]=self._cipher().encrypt(password.encode()).decode()
+        elif current.get("password_token"):safe["password_token"]=current["password_token"]
+        self.save("sip",enabled,safe)
+
+    def sip_runtime_settings(self) -> dict:
+        item=self.settings("sip");result=dict(item["settings"]);token=result.pop("password_token","")
+        result["password"]=""
+        if token:
+            try:result["password"]=self._cipher().decrypt(token.encode()).decode()
+            except (InvalidToken,ValueError):pass
+        result["enabled"]=item["enabled"]
+        return result
 
     def status(self) -> list[dict]:
         result = []
@@ -75,6 +92,14 @@ class IntegrationService:
         self.log("coligo", action, detail, True, "call", call_id)
         return call
 
+    def ingest_sip_event(self, payload: dict) -> dict:
+        phone=self._first(payload,"phone_number","caller","from")
+        if not phone:raise ValueError("Het SIP-event bevat geen telefoonnummer.")
+        call_id=self.telephony.register_call(phone,"inkomend",self._first(payload,"external_id","call_id"))
+        call=self.telephony.get(call_id);name=self._first(payload,"display_name","name")
+        self.log("sip","inkomend_gesprek",f"{call['phone_number']} · {call['customer_name']}"+(f" · {name}" if name else ""),True,"call",call_id)
+        return call
+
     def prepare_outlook(self, message_id: int):
         if not self.settings("outlook")["enabled"]:
             raise ValueError("Schakel de Outlook-koppeling eerst in.")
@@ -113,8 +138,14 @@ class IntegrationService:
     @staticmethod
     def _safe_settings(provider: str, settings: dict) -> dict:
         allowed = {"outlook": {"mode", "mailbox_address", "sender_address", "folder_path"},
-                   "coligo": {"mode", "line_name", "webhook_port", "webhook_key"}}[provider]
+                   "coligo": {"mode", "line_name", "webhook_port", "webhook_key"},
+                   "sip": {"server","server_port","local_port","username","domain","transport","auto_start","password_token"}}[provider]
         return {key: str(value).strip() for key, value in settings.items() if key in allowed}
+
+    def _cipher(self) -> Fernet:
+        key_path=self.db.path.parent/"sip-monitor.key"
+        if not key_path.exists():key_path.write_bytes(Fernet.generate_key())
+        return Fernet(key_path.read_bytes())
 
     @staticmethod
     def _first(payload: dict, *keys: str) -> str:

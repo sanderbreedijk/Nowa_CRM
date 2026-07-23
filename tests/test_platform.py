@@ -307,7 +307,14 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert integrations.telephony.get(webhook_missed["id"])["status"] == "gemist"
     assert "open servicetickets" in telephony.customer_briefing(customer_id)["summary"]
     assert telephony.customer_briefing(None)["summary"] == "Nummer nog niet gekoppeld"
-    assert {item["provider"] for item in integrations.events()} == {"outlook","coligo"}
+    integrations.save_sip(True,{"server":"sip.example.nl","server_port":"5080","local_port":"5080",
+        "username":"100","domain":"example.nl","transport":"UDP","auto_start":"1"},"lokaal-geheim")
+    sip_settings=integrations.sip_runtime_settings()
+    assert sip_settings["password"]=="lokaal-geheim" and sip_settings["local_port"]=="5080"
+    assert "lokaal-geheim" not in str(integrations.settings("sip"))
+    sip_call=integrations.ingest_sip_event({"phone_number":"0612345678","external_id":"sip-call-1","display_name":"Sander"})
+    assert sip_call["customer_id"]==customer_id
+    assert {item["provider"] for item in integrations.events()} == {"outlook","coligo","sip"}
     documents=DocumentCenterService(db,assets,mail)
     documents.save_profile("NOWA Test","Teststraat 1","1000 AA Test","010-1234567","info@nowa.test",
                            "https://nowa.test","#123456","Lokale testvoettekst")

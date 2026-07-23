@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox,QFileDialog,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QLabel,QLineEdit,
                                QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget)
 
 from nowa_crm.modules.integrations.service import IntegrationService
 from nowa_crm.integrations.coligo_bridge import ColigoBridge
+from nowa_crm.integrations.sip_monitor import SipMonitor
 
 
 class IntegrationsPage(QWidget):
@@ -14,14 +15,17 @@ class IntegrationsPage(QWidget):
         super().__init__(parent); self.service, self.open_call = service, open_call
         self.bridge=ColigoBridge(self);self.bridge.event_received.connect(self.receive_coligo_event)
         self.bridge.state_changed.connect(self.bridge_state)
+        self.sip=SipMonitor(self);self.sip.event_received.connect(self.receive_sip_event);self.sip.state_changed.connect(self.sip_state)
         root=QVBoxLayout(self);title=QLabel("Integratiecentrum");title.setObjectName("Title");root.addWidget(title)
         subtitle=QLabel("Beheer lokale Outlook-overdracht en Coligo-nummerherkenning zonder tokens of klantdata in GitHub.")
         subtitle.setObjectName("Subtitle");root.addWidget(subtitle)
-        cards=QGridLayout();self.outlook_card=self._outlook_card();self.coligo_card=self._coligo_card()
+        cards=QGridLayout();self.outlook_card=self._outlook_card();self.coligo_card=self._coligo_card();self.sip_card=self._sip_card()
         cards.addWidget(self.outlook_card,0,0);cards.addWidget(self.coligo_card,0,1);root.addLayout(cards)
+        cards.addWidget(self.sip_card,1,0,1,2)
         heading=QLabel("Koppelingslog");heading.setStyleSheet("font-size:16px;font-weight:700;color:#0B2342");root.addWidget(heading)
         self.events=QTableWidget(0,6);self.events.setHorizontalHeaderLabels(["Datum","Koppeling","Actie","Detail","Resultaat","ID"])
         self.events.setColumnHidden(5,True);self.events.horizontalHeader().setStretchLastSection(True);root.addWidget(self.events,1);self.reload()
+        QTimer.singleShot(600,self.auto_start_sip)
 
     def _outlook_card(self):
         card=QFrame();card.setObjectName("Card");form=QFormLayout(card);heading=QLabel("Outlook");heading.setObjectName("Kpi");form.addRow(heading)
@@ -44,11 +48,32 @@ class IntegrationsPage(QWidget):
         listen=QPushButton("Ontvanger starten");listen.clicked.connect(self.start_bridge)
         ingest=QPushButton("Test gesprek");ingest.clicked.connect(self.ingest_call);row.addWidget(save);row.addWidget(listen);row.addWidget(ingest);form.addRow(row);return card
 
+    def _sip_card(self):
+        card=QFrame();card.setObjectName("Card");form=QFormLayout(card);heading=QLabel("SIP-monitor · alleen inkomende signalering");heading.setObjectName("Kpi");form.addRow(heading)
+        self.sip_enabled=QCheckBox("SIP-monitor actief");self.sip_auto=QCheckBox("Automatisch verbinden bij opstarten")
+        self.sip_server=QLineEdit();self.sip_server.setPlaceholderText("SIP-server of IP-adres")
+        self.sip_server_port=QLineEdit("5080");self.sip_local_port=QLineEdit("5080")
+        self.sip_username=QLineEdit();self.sip_username.setPlaceholderText("Extensie / gebruikersnaam")
+        self.sip_password=QLineEdit();self.sip_password.setEchoMode(QLineEdit.EchoMode.Password);self.sip_password.setPlaceholderText("Ongewijzigd laten om bestaand wachtwoord te behouden")
+        self.sip_domain=QLineEdit();self.sip_domain.setPlaceholderText("Optioneel registratiedomein")
+        self.sip_transport=QLineEdit("UDP");self.sip_transport.setReadOnly(True)
+        self.sip_status=QLabel("Niet verbonden");self.sip_status.setWordWrap(True)
+        ports=QHBoxLayout();ports.addWidget(QLabel("Server"));ports.addWidget(self.sip_server_port);ports.addWidget(QLabel("Lokaal"));ports.addWidget(self.sip_local_port)
+        form.addRow(self.sip_enabled);form.addRow(self.sip_auto);form.addRow("SIP-server",self.sip_server);form.addRow("Poorten",ports)
+        form.addRow("Gebruikersnaam",self.sip_username);form.addRow("Wachtwoord",self.sip_password);form.addRow("Domein",self.sip_domain)
+        form.addRow("Transport",self.sip_transport);form.addRow("Status",self.sip_status)
+        row=QHBoxLayout();save=QPushButton("SIP opslaan");save.setObjectName("Primary");save.clicked.connect(self.save_sip)
+        connect=QPushButton("Verbinden / testen");connect.clicked.connect(self.start_sip);stop=QPushButton("Stoppen");stop.clicked.connect(self.sip.stop)
+        row.addWidget(save);row.addWidget(connect);row.addWidget(stop);form.addRow(row);return card
+
     def reload(self):
-        outlook=self.service.settings("outlook");coligo=self.service.settings("coligo")
+        outlook=self.service.settings("outlook");coligo=self.service.settings("coligo");sip=self.service.settings("sip")
         self.outlook_enabled.setChecked(outlook["enabled"]);self.sender.setText(outlook["settings"].get("mailbox_address",outlook["settings"].get("sender_address","")));self.outlook_folder.setText(outlook["settings"].get("folder_path",""))
         self.coligo_enabled.setChecked(coligo["enabled"]);self.line_name.setText(coligo["settings"].get("line_name",""))
         self.webhook_port.setText(coligo["settings"].get("webhook_port","8765"));self.webhook_key.setText(coligo["settings"].get("webhook_key",""))
+        s=sip["settings"];self.sip_enabled.setChecked(sip["enabled"]);self.sip_auto.setChecked(s.get("auto_start","")=="1")
+        self.sip_server.setText(s.get("server",""));self.sip_server_port.setText(s.get("server_port","5080"));self.sip_local_port.setText(s.get("local_port","5080"))
+        self.sip_username.setText(s.get("username",""));self.sip_domain.setText(s.get("domain",""));self.sip_transport.setText(s.get("transport","UDP"))
         rows=self.service.events();self.events.setRowCount(len(rows))
         for r,row in enumerate(rows):
             values=(row["occurred_at"],row["provider"].title(),row["action"],row["detail"],"Geslaagd" if row["successful"] else "Mislukt",row["id"])
@@ -91,6 +116,41 @@ class IntegrationsPage(QWidget):
             call=self.service.ingest_coligo_event(payload);self.reload();self.open_call(call["id"])
         except Exception as exc:
             self.service.log("coligo","webhook_fout",str(exc),False);self.reload()
+
+    def save_sip(self):
+        try:ports=(int(self.sip_server_port.text()),int(self.sip_local_port.text()))
+        except ValueError:QMessageBox.warning(self,"SIP-monitor","Beide poorten moeten getallen zijn.");return False
+        if any(not 1024<=port<=65535 for port in ports):QMessageBox.warning(self,"SIP-monitor","Kies poorten tussen 1024 en 65535.");return False
+        settings={"server":self.sip_server.text(),"server_port":str(ports[0]),"local_port":str(ports[1]),
+            "username":self.sip_username.text(),"domain":self.sip_domain.text(),"transport":"UDP",
+            "auto_start":"1" if self.sip_auto.isChecked() else "0"}
+        self.service.save_sip(self.sip_enabled.isChecked(),settings,self.sip_password.text());self.sip_password.clear();self.reload();return True
+
+    def start_sip(self):
+        if not self.save_sip():return
+        config=self.service.sip_runtime_settings()
+        if not config["enabled"]:QMessageBox.information(self,"SIP-monitor","Schakel de SIP-monitor eerst in.");return
+        self.sip.start(config)
+
+    def sip_state(self,state,detail):
+        labels={"luistert":"Luistert","verbinden":"Verbinden…","verbonden":"Verbonden","fout":"Fout"}
+        self.sip_status.setText(f"{labels.get(state,state)} · {detail}")
+        self.service.log("sip","verbinding",f"{state} · {detail}",state!="fout")
+
+    def receive_sip_event(self,payload):
+        try:
+            call=self.service.ingest_sip_event(payload);self.reload();self.open_call(call["id"])
+        except Exception as exc:
+            self.service.log("sip","event_fout",str(exc),False);self.reload()
+
+    def showEvent(self,event):
+        super().showEvent(event)
+        self.auto_start_sip()
+
+    def auto_start_sip(self):
+        if self.sip.running:return
+        config=self.service.sip_runtime_settings()
+        if config.get("enabled") and config.get("auto_start")=="1":self.sip.start(config)
 
     def open_latest(self):
         try:
