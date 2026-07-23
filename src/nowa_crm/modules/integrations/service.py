@@ -54,6 +54,27 @@ class IntegrationService:
         self.log("coligo", "inkomend_gesprek", detail, True, "call", call_id)
         return call
 
+    def ingest_coligo_event(self, payload: dict) -> dict:
+        """Vertaal gangbare Coligo/webhook-velden naar één lokaal gesprek."""
+        phone = self._first(payload, "phone_number", "phone", "caller", "from", "remoteNumber", "remote_number")
+        if not phone:
+            raise ValueError("Het Coligo-event bevat geen telefoonnummer.")
+        external_id = self._first(payload, "external_id", "call_id", "callId", "id")
+        display_name = self._first(payload, "display_name", "displayName", "name", "line_name")
+        state = self._first(payload, "state", "status", "event").lower()
+        if state in {"missed", "no_answer", "unanswered", "gemist"}:
+            call_id = self.telephony.mark_missed(phone, external_id)
+            action = "gemiste_oproep"
+        else:
+            call_id = self.telephony.register_call(phone, "inkomend", external_id)
+            action = "inkomend_gesprek"
+        call = self.telephony.get(call_id)
+        detail = f"{call['phone_number']} · {call['customer_name']}"
+        if display_name:
+            detail += f" · {display_name}"
+        self.log("coligo", action, detail, True, "call", call_id)
+        return call
+
     def prepare_outlook(self, message_id: int):
         if not self.settings("outlook")["enabled"]:
             raise ValueError("Schakel de Outlook-koppeling eerst in.")
@@ -91,8 +112,17 @@ class IntegrationService:
 
     @staticmethod
     def _safe_settings(provider: str, settings: dict) -> dict:
-        allowed = {"outlook": {"mode", "mailbox_address", "sender_address", "folder_path"}, "coligo": {"mode", "line_name"}}[provider]
+        allowed = {"outlook": {"mode", "mailbox_address", "sender_address", "folder_path"},
+                   "coligo": {"mode", "line_name", "webhook_port", "webhook_key"}}[provider]
         return {key: str(value).strip() for key, value in settings.items() if key in allowed}
+
+    @staticmethod
+    def _first(payload: dict, *keys: str) -> str:
+        for key in keys:
+            value = payload.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return ""
 
     @classmethod
     def _validate(cls, provider: str):
