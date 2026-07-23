@@ -1,7 +1,3 @@
-0
-Wall time: 0.8 seconds
-Output:
----BEGIN---
 from pathlib import Path
 import json
 import sqlite3
@@ -447,4 +443,3 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
-
