@@ -21,7 +21,7 @@ class IncomingCallPopup(QDialog):
         self.call_id=call_id;self.customers=customers;self.telephony=telephony
         self.open_call_callback=open_call;self.open_customer_callback=open_customer
         self.open_vault_callback=open_vault;self.create_ticket_callback=create_ticket
-        self.setObjectName("IncomingCallPopup");self.setWindowTitle("NOWA Â· Gesprekswerkplek")
+        self.setObjectName("IncomingCallPopup");self.setWindowTitle("NOWA · Gesprekswerkplek")
         self.setWindowFlags(Qt.WindowType.Tool|Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);self.resize(980,690);self.setMinimumSize(820,600)
         self.handled=False;self.missed_timer=QTimer(self);self.missed_timer.setSingleShot(True)
@@ -31,7 +31,7 @@ class IncomingCallPopup(QDialog):
 
         root=QVBoxLayout(self);root.setContentsMargins(24,22,24,22);root.setSpacing(14)
         top=QHBoxLayout();icon=QLabel("TEL");icon.setObjectName("CallPopupIcon");top.addWidget(icon)
-        titles=QVBoxLayout();status=QLabel("â—  INKOMEND GESPREK Â· CENTRALE WERKPLEK");status.setObjectName("CallPopupStatus")
+        titles=QVBoxLayout();status=QLabel("●  INKOMEND GESPREK · CENTRALE WERKPLEK");status.setObjectName("CallPopupStatus")
         self.phone=QLabel();self.phone.setObjectName("CallPopupPhone");titles.addWidget(status);titles.addWidget(self.phone);top.addLayout(titles,1)
         self.accept_button=QPushButton("Gesprek aannemen");self.accept_button.setObjectName("CallAccept");self.accept_button.clicked.connect(self.accept_call);top.addWidget(self.accept_button)
         root.addLayout(top)
@@ -42,7 +42,7 @@ class IncomingCallPopup(QDialog):
         self.matches=QComboBox();self.matches.setObjectName("CallMatch");self.matches.currentIndexChanged.connect(self.select_match);identity_box.addWidget(self.matches)
         insight_row=QHBoxLayout();insight_row.setSpacing(10)
         organisation=QFrame();organisation.setObjectName("CallInsight");organisation_box=QVBoxLayout(organisation);organisation_box.setContentsMargins(12,10,12,10)
-        organisation_title=QLabel("ORGANISATIE IN Ã‰Ã‰N OOGOPSLAG");organisation_title.setObjectName("CallInsightTitle");organisation_box.addWidget(organisation_title)
+        organisation_title=QLabel("ORGANISATIE IN ÉÉN OOGOPSLAG");organisation_title.setObjectName("CallInsightTitle");organisation_box.addWidget(organisation_title)
         self.organisation_summary=QLabel();self.organisation_summary.setObjectName("CallInsightText");self.organisation_summary.setWordWrap(True);organisation_box.addWidget(self.organisation_summary)
         history=QFrame();history.setObjectName("CallInsight");history_box=QVBoxLayout(history);history_box.setContentsMargins(12,10,12,10)
         history_title=QLabel("LAATSTE 3 GESPREKSSAMENVATTINGEN");history_title.setObjectName("CallInsightTitle");history_box.addWidget(history_title)
@@ -54,7 +54,7 @@ class IncomingCallPopup(QDialog):
         input_panel=QFrame();input_panel.setObjectName("CallInputPanel");form=QFormLayout(input_panel);form.setContentsMargins(18,16,18,16);form.setSpacing(11)
         heading=QLabel("Gespreksregistratie");heading.setObjectName("SectionTitle");form.addRow(heading)
         self.subject=QLineEdit();self.subject.setPlaceholderText("Waar gaat het gesprek over?")
-        self.notes=QTextEdit();self.notes.setPlaceholderText("Noteer afspraken, vragen en uitgevoerde handelingenâ€¦");self.notes.setMinimumHeight(190)
+        self.notes=QTextEdit();self.notes.setPlaceholderText("Noteer afspraken, vragen en uitgevoerde handelingen…");self.notes.setMinimumHeight(190)
         quick=QHBoxLayout()
         for label,text in (("Vraag","Vraag / aanleiding:\n"),("Actie","Uitgevoerde actie:\n"),
                            ("Afspraak","Afspraak / vervolg:\n"),("Controle","Gecontroleerd:\n")):
@@ -76,7 +76,7 @@ class IncomingCallPopup(QDialog):
         action_title=QLabel("Directe acties");action_title.setObjectName("SectionTitle");action_box.addWidget(action_title)
         action_text=QLabel("Alles blijft binnen deze gesprekswerkplek beschikbaar.");action_text.setObjectName("PanelText");action_text.setWordWrap(True);action_box.addWidget(action_text)
         grid=QGridLayout();grid.setSpacing(9)
-        self.dossier=_action("360Â°\nKlantdossier",self.open_customer);self.vault=_action("IT-KLUIS\nGegevens",self.open_vault)
+        self.dossier=_action("360°\nKlantdossier",self.open_customer);self.vault=_action("IT-KLUIS\nGegevens",self.open_vault)
         ticket=_action("TICKET\nServicedesk",self.create_ticket);callback=_action("TERUGBELLEN\nActie maken",self.make_callback)
         self.link=_action("KOPPELEN\nOnbekend nummer",self.link_number);phone=_action("TELEFONIE\nVolledig overzicht",self.open_call)
         for index,button in enumerate((self.dossier,self.vault,ticket,callback,self.link,phone)):grid.addWidget(button,index//2,index%2)
@@ -84,7 +84,7 @@ class IncomingCallPopup(QDialog):
 
         footer=QFrame();footer.setObjectName("CallFooter");footer_row=QHBoxLayout(footer);footer_row.setContentsMargins(12,10,12,10)
         ignore=QPushButton("Niet opgenomen");ignore.setObjectName("CallQuiet");ignore.clicked.connect(self.ignore_call)
-        self.save=QPushButton("Alles opslaan en gesprek beÃ«indigen");self.save.setObjectName("EndCallPrimary");self.save.clicked.connect(self.finish_workflow)
+        self.save=QPushButton("Alles opslaan en gesprek beëindigen");self.save.setObjectName("EndCallPrimary");self.save.clicked.connect(self.finish_workflow)
         footer_row.addWidget(ignore);footer_row.addStretch();footer_row.addWidget(self.save);root.addWidget(footer)
         self.reload()
 
@@ -94,33 +94,33 @@ class IncomingCallPopup(QDialog):
         self.phone.setText(call["phone_number"]);recognition=self.telephony.recognize(call["phone_number"]);matches=recognition.get("matches",[])
         self.matches.blockSignals(True);self.matches.clear()
         for item in matches:
-            label=f"{item['customer_number']} â€” {item['customer_name']}"
-            if item.get("contact_name"):label+=f" Â· {item['contact_name']}"
+            label=f"{item['customer_number']} — {item['customer_name']}"
+            if item.get("contact_name"):label+=f" · {item['contact_name']}"
             self.matches.addItem(label,(item["customer_id"],item.get("contact_id")))
         self.matches.setVisible(len(matches)>1 and not bool(call["customer_id"]))
         if len(matches)>1 and not call["customer_id"]:self.matches.setCurrentIndex(-1)
         self.matches.blockSignals(False)
         if call["customer_id"]:
-            contact=f" Â· {call['contact_name']}" if call["contact_name"] else ""
+            contact=f" · {call['contact_name']}" if call["contact_name"] else ""
             self.customer.setText(f"{call['customer_name']}{contact}")
             self.context.setText(self.telephony.customer_briefing(call["customer_id"])["summary"])
             snapshot=self.telephony.call_workspace_snapshot(call["customer_id"],call["contact_id"],self.call_id)
-            licenses=" Â· ".join(f"{item['product']} Ã— {item['quantity']}" for item in snapshot["licenses"]) or "Geen licenties vastgelegd"
-            departments=" Â· ".join(f"{item['department']} ({item['users']})" for item in snapshot["departments"]) or "Geen afdelingen vastgelegd"
+            licenses=" · ".join(f"{item['product']} × {item['quantity']}" for item in snapshot["licenses"]) or "Geen licenties vastgelegd"
+            departments=" · ".join(f"{item['department']} ({item['users']})" for item in snapshot["departments"]) or "Geen afdelingen vastgelegd"
             self.organisation_summary.setText(
-                f"{snapshot['users']} gebruikers  Â·  {snapshot['teams']} Teams  Â·  {snapshot['shared_mailboxes']} gedeelde mailboxen  Â·  {snapshot['sharepoint_sites']} SharePoint-sites\n"
-                f"Licenties: {licenses}\nAfdelingen / hiÃ«rarchie: {departments}")
+                f"{snapshot['users']} gebruikers  ·  {snapshot['teams']} Teams  ·  {snapshot['shared_mailboxes']} gedeelde mailboxen  ·  {snapshot['sharepoint_sites']} SharePoint-sites\n"
+                f"Licenties: {licenses}\nAfdelingen / hiërarchie: {departments}")
             summaries=[]
             for item in snapshot["recent_calls"]:
                 title=item["subject"] or item["outcome"] or "Telefoongesprek";notes=(item["notes"] or "").replace("\n"," ").strip()
-                if len(notes)>110:notes=notes[:107]+"â€¦"
-                person=f"{item['contact_name']} Â· " if item["contact_name"] else ""
-                summaries.append(f"{item['started_at'][:10]} Â· {person}{title}"+(f" â€” {notes}" if notes else ""))
+                if len(notes)>110:notes=notes[:107]+"…"
+                person=f"{item['contact_name']} · " if item["contact_name"] else ""
+                summaries.append(f"{item['started_at'][:10]} · {person}{title}"+(f" — {notes}" if notes else ""))
             self.recent_summary.setText("\n".join(summaries) or "Nog geen eerdere gesprekssamenvattingen.")
             open_lines=[]
             for item in snapshot["open_items"]:
-                due=f" Â· {item['due_at'][:10]}" if item["due_at"] else ""
-                open_lines.append(f"{item['priority']} Â· {item['kind']} {item['reference']} Â· {item['title']}{due}")
+                due=f" · {item['due_at'][:10]}" if item["due_at"] else ""
+                open_lines.append(f"{item['priority']} · {item['kind']} {item['reference']} · {item['title']}{due}")
             briefing=self.telephony.customer_briefing(call["customer_id"])["summary"]
             self.context.setText(briefing+("\nOPENSTAAND: "+" | ".join(open_lines) if open_lines else "\nGeen openstaande tickets of acties."))
         elif len(matches)>1:
@@ -134,7 +134,7 @@ class IncomingCallPopup(QDialog):
         self.dossier.setEnabled(bool(call["customer_id"]));self.link.setVisible(not bool(call["customer_id"]))
 
     def accept_call(self):
-        self._handled();self.accept_button.setText("âœ“ Gesprek actief");self.accept_button.setEnabled(False);self.notes.setFocus()
+        self._handled();self.accept_button.setText("✓ Gesprek actief");self.accept_button.setEnabled(False);self.notes.setFocus()
 
     def select_match(self,index):
         data=self.matches.itemData(index)
@@ -143,7 +143,7 @@ class IncomingCallPopup(QDialog):
     def link_number(self):
         rows=self.customers.search()
         if not rows:QMessageBox.information(self,"Nummer koppelen","Voeg eerst een klant toe.");return
-        labels=[f"{row.customer_number} â€” {row.name}" for row in rows]
+        labels=[f"{row.customer_number} — {row.name}" for row in rows]
         label,ok=QInputDialog.getItem(self,"Onbekend nummer koppelen","Klant",labels,0,False)
         if not ok:return
         name,ok=QInputDialog.getText(self,"Onbekend nummer koppelen","Naam of herkenbare omschrijving")
@@ -182,7 +182,7 @@ class IncomingCallPopup(QDialog):
 
     def schedule_autosave(self,*_):
         if hasattr(self,"autosave_timer"):
-            self.draft_status.setText("Opslaanâ€¦");self.autosave_timer.start()
+            self.draft_status.setText("Opslaan…");self.autosave_timer.start()
 
     def autosave(self):
         call=self.telephony.get(self.call_id)
@@ -190,9 +190,9 @@ class IncomingCallPopup(QDialog):
         try:
             self.telephony.save_call_draft(self.call_id,self.subject.text(),self.notes.toPlainText(),
                                             self.outcome.currentText(),self.priority.currentText(),self.callback_due.text())
-            self.draft_status.setText("âœ“ Automatisch lokaal opgeslagen")
+            self.draft_status.setText("✓ Automatisch lokaal opgeslagen")
         except Exception:
-            self.draft_status.setText("Tussentijds opslaan mislukt â€” bij beÃ«indigen wordt opnieuw opgeslagen")
+            self.draft_status.setText("Tussentijds opslaan mislukt — bij beëindigen wordt opnieuw opgeslagen")
 
     def finish_workflow(self):
         call=self.telephony.get(self.call_id)
@@ -201,7 +201,7 @@ class IncomingCallPopup(QDialog):
             self.telephony.finish_call(self.call_id,self.subject.text(),self.notes.toPlainText(),self.outcome.currentText(),
                                        self.callback.isChecked(),self.callback_due.text(),self.priority.currentText(),self.telephony.actor)
         except Exception as exc:
-            QMessageBox.warning(self,"Gesprek beÃ«indigen",str(exc));return
+            QMessageBox.warning(self,"Gesprek beëindigen",str(exc));return
         self.handled=True;self.missed_timer.stop();saved=self.telephony.get(self.call_id);self.completed.emit(self.call_id,saved or {});self.close()
 
     def ignore_call(self):
@@ -231,4 +231,3 @@ class IncomingCallPopup(QDialog):
 def _action(text,handler):
     button=QPushButton(text);button.setObjectName("CallAction");button.setMinimumHeight(72);button.clicked.connect(handler)
     return button
-
