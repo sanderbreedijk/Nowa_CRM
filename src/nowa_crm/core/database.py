@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from nowa_crm.core.phone import format_phone
+
 
 class Database:
     def __init__(self, path: Path):
@@ -35,6 +37,7 @@ class Database:
             current = {int(row[0]) for row in conn.execute("SELECT version FROM schema_versions")}
         pending = [(version, script) for version, script in MIGRATIONS if version not in current]
         if not pending:
+            self._standardize_phone_numbers()
             return
         if self.path.exists() and self.path.stat().st_size:
             self.backup("voor_migratie")
@@ -42,6 +45,19 @@ class Database:
             with self.transaction() as conn:
                 conn.executescript(script)
                 conn.execute("INSERT INTO schema_versions(version) VALUES(?)", (version,))
+        self._standardize_phone_numbers()
+
+    def _standardize_phone_numbers(self) -> None:
+        with self.transaction() as conn:
+            for table,column in (("customers","phone"),("customers","mobile_phone"),("contacts","phone"),("call_events","phone_number")):
+                try:
+                    rows=conn.execute(f"SELECT id,{column} FROM {table} WHERE {column}<>''").fetchall()
+                except sqlite3.OperationalError:
+                    continue
+                for row in rows:
+                    formatted=format_phone(row[column])
+                    if formatted!=row[column]:
+                        conn.execute(f"UPDATE {table} SET {column}=? WHERE id=?",(formatted,row["id"]))
 
     def backup(self, label: str = "handmatig") -> Path:
         folder = self.path.parent / "backups"
@@ -778,6 +794,23 @@ PROPOSAL_APPROVAL_321_SCHEMA = """
 ALTER TABLE proposal_publications ADD COLUMN applied_license_ids_json TEXT NOT NULL DEFAULT '[]';
 """
 
+TELEPHONY_MULTI_LINK_326_SCHEMA = """
+CREATE TABLE IF NOT EXISTS call_number_links (
+    id INTEGER PRIMARY KEY,
+    normalized_number TEXT NOT NULL,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    label TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(normalized_number,customer_id,contact_id)
+);
+CREATE INDEX IF NOT EXISTS idx_call_number_links_number ON call_number_links(normalized_number);
+INSERT OR IGNORE INTO call_number_links(normalized_number,customer_id,contact_id,created_by)
+SELECT normalized_number,customer_id,contact_id,created_by FROM call_customer_aliases;
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -789,5 +822,6 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (23, PROPOSAL_TEMPLATE_310_SCHEMA), (24, LEGACY_PROPOSAL_IMPORT_320_SCHEMA),
     (25, PROPOSAL_EDITOR_330_SCHEMA), (26, CUSTOMER_QUALITY_313_SCHEMA),
     (27, PROPOSAL_OPTIONS_318_SCHEMA), (28, PROPOSAL_APPROVAL_319_SCHEMA),
-    (29, PROPOSAL_APPROVAL_320_SCHEMA), (30, PROPOSAL_APPROVAL_321_SCHEMA)
+    (29, PROPOSAL_APPROVAL_320_SCHEMA), (30, PROPOSAL_APPROVAL_321_SCHEMA),
+    (31, TELEPHONY_MULTI_LINK_326_SCHEMA)
 )
