@@ -71,6 +71,18 @@ class ServiceDeskPage(QWidget):
         sla,ok=QInputDialog.getText(self,"Nieuw ticket","SLA-deadline (leeg = automatisch)")
         if ok:self.ticket_id=self.service.create(customers[labels.index(label)].id,subject,description,priority=priority,owner=owner,sla_due_at=sla);self.reload();self.load_ticket()
 
+    def create_ticket_for_customer(self,customer_id):
+        customer=self.customers.get(customer_id)
+        if not customer:return
+        subject,ok=QInputDialog.getText(self,"Nieuw serviceticket",f"Onderwerp voor {customer.name}")
+        if not ok or not subject.strip():return
+        description,ok=QInputDialog.getMultiLineText(self,"Nieuw serviceticket","Omschrijving")
+        if not ok:return
+        priority,ok=QInputDialog.getItem(self,"Nieuw serviceticket","Prioriteit",list(ServiceDeskService.PRIORITIES),1,False)
+        if not ok:return
+        self.ticket_id=self.service.create(customer_id,subject,description,priority=priority,owner="NOWA")
+        self.reload();self.load_ticket()
+
     def load_selected(self,*_):
         row=self.table.currentRow();item=self.table.item(row,9) if row>=0 else None
         if item:self.ticket_id=int(item.text());self.load_ticket()
