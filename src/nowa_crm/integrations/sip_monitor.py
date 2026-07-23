@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from uuid import uuid4
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -20,14 +21,14 @@ class SipMonitor(QObject):
         self.socket.readyRead.connect(self._read)
         self.renew = QTimer(self);self.renew.timeout.connect(self._register)
         self.config = {};self.call_id=f"nowa-{uuid4().hex}";self.from_tag=uuid4().hex[:12];self.cseq=0
-        self.auth_attempts={};self.total_auth_attempts=0;self.registered=False;self.last_state=("", "")
+        self.auth_attempts={};self.total_auth_attempts=0;self.registered=False;self.last_state=("", "");self.seen_invites={}
 
     @property
     def running(self) -> bool:
         return self.socket.state() in (QAbstractSocket.SocketState.BoundState,QAbstractSocket.SocketState.ConnectedState)
 
     def start(self, config: dict) -> bool:
-        self.stop();self.config=dict(config);self.auth_attempts={};self.total_auth_attempts=0;self.registered=False;self.last_state=("", "")
+        self.stop();self.config=dict(config);self.auth_attempts={};self.total_auth_attempts=0;self.registered=False;self.last_state=("", "");self.seen_invites={}
         local_port=int(config.get("local_port") or 5080)
         if str(config.get("transport","UDP")).upper()!="UDP":
             self._set_state("fout","Deze luistermonitor ondersteunt momenteel SIP over UDP.");return False
@@ -88,9 +89,12 @@ class SipMonitor(QObject):
                 self.renew.stop();self._set_state("fout",f"SIP-registratie mislukt: {first}")
             elif first.startswith("INVITE "):
                 number,name=self._caller(headers.get("from",""));external=headers.get("call-id",uuid4().hex)
+                now=time.monotonic();self.seen_invites={key:seen for key,seen in self.seen_invites.items() if now-seen<600}
+                duplicate=external in self.seen_invites;self.seen_invites[external]=now
+                self._reply(datagram.senderAddress(),datagram.senderPort(),headers,486,"Busy Here")
+                if duplicate:continue
                 self.event_received.emit({"phone_number":number,"display_name":name,"external_id":external,
                                           "event":"ringing","source":"sip"})
-                self._reply(datagram.senderAddress(),datagram.senderPort(),headers,486,"Busy Here")
             elif first.startswith("OPTIONS "):
                 self._reply(datagram.senderAddress(),datagram.senderPort(),headers,200,"OK")
 
