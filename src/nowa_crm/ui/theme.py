@@ -55,6 +55,7 @@ QLabel#MiniKpiIcon[accent="orange"] { background-color: #FFF0DE; color: #B75B13;
 QLabel#MiniKpi { color: #102A4C; font-size: 20px; font-weight: 750; }
 QLabel#SectionTitle { color: #183453; font-size: 16px; font-weight: 750; }
 QLabel#AttentionBanner { background-color: #FFF4E6; color: #9A4B11; border: 1px solid #F4D7B2; border-radius: 10px; padding: 10px 13px; font-weight: 650; }
+QLabel#CallBriefing { background-color: #EAF4FF; color: #0B3158; border: 1px solid #B8D7F5; border-radius: 12px; padding: 14px 16px; font-size: 14px; font-weight: 650; }
 QFrame#LeftActionPanel { background-color: #EAF2FB; border: 1px solid #CFDDEB; border-radius: 15px; }
 QLabel#PanelTitle { color: #102A4C; font-size: 18px; font-weight: 750; padding: 2px 2px 0 2px; }
 QLabel#PanelText { color: #68788D; font-size: 12px; padding: 0 2px 8px 2px; }
