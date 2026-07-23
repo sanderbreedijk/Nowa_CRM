@@ -5,6 +5,7 @@ import json
 
 from nowa_crm.core.database import Database
 from nowa_crm.core.events import Event, EventBus
+from nowa_crm.core.phone import format_phone
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,8 @@ class CustomerService:
         with self.db.transaction() as conn:
             cur = conn.execute(
                 "INSERT INTO customers(customer_number,name,email,phone,street,postal_code,city,notes,mobile_phone,country,status,tags) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                tuple(value.strip() for value in (customer_number, name, email, phone, street, postal_code, city, notes, mobile_phone, country, status, tags)),
+                (customer_number.strip(),name.strip(),email.strip(),format_phone(phone),street.strip(),postal_code.strip(),
+                 city.strip(),notes.strip(),format_phone(mobile_phone),country.strip(),status.strip(),tags.strip()),
             )
             customer_id = int(cur.lastrowid)
             conn.execute("INSERT INTO customer_change_log(customer_id,action,changed_fields,detail) VALUES(?,?,?,?)",(customer_id,"Aangemaakt","alle velden",name.strip()))
@@ -78,7 +80,9 @@ class CustomerService:
         duplicates=self.find_duplicates(customer_number,name,email,phone,mobile_phone,customer_id)
         if duplicates:raise ValueError("Mogelijk dubbele klant: "+", ".join(f"{x.customer_number} — {x.name}" for x in duplicates[:3]))
         before=self.get(customer_id);status=before.status if status is None and before else status or "actief";tags=before.tags if tags is None and before else tags or ""
-        names=("customer_number","name","email","phone","street","postal_code","city","notes","mobile_phone","country","status","tags");values=tuple(value.strip() for value in (customer_number,name,email,phone,street,postal_code,city,notes,mobile_phone,country,status,tags))
+        names=("customer_number","name","email","phone","street","postal_code","city","notes","mobile_phone","country","status","tags")
+        values=(customer_number.strip(),name.strip(),email.strip(),format_phone(phone),street.strip(),postal_code.strip(),
+                city.strip(),notes.strip(),format_phone(mobile_phone),country.strip(),status.strip(),tags.strip())
         with self.db.transaction() as conn:
             cur = conn.execute(
                 """UPDATE customers SET customer_number=?,name=?,email=?,phone=?,street=?,postal_code=?,city=?,notes=?,mobile_phone=?,country=?,status=?,tags=?,updated_at=CURRENT_TIMESTAMP
@@ -108,7 +112,8 @@ class CustomerService:
     def find_duplicates(self,number,name,email="",phone="",mobile="",exclude_id=None) -> list[Customer]:
         values=[number.strip(),name.strip(),email.strip(),phone.strip(),mobile.strip()];clauses=["customer_number=?","lower(name)=lower(?)"]
         params=[values[0],values[1]]
-        for column,value in (("email",values[2]),("phone",values[3]),("mobile_phone",values[4])):
+        # A central/reception number may legitimately belong to multiple customer records.
+        for column,value in (("email",values[2]),):
             if value:clauses.append(f"{column}=?");params.append(value)
         where=" OR ".join(clauses);extra=" AND id<>?" if exclude_id else ""
         if exclude_id:params.append(exclude_id)
@@ -126,7 +131,7 @@ class CustomerService:
     def save_contact(self, customer_id: int, name: str, role: str = "", email: str = "", phone: str = "", contact_id: int | None = None) -> int:
         if not name.strip():
             raise ValueError("Naam van de contactpersoon is verplicht")
-        values = tuple(value.strip() for value in (name, role, email, phone))
+        values = (name.strip(),role.strip(),email.strip(),format_phone(phone))
         with self.db.transaction() as conn:
             if contact_id:
                 conn.execute("UPDATE contacts SET name=?,role=?,email=?,phone=? WHERE id=? AND customer_id=?", (*values, contact_id, customer_id))
