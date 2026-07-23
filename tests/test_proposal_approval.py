@@ -23,6 +23,8 @@ def test_portal_decision_and_controlled_license_update(tmp_path):
     license_id = OperationsService(db).save_license(
         customer_id, "Microsoft 365 Business Premium",
         quantity=12, unit_price_cents=2250)
+    future_license_id = OperationsService(db).save_license(
+        customer_id, "Exchange Online Archiving", quantity=2, unit_price_cents=350)
     service = ProposalApprovalService(proposals)
     result = service.prepare(
         proposal_id, "directie@klant.nl",
@@ -33,7 +35,9 @@ def test_portal_decision_and_controlled_license_update(tmp_path):
     assert "Microsoft 365 Business Premium" in portal
     assert "vault" not in portal.casefold()
     package = json.loads((result["folder"] / "akkoordpakket.json").read_text(encoding="utf-8"))
-    assert package["license_changes"][0]["current_quantity"] == 12
+    premium = next(item for item in package["license_changes"]
+                   if item["license_id"] == license_id)
+    assert premium["current_quantity"] == 12
 
     decision = {
         "format": "nowa-proposal-decision-v1",
@@ -46,6 +50,10 @@ def test_portal_decision_and_controlled_license_update(tmp_path):
             "license_id": license_id,
             "requested_quantity": 8,
             "effective_date": "",
+        }, {
+            "license_id": future_license_id,
+            "requested_quantity": 3,
+            "effective_date": (date.today() + timedelta(days=7)).isoformat(),
         }],
     }
     decision_path = tmp_path / "akkoord.json"
@@ -55,9 +63,14 @@ def test_portal_decision_and_controlled_license_update(tmp_path):
 
     applied = service.apply_license_changes(imported["publication_id"])
     assert applied["changed"] == 1
-    assert OperationsService(db).list_rows("licenses", customer_id)[0]["quantity"] == 8
-    with pytest.raises(ValueError, match="al verwerkt"):
-        service.apply_license_changes(imported["publication_id"])
+    assert applied["pending"] == 1 and not applied["complete"]
+    licenses = {row["product"]: row["quantity"]
+                for row in OperationsService(db).list_rows("licenses", customer_id)}
+    assert licenses["Microsoft 365 Business Premium"] == 8
+    assert licenses["Exchange Online Archiving"] == 2
+    overview = service.overview()[0]
+    assert overview["display_status"] == "ingepland"
+    assert overview["future_count"] == 1 and overview["due_count"] == 0
 
 
 def test_decision_rejects_unknown_token_and_license_tampering(tmp_path):
