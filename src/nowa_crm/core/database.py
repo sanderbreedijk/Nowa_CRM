@@ -811,6 +811,36 @@ INSERT OR IGNORE INTO call_number_links(normalized_number,customer_id,contact_id
 SELECT normalized_number,customer_id,contact_id,created_by FROM call_customer_aliases;
 """
 
+SHOMI_ANALYSIS_332_SCHEMA = """
+CREATE TABLE IF NOT EXISTS call_analyses (
+    id INTEGER PRIMARY KEY,
+    call_id INTEGER NOT NULL REFERENCES call_events(id) ON DELETE CASCADE,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+    provider TEXT NOT NULL DEFAULT 'shomi',
+    source_event_id TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    transcript TEXT NOT NULL DEFAULT '',
+    action_points_json TEXT NOT NULL DEFAULT '[]',
+    raw_payload_json TEXT NOT NULL DEFAULT '{}',
+    received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(provider,source_event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_call_analyses_call ON call_analyses(call_id,received_at DESC);
+"""
+
+GOOGLE_CALENDAR_332_SCHEMA = """
+CREATE TABLE IF NOT EXISTS calendar_event_links (
+    id INTEGER PRIMARY KEY,
+    provider TEXT NOT NULL DEFAULT 'google_calendar',
+    action_id INTEGER NOT NULL REFERENCES action_items(id) ON DELETE CASCADE,
+    external_event_id TEXT NOT NULL,
+    calendar_id TEXT NOT NULL DEFAULT 'primary',
+    synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(provider,action_id)
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_event_links_external ON calendar_event_links(provider,external_event_id);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -823,5 +853,6 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (25, PROPOSAL_EDITOR_330_SCHEMA), (26, CUSTOMER_QUALITY_313_SCHEMA),
     (27, PROPOSAL_OPTIONS_318_SCHEMA), (28, PROPOSAL_APPROVAL_319_SCHEMA),
     (29, PROPOSAL_APPROVAL_320_SCHEMA), (30, PROPOSAL_APPROVAL_321_SCHEMA),
-    (31, TELEPHONY_MULTI_LINK_326_SCHEMA)
+    (31, TELEPHONY_MULTI_LINK_326_SCHEMA), (32, SHOMI_ANALYSIS_332_SCHEMA),
+    (33, GOOGLE_CALENDAR_332_SCHEMA)
 )
