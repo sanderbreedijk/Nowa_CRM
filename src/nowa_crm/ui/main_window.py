@@ -158,8 +158,9 @@ class MainWindow(QMainWindow):
         backup_title=QLabel("Lokale gegevensbescherming");backup_title.setObjectName("SectionTitle");backup_box.addWidget(backup_title)
         self.backup_status=QLabel();self.backup_status.setWordWrap(True);backup_box.addWidget(self.backup_status)
         backup_row=QHBoxLayout();make_backup=QPushButton("Complete herstelset maken");make_backup.setObjectName("Primary");make_backup.clicked.connect(self.create_recovery_backup)
+        restore_backup=QPushButton("Herstelset terugzetten");restore_backup.clicked.connect(self.restore_recovery_backup)
         open_backups=QPushButton("Back-upmap openen");open_backups.clicked.connect(self.open_backup_folder)
-        backup_row.addWidget(make_backup);backup_row.addWidget(open_backups);backup_row.addStretch();backup_box.addLayout(backup_row)
+        backup_row.addWidget(make_backup);backup_row.addWidget(restore_backup);backup_row.addWidget(open_backups);backup_row.addStretch();backup_box.addLayout(backup_row)
         box.addWidget(backup_card);self.refresh_backup_status();box.addStretch();return page
     def _dashboard(self):
         page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); grid.setHorizontalSpacing(14); grid.setVerticalSpacing(14); self.kpis=[]
@@ -610,6 +611,26 @@ class MainWindow(QMainWindow):
     def open_backup_folder(self):
         folder=data_dir()/"backups"/"herstelsets";folder.mkdir(parents=True,exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+    def restore_recovery_backup(self):
+        folder=QFileDialog.getExistingDirectory(self,"Kies een NOWA CRM-herstelset",str(data_dir()/"backups"/"herstelsets"))
+        if not folder:return
+        service=BackupService(self.customers.db)
+        try:
+            info=service.prepare_restore(Path(folder))
+            size=info.size_bytes/(1024*1024)
+            answer=QMessageBox.warning(
+                self,"Herstelset terugzetten",
+                f"Herstelset van {info.created_at}\n{info.files} bestanden · {size:.1f} MB\n\n"
+                "De huidige database, kluis, documenten en mailbijlagen worden teruggezet naar deze situatie.\n"
+                "NOWA CRM maakt eerst automatisch een extra veiligheidskopie en start daarna opnieuw.\n\nDoorgaan?",
+                QMessageBox.Yes|QMessageBox.No,QMessageBox.No
+            )
+            if answer!=QMessageBox.Yes:return
+            service.restore_after_exit(Path(folder))
+            QMessageBox.information(self,"Herstel voorbereid","NOWA CRM sluit nu af, zet de gecontroleerde herstelset terug en start daarna opnieuw.")
+            QApplication.quit()
+        except Exception as exc:
+            QMessageBox.critical(self,"Herstellen niet mogelijk",str(exc))
     def refresh_all(self):
         self.refresh_customers(); self.refresh_proposals(); self.refresh_vault()
         if hasattr(self,"operations_page"):self.operations_page.reload_customers()
