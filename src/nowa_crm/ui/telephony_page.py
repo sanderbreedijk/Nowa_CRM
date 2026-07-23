@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
                                QLineEdit, QMessageBox, QPushButton, QSplitter, QTableWidget,
                                QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
@@ -9,6 +10,8 @@ from nowa_crm.modules.telephony.service import TelephonyService
 
 
 class TelephonyPage(QWidget):
+    call_started=Signal(int)
+    call_finished=Signal(int,dict)
     def __init__(self, customers: CustomerService, service: TelephonyService, open_customer, open_vault, create_ticket=None, parent=None):
         super().__init__(parent); self.customers=customers; self.service=service; self.open_customer=open_customer; self.open_vault=open_vault; self.call_id=None
         self.create_ticket=create_ticket
@@ -33,7 +36,7 @@ class TelephonyPage(QWidget):
         historybox=QWidget(); hl=QVBoxLayout(historybox); searchrow=QHBoxLayout(); self.search=QLineEdit(); self.search.setPlaceholderText("Zoek gesprekken…"); self.search.textChanged.connect(self.refresh_history); self.queue=QComboBox()
         for label,value in (("Alle gesprekken","alle"),("Terugbellen","terugbellen"),("Gemist","gemist"),("Onbekend","onbekend")):self.queue.addItem(label,value)
         self.queue.currentIndexChanged.connect(self.refresh_history);self.filter_customer=QComboBox(); self.filter_customer.currentIndexChanged.connect(self.refresh_history);self.queue_status=QLabel(); searchrow.addWidget(self.search,1);searchrow.addWidget(self.queue); searchrow.addWidget(self.filter_customer);searchrow.addWidget(self.queue_status); hl.addLayout(searchrow)
-        self.table=QTableWidget(0,11); self.table.setHorizontalHeaderLabels(["Datum","Klant","Contact","Richting","Nummer","Status","Prioriteit","Terugbellen","Toegewezen","Onderwerp","ID"]); self.table.setColumnHidden(10,True); self.table.horizontalHeader().setStretchLastSection(True); self.table.doubleClicked.connect(self.load_selected); hl.addWidget(self.table)
+        self.table=QTableWidget(0,12); self.table.setHorizontalHeaderLabels(["Datum","Klant","Contact","Richting","Nummer","Duur","Status","Prioriteit","Terugbellen","Toegewezen","Onderwerp","ID"]); self.table.setColumnHidden(11,True); self.table.horizontalHeader().setStretchLastSection(True); self.table.doubleClicked.connect(self.load_selected); hl.addWidget(self.table)
         callback_done=QPushButton("Terugbelactie afronden");callback_done.clicked.connect(self.complete_callback);hl.addWidget(callback_done)
         split.addWidget(formbox); split.addWidget(historybox); split.setSizes([430,850]); root.addWidget(split,1); self.reload_customers()
 
@@ -68,13 +71,17 @@ class TelephonyPage(QWidget):
             self.match.setText(f"{call['customer_name']}{contact}\n{call['phone_number']}")
             self.show_briefing(call)
             self.subject.clear(); self.notes.clear(); self.callback.setChecked(False); self.refresh_history()
+            self.call_started.emit(self.call_id)
         except Exception as exc:QMessageBox.warning(self,"Telefonie",str(exc))
 
     def finish(self):
         if not self.call_id:QMessageBox.information(self,"Telefonie","Start of selecteer eerst een gesprek."); return
         try:
-            self.service.finish_call(self.call_id,self.subject.text(),self.notes.toPlainText(),self.outcome.currentText(),self.callback.isChecked(),self.callback_due.text(),self.priority.currentText(),self.assigned.text())
-            self.match.setText("Gesprek afgerond en lokaal geregistreerd."); self.call_id=None; self.refresh_history()
+            call_id=self.call_id
+            self.service.finish_call(call_id,self.subject.text(),self.notes.toPlainText(),self.outcome.currentText(),self.callback.isChecked(),self.callback_due.text(),self.priority.currentText(),self.assigned.text())
+            saved=self.service.get(call_id);self.match.setText("Gesprek afgerond en lokaal geregistreerd.")
+            self.call_id=None;self.phone.clear();self.subject.clear();self.notes.clear();self.callback.setChecked(False);self.callback_due.clear();self.refresh_history()
+            self.call_finished.emit(call_id,saved or {})
         except Exception as exc:QMessageBox.warning(self,"Gesprek afronden",str(exc))
 
     def link_customer(self):
@@ -114,12 +121,12 @@ class TelephonyPage(QWidget):
     def refresh_history(self,*_):
         rows=self.service.history(self.filter_customer.currentData(),self.search.text(),self.queue.currentData() or "alle"); self.table.setRowCount(len(rows))
         for r,row in enumerate(rows):
-            values=(row["started_at"],row["customer_name"],row["contact_name"],row["direction"],row["phone_number"],row["status"],row["priority"],row["callback_due"],row["assigned_to"],row["subject"],row["id"])
+            values=(row["started_at"],row["customer_name"],row["contact_name"],row["direction"],row["phone_number"],_duration(row["duration_seconds"]),row["status"],row["priority"],row["callback_due"],row["assigned_to"],row["subject"],row["id"])
             for c,value in enumerate(values):self.table.setItem(r,c,QTableWidgetItem(str(value or "")))
         stats=self.service.queue_stats();self.queue_status.setText(f"{stats['callbacks']} terugbellen · {stats['unknown']} onbekend")
 
     def load_selected(self,*_):
-        row=self.table.currentRow(); item=self.table.item(row,10) if row>=0 else None
+        row=self.table.currentRow(); item=self.table.item(row,11) if row>=0 else None
         if not item:return
         self.call_id=int(item.text()); call=self.service.get(self.call_id); self.phone.setText(call["phone_number"]); self.subject.setText(call["subject"]); self.notes.setPlainText(call["notes"]); self.outcome.setCurrentText(call["outcome"] or "Beantwoord")
         self.priority.setCurrentText(call["priority"]);self.assigned.setText(call["assigned_to"] or self.service.actor);self.callback_due.setText(call["callback_due"])
@@ -127,7 +134,7 @@ class TelephonyPage(QWidget):
         self.show_briefing(call)
 
     def complete_callback(self):
-        row=self.table.currentRow();item=self.table.item(row,10) if row>=0 else None
+        row=self.table.currentRow();item=self.table.item(row,11) if row>=0 else None
         if not item:return
         self.service.complete_callback(int(item.text()));self.refresh_history()
 
@@ -137,6 +144,8 @@ class TelephonyPage(QWidget):
         if not call:return
         self.phone.setText(call["phone_number"]); self.subject.setText(call["subject"]); self.notes.setPlainText(call["notes"])
         self.outcome.setCurrentText(call["outcome"] or "Beantwoord")
+        self.priority.setCurrentText(call["priority"]);self.assigned.setText(call["assigned_to"] or self.service.actor)
+        self.callback_due.setText(call["callback_due"]);self.callback.setChecked(call["callback_status"]=="open")
         self.match.setText(f"{call['customer_name']} · {call['contact_name']}\n{call['phone_number']}")
         self.show_briefing(call)
 
@@ -153,3 +162,8 @@ class TelephonyPage(QWidget):
 
     def _open_vault(self):
         if self.phone.text().strip():self.open_vault(self.phone.text())
+
+
+def _duration(seconds):
+    seconds=max(0,int(seconds or 0));minutes,second=divmod(seconds,60);hours,minutes=divmod(minutes,60)
+    return f"{hours:02d}:{minutes:02d}:{second:02d}"

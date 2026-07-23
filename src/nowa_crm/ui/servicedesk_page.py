@@ -1,11 +1,35 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import (QComboBox,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,
-                               QLineEdit,QMessageBox,QPushButton,QSplitter,QTableWidget,QTableWidgetItem,
-                               QVBoxLayout,QWidget)
+from PySide6.QtWidgets import (QComboBox,QDialog,QDialogButtonBox,QFormLayout,QFrame,QGridLayout,
+                               QHBoxLayout,QInputDialog,QLabel,QLineEdit,QMessageBox,QPushButton,
+                               QSplitter,QTableWidget,QTableWidgetItem,QTextEdit,QVBoxLayout,QWidget)
 
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.servicedesk.service import ServiceDeskService
+
+
+class TicketDraftDialog(QDialog):
+    def __init__(self,customer_name,subject="",description="",parent=None):
+        super().__init__(parent);self.setWindowTitle("Nieuw serviceticket");self.resize(620,470)
+        form=QFormLayout(self);customer=QLabel(customer_name);customer.setObjectName("SectionTitle");form.addRow("Klant",customer)
+        self.subject=QLineEdit(subject);self.description=QTextEdit(description)
+        self.category=QComboBox();self.category.addItems(["Support","Storing","Wijziging","Advies","Beheer"])
+        self.priority=QComboBox();self.priority.addItems(ServiceDeskService.PRIORITIES);self.priority.setCurrentText("Normaal")
+        self.owner=QLineEdit("NOWA");self.sla=QLineEdit();self.sla.setPlaceholderText("Leeg laten voor automatische SLA")
+        form.addRow("Onderwerp",self.subject);form.addRow("Omschrijving",self.description);form.addRow("Categorie",self.category)
+        form.addRow("Prioriteit",self.priority);form.addRow("Behandelaar",self.owner);form.addRow("SLA-deadline",self.sla)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Ticket aanmaken")
+        buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);form.addRow(buttons)
+
+    def accept(self):
+        if not self.subject.text().strip():
+            QMessageBox.information(self,"Nieuw serviceticket","Vul eerst een onderwerp in.");self.subject.setFocus();return
+        super().accept()
+
+    def values(self):
+        return (self.subject.text().strip(),self.description.toPlainText().strip(),self.category.currentText(),
+                self.priority.currentText(),self.owner.text().strip() or "NOWA",self.sla.text().strip())
 
 
 class ServiceDeskPage(QWidget):
@@ -82,6 +106,17 @@ class ServiceDeskPage(QWidget):
         if not ok:return
         self.ticket_id=self.service.create(customer_id,subject,description,priority=priority,owner="NOWA")
         self.reload();self.load_ticket()
+
+    def create_ticket_from_source(self,customer_id,subject,description,source_type,source_id):
+        customer=self.customers.get(customer_id)
+        if not customer:return None
+        dialog=TicketDraftDialog(customer.name,subject,description,self)
+        dialog.subject.setFocus();dialog.subject.selectAll()
+        if not dialog.exec():return None
+        subject,description,category,priority,owner,sla=dialog.values()
+        self.ticket_id=self.service.create(customer_id,subject,description,category,priority,owner,sla,
+                                           source_type=source_type,source_id=source_id)
+        self.reload();self.open_ticket(self.ticket_id);return self.ticket_id
 
     def load_selected(self,*_):
         row=self.table.currentRow();item=self.table.item(row,9) if row>=0 else None

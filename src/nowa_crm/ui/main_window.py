@@ -107,7 +107,13 @@ class MainWindow(QMainWindow):
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
-        nav.addStretch();self.sip_nav_status=QLabel("SIP  •  niet actief");self.sip_nav_status.setObjectName("SipSidebarStatus");self.sip_nav_status.setProperty("sipState","idle");nav.addWidget(self.sip_nav_status)
+        self.telephony_page.call_started.connect(self.start_call_tracking);self.telephony_page.call_finished.connect(self.handle_call_finished)
+        nav.addStretch();self.active_call_id=None;self.call_timer=QTimer(self);self.call_timer.timeout.connect(self.update_call_tracking);self.call_timer.setInterval(1000)
+        self.call_panel=QFrame();self.call_panel.setObjectName("ActiveCallPanel");call_box=QVBoxLayout(self.call_panel);call_box.setContentsMargins(11,10,11,10);call_box.setSpacing(5)
+        self.call_caption=QLabel("ACTIEF GESPREK");self.call_caption.setObjectName("ActiveCallCaption");self.call_name=QLabel();self.call_name.setObjectName("ActiveCallName");self.call_name.setWordWrap(True)
+        call_row=QHBoxLayout();self.call_duration=QLabel("00:00:00");self.call_duration.setObjectName("ActiveCallDuration");end_call=QPushButton("Gesprek beëindigen");end_call.setObjectName("EndCall");end_call.clicked.connect(self.end_active_call)
+        call_row.addWidget(self.call_duration);call_row.addStretch();call_row.addWidget(end_call);call_box.addWidget(self.call_caption);call_box.addWidget(self.call_name);call_box.addLayout(call_row);self.call_panel.hide();nav.addWidget(self.call_panel)
+        self.sip_nav_status=QLabel("SIP  •  niet actief");self.sip_nav_status.setObjectName("SipSidebarStatus");self.sip_nav_status.setProperty("sipState","idle");nav.addWidget(self.sip_nav_status)
         self.integrations_page.sip_status_changed.connect(self.update_sip_sidebar_status)
         version=QLabel(f"Versie {__version__}  •  lokaal"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
         self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
@@ -509,6 +515,15 @@ class MainWindow(QMainWindow):
         if call_id is not None:self.telephony_page.open_call(call_id)
         self._show(8)
     def show_incoming_call(self,call_id):
+        call=self.telephony.get(call_id)
+        if not call or call["status"]!="nieuw":return
+        self.start_call_tracking(call_id)
+        if self.incoming_call_popup:
+            try:
+                if self.incoming_call_popup.call_id==call_id:
+                    self.incoming_call_popup.raise_();return
+            except RuntimeError:
+                self.incoming_call_popup=None
         if self.incoming_call_popup:
             try:self.incoming_call_popup.close()
             except RuntimeError:pass
@@ -516,14 +531,69 @@ class MainWindow(QMainWindow):
         popup=IncomingCallPopup(call_id,self.customers,self.telephony,self.open_call,
             self.open_customer,self.open_vault,self.create_ticket_from_communication,self)
         self.incoming_call_popup=popup
+        popup.completed.connect(self.handle_call_finished)
         popup.destroyed.connect(lambda:self._clear_incoming_popup(popup))
         popup.show();popup.raise_()
     def _clear_incoming_popup(self,popup):
         if self.incoming_call_popup is popup:self.incoming_call_popup=None
+        call=self.telephony.get(popup.call_id)
+        if call and call["status"] in ("afgerond","gemist"):self.stop_call_tracking(popup.call_id)
+
+    def start_call_tracking(self,call_id):
+        call=self.telephony.get(call_id)
+        if not call or call["status"] in ("afgerond","gemist"):return
+        self.active_call_id=call_id;self.call_name.setText(f"{call['customer_name']}\n{call['phone_number']}")
+        self.call_panel.show();self.call_timer.start();self.update_call_tracking()
+
+    def update_call_tracking(self):
+        if not self.active_call_id:return
+        call=self.telephony.get(self.active_call_id)
+        if not call or call["status"] in ("afgerond","gemist"):
+            self.stop_call_tracking(self.active_call_id);return
+        seconds=self.telephony.elapsed_seconds(self.active_call_id);hours,remainder=divmod(seconds,3600);minutes,seconds=divmod(remainder,60)
+        self.call_duration.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+
+    def stop_call_tracking(self,call_id=None):
+        if call_id is not None and self.active_call_id!=call_id:return
+        self.call_timer.stop();self.active_call_id=None;self.call_panel.hide();self.call_duration.setText("00:00:00")
+
+    def end_active_call(self):
+        if not self.active_call_id:return
+        if self.incoming_call_popup:
+            try:
+                if self.incoming_call_popup.call_id==self.active_call_id:
+                    self.incoming_call_popup.finish_workflow();return
+            except RuntimeError:
+                self.incoming_call_popup=None
+        if self.telephony_page.call_id!=self.active_call_id:self.telephony_page.open_call(self.active_call_id)
+        self.telephony_page.finish()
+
+    def handle_call_finished(self,call_id,call):
+        duration=self.telephony.elapsed_seconds(call_id);self.stop_call_tracking(call_id)
+        if not call or not call.get("customer_id"):return
+        if QMessageBox.question(self,"Gesprek afgerond","Gesprek en tijdregistratie zijn opgeslagen.\n\nEen samenvatting per e-mail voorbereiden?")!=QMessageBox.Yes:return
+        customer=self.customers.get(call["customer_id"]);contacts=self.customers.contacts(call["customer_id"])
+        contact=next((item for item in contacts if item.id==call.get("contact_id")),None)
+        recipient=(contact.email if contact and contact.email else customer.email) if customer else ""
+        if not recipient:
+            QMessageBox.information(self,"Gesprekssamenvatting","Bij deze klant is geen e-mailadres vastgelegd.");return
+        hours,remainder=divmod(duration,3600);minutes,seconds=divmod(remainder,60);duration_text=f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        subject=call.get("subject") or "Telefonisch contact"
+        greeting=f"Beste {contact.name}," if contact else "Geachte heer/mevrouw,"
+        body=(f"{greeting}\n\nHierbij ontvangt u een korte samenvatting van ons telefoongesprek.\n\n"
+              f"Onderwerp: {subject}\nResultaat: {call.get('outcome') or 'Besproken'}\n"
+              f"Gespreksduur: {duration_text}\n\n{call.get('notes') or 'Geen aanvullende notities.'}\n\n"
+              "Met vriendelijke groet,\nNOWA")
+        self.mail_page.reload();self.mail_page.clear();index=self.mail_page.customer.findData(call["customer_id"])
+        if index>=0:self.mail_page.customer.setCurrentIndex(index)
+        if contact:
+            contact_index=self.mail_page.contact.findData(contact.id)
+            if contact_index>=0:self.mail_page.contact.setCurrentIndex(contact_index)
+        self.mail_page.to.setText(recipient);self.mail_page.subject.setText(f"Samenvatting telefoongesprek – {subject}");self.mail_page.body.setPlainText(body);self._show(7)
     def create_ticket_from_communication(self,customer_id,subject,description,source_type,source_id):
         try:
-            ticket_id=self.servicedesk_service.create_from_source(customer_id,subject or "Servicevraag",description,source_type,source_id)
-            self.servicedesk_page.open_ticket(ticket_id);self._show(9)
+            self._show(9)
+            self.servicedesk_page.create_ticket_from_source(customer_id,subject or "Servicevraag",description,source_type,source_id)
         except Exception as exc:QMessageBox.warning(self,"Serviceticket",str(exc))
     def open_service_ticket(self,ticket_id):
         self.servicedesk_page.open_ticket(ticket_id);self._show(9)
@@ -705,16 +775,18 @@ class MainWindow(QMainWindow):
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
         if not hasattr(self,"customer_table"):return
-        selected_id=self._selected_id(self.customer_table,8);rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows));selected_row=-1
+        selected_id=self._selected_id(self.customer_table,8);rows=self.customers.search(self.customer_search.text())
+        self.customer_table.blockSignals(True);self.customer_table.clearSelection();self.customer_table.setCurrentCell(-1,-1)
+        self.customer_table.setRowCount(len(rows));selected_row=-1
         for r,x in enumerate(rows):
             for c,v in enumerate((x.customer_number,x.name,x.status,x.tags,x.email,x.phone,x.mobile_phone,x.city,str(x.id))):
                 item=QTableWidgetItem(v)
                 if c==2:item.setForeground(QColor({"actief":"#16815F","prospect":"#1265C4","tijdelijk gestopt":"#9A4B11","uitgeschreven":"#6B7280"}.get(x.status,"#344259")))
                 self.customer_table.setItem(r,c,item)
             if x.id==selected_id:selected_row=r
-        if selected_row>=0:self.customer_table.selectRow(selected_row)
-        elif rows:self.customer_table.selectRow(0)
-        else:self.refresh_customer_card()
+        target_row=selected_row if selected_row>=0 else (0 if rows else -1)
+        if target_row>=0:self.customer_table.setCurrentCell(target_row,0);self.customer_table.selectRow(target_row)
+        self.customer_table.blockSignals(False);self.refresh_customer_card()
     def refresh_proposals(self,*_):
         if not hasattr(self,"proposal_table"):return
         from datetime import datetime
