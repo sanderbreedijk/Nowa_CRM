@@ -300,14 +300,14 @@ class MainWindow(QMainWindow):
         title,ok=QInputDialog.getText(self,"Nieuwe offerte","Titel")
         if ok:
             try:
-                proposal_id=self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all(); ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+                proposal_id=self.proposals.create(customers[labels.index(label)].id,title); self.refresh_all(); ProposalDialog(self.proposals,proposal_id,self,mail=self.mail).exec(); self.refresh_all()
             except Exception as e: QMessageBox.critical(self,"Offerte",str(e))
     def add_proposal_for_customer(self,customer_id):
         customer=self.customers.get(customer_id)
         if not customer:return
         title,ok=QInputDialog.getText(self,"Nieuwe offerte",f"Titel voor {customer.name}")
         if ok and title.strip():
-            try:proposal_id=self.proposals.create(customer_id,title);self.refresh_all();ProposalDialog(self.proposals,proposal_id,self).exec();self.refresh_all()
+            try:proposal_id=self.proposals.create(customer_id,title);self.refresh_all();ProposalDialog(self.proposals,proposal_id,self,mail=self.mail).exec();self.refresh_all()
             except Exception as exc:QMessageBox.warning(self,"Nieuwe offerte",str(exc))
     def import_legacy_proposal(self):
         filename,_=QFileDialog.getOpenFileName(self,"Geëxtraheerde oude offerte selecteren","","NOWA-offertepakket (*.zip)")
@@ -350,7 +350,7 @@ class MainWindow(QMainWindow):
                 f"PDF in documentcentrum: {'ja' if result['document_id'] else 'nee'}\n\n"
                 f"Back-up:\n{result['backup']}{warning_text}",
             )
-            ProposalDialog(self.proposals,result["proposal_id"],self).exec();self.refresh_all()
+            ProposalDialog(self.proposals,result["proposal_id"],self,mail=self.mail).exec();self.refresh_all()
         except Exception as exc:
             QMessageBox.warning(self,"Oude offerte importeren",str(exc))
     def import_customers(self):
@@ -413,13 +413,13 @@ class MainWindow(QMainWindow):
             except Exception as exc:QMessageBox.warning(self,"Klant activeren",str(exc))
     def edit_proposal(self,*_):
         proposal_id=self._selected_id(self.proposal_table,6)
-        if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+        if proposal_id:ProposalDialog(self.proposals,proposal_id,self,mail=self.mail).exec(); self.refresh_all()
     def open_approval_manager(self):
         ApprovalManagerDialog(self.proposals,self.open_proposal,self).exec();self.refresh_all()
     def duplicate_proposal(self):
         proposal_id=self._selected_id(self.proposal_table,6)
         if not proposal_id:return
-        try:new_id=self.proposals.duplicate(proposal_id);self.refresh_all();ProposalDialog(self.proposals,new_id,self).exec();self.refresh_all()
+        try:new_id=self.proposals.duplicate(proposal_id);self.refresh_all();ProposalDialog(self.proposals,new_id,self,mail=self.mail).exec();self.refresh_all()
         except Exception as exc:QMessageBox.warning(self,"Offerte dupliceren",str(exc))
     def revise_proposal(self):
         proposal_id=self._selected_id(self.proposal_table,6)
@@ -440,7 +440,7 @@ class MainWindow(QMainWindow):
             if QMessageBox.question(self,"PDF gereed",f"PDF lokaal opgeslagen:\n{path}\n\nNu openen?")==QMessageBox.Yes:QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         except Exception as exc:QMessageBox.warning(self,"PDF export",str(exc))
     def open_proposal(self,proposal_id):
-        ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+        ProposalDialog(self.proposals,proposal_id,self,mail=self.mail).exec(); self.refresh_all()
     def open_customer(self,customer_id):
         if self.customers.get(customer_id):self.customer360.select_customer(customer_id); self._show(3)
     def start_customer_mail(self,customer_id):
