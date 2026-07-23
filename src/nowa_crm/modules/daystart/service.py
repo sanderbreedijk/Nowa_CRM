@@ -18,18 +18,23 @@ class DaystartService:
         with self.db.transaction() as conn:
             self._add(rows, "Actie", conn.execute("""SELECT a.id,a.customer_id,COALESCE(c.name,'Algemeen') customer_name,
                 a.title,a.priority,a.owner assigned_to,a.due_date due_at,a.status detail FROM action_items a
-                LEFT JOIN customers c ON c.id=a.customer_id WHERE a.status NOT IN ('Gereed','Geannuleerd')""").fetchall())
+                LEFT JOIN customers c ON c.id=a.customer_id WHERE a.status NOT IN ('Gereed','Geannuleerd')
+                AND NOT (a.source_type='Telefoon' AND EXISTS (
+                    SELECT 1 FROM call_events ce WHERE ce.id=a.source_id AND ce.callback_status='open'))""").fetchall())
             self._add(rows, "E-mail", conn.execute("""SELECT m.id,m.customer_id,COALESCE(c.name,'Ongekoppeld') customer_name,
                 m.subject title,m.priority,m.assigned_to,m.follow_up_at due_at,m.triage_state detail FROM mail_messages m
                 LEFT JOIN customers c ON c.id=m.customer_id WHERE m.direction='inkomend' AND m.triage_state<>'afgerond'""").fetchall())
-            self._add(rows, "Terugbellen", conn.execute("""SELECT ce.id,ce.customer_id,COALESCE(c.name,'Onbekend') customer_name,
-                COALESCE(NULLIF(ce.subject,''),'Terugbellen: '||ce.phone_number) title,ce.priority,ce.assigned_to,
-                ce.callback_due due_at,ce.status detail FROM call_events ce LEFT JOIN customers c ON c.id=ce.customer_id
-                WHERE ce.callback_status='open'""").fetchall())
-            self._add(rows, "Ticket", conn.execute("""SELECT t.id,t.customer_id,c.name customer_name,t.number||' · '||t.subject title,
+            self._add(rows, "Terugbellen", conn.execute("""SELECT MAX(ce.id) id,ce.customer_id,COALESCE(c.name,'Onbekend') customer_name,
+                CASE WHEN COUNT(*)>1 THEN 'Gemiste oproepen ('||COUNT(*)||'x) Â· '||ce.phone_number
+                     ELSE COALESCE(NULLIF(MAX(ce.subject),''),'Terugbellen Â· '||ce.phone_number) END title,
+                MAX(ce.priority) priority,MAX(ce.assigned_to) assigned_to,MIN(ce.callback_due) due_at,
+                CASE WHEN COUNT(*)>1 THEN COUNT(*)||' oproepen wachten op terugbellen' ELSE 'Terugbellen vereist' END detail
+                FROM call_events ce LEFT JOIN customers c ON c.id=ce.customer_id WHERE ce.callback_status='open'
+                GROUP BY ce.customer_id,ce.normalized_number,date(ce.callback_due)""").fetchall())
+            self._add(rows, "Ticket", conn.execute("""SELECT t.id,t.customer_id,c.name customer_name,t.number||' Â· '||t.subject title,
                 t.priority,t.owner assigned_to,t.sla_due_at due_at,t.status detail FROM service_tickets t JOIN customers c ON c.id=t.customer_id
                 WHERE t.status NOT IN ('Opgelost','Gesloten') AND (t.priority IN ('Hoog','Kritiek') OR t.sla_due_at='' OR datetime(t.sla_due_at)<=datetime('now','localtime','+8 hours'))""").fetchall())
-            self._add(rows, "Offerte", conn.execute("""SELECT p.id,p.customer_id,c.name customer_name,p.number||' · '||p.title title,
+            self._add(rows, "Offerte", conn.execute("""SELECT p.id,p.customer_id,c.name customer_name,p.number||' Â· '||p.title title,
                 'Normaal' priority,'' assigned_to,date(p.updated_at,'+7 day') due_at,p.status detail FROM proposals p JOIN customers c ON c.id=p.customer_id
                 WHERE p.status='verzonden' AND datetime(p.updated_at)<=datetime('now','localtime','-7 day')""").fetchall())
             self._add(rows, "Licentie", conn.execute("""SELECT l.id,l.customer_id,c.name customer_name,l.product||' verlengen' title,
