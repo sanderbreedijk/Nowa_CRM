@@ -28,6 +28,7 @@ from nowa_crm.modules.servicedesk.service import ServiceDeskService
 from nowa_crm.modules.reporting.service import ReportingService
 from nowa_crm.modules.planning.service import PlanningService
 from nowa_crm.modules.security.service import SecurityService
+from nowa_crm.modules.integrations.service import IntegrationService
 from nowa_crm.modules.communications.service import CommunicationService
 from nowa_crm.modules.documents.service import DocumentCenterService
 from nowa_crm.modules.integrations.service import IntegrationService
@@ -506,6 +507,31 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert quote_assets.list("documents",quote_customer_id)[0]["original_name"]=="origineel.pdf"
     try:quote_importer.apply(quote_preview,quote_customer_id);assert False
     except ValueError as exc:assert "al geïmporteerd" in str(exc)
+
+
+def test_shomi_mail_parser_handles_direction_and_relative_follow_up():
+    body = """
+    Shomi Transcription
+    CONVERSATIE GESTART
+    06-03-2026 @ 17:37
+    DEELNEMERS
+    * Medewerker (+31100000001)
+    * +31100000002
+    ONDERWERP
+    Apparaat ophalen
+    VERSLAG
+    * Medewerker heeft de Callee geïnformeerd dat het apparaat gereed is.
+    VERVOLGACTIES
+    * Callee haalt het apparaat morgenochtend op.
+    """
+    parsed=IntegrationService.parse_shomi_email(
+        "6 Mar 2026 17:37 - Call between Medewerker (+31100000001) and +31100000002 - Apparaat ophalen",
+        body,"<fictional@example.invalid>","+31100000001")
+    assert parsed["direction"]=="uitgaand"
+    assert parsed["phone_number"]=="+31100000002"
+    assert parsed["subject"]=="Apparaat ophalen"
+    assert parsed["action_points"][0]["due_date"]=="2026-03-07"
+    assert parsed["action_points"][0]["reminder_at"]=="2026-03-07T09:00"
 
 
 def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:

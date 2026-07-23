@@ -13,6 +13,10 @@ dist/
 *.sqlite3-*
 *.db
 vault.key
+*.token
+*.key
+client_secret*.json
+credentials*.json
 backups/
 exports/
 logs/
