@@ -18,6 +18,9 @@ API_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 FORBIDDEN_NAMES = {"vault.key", ".env"}
 FORBIDDEN_SUFFIXES = {".sqlite3", ".db", ".pem", ".pfx"}
+MAX_ARCHIVE_BYTES = 500 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024
+MAX_ARCHIVE_FILES = 10_000
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -49,7 +52,10 @@ class UpdateService:
                 payload = json.load(response)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
-                return None
+                raise RuntimeError(
+                    "De GitHub-repository is privé. Download het Windows-pakket "
+                    "na aanmelding bij GitHub en kies daarna 'Updatepakket kiezen'."
+                ) from exc
             raise RuntimeError(f"GitHub gaf fout {exc.code}") from exc
         assets = payload.get("assets") or []
         asset = next((item for item in assets if item.get("name") == "NOWA_CRM-Windows.zip"), None)
@@ -74,10 +80,24 @@ class UpdateService:
                 target.write(block)
         return self._safe_extract(archive, folder / "pakket")
 
+    def prepare_local_package(self, archive: Path) -> Path:
+        archive = archive.resolve()
+        if not archive.is_file() or archive.suffix.lower() != ".zip":
+            raise RuntimeError("Kies het originele Windows-updatepakket in ZIP-formaat")
+        if archive.stat().st_size > MAX_ARCHIVE_BYTES:
+            raise RuntimeError("Het gekozen updatepakket is onverwacht groot")
+        folder = Path(tempfile.mkdtemp(prefix="nowa-update-"))
+        return self._safe_extract(archive, folder / "pakket")
+
     def _safe_extract(self, archive: Path, destination: Path) -> Path:
         destination.mkdir(parents=True)
         with zipfile.ZipFile(archive) as package:
-            for info in package.infolist():
+            entries = package.infolist()
+            if len(entries) > MAX_ARCHIVE_FILES:
+                raise RuntimeError("Update bevat onverwacht veel bestanden")
+            if sum(info.file_size for info in entries) > MAX_EXTRACTED_BYTES:
+                raise RuntimeError("De uitgepakte update is onverwacht groot")
+            for info in entries:
                 path = PurePosixPath(info.filename.replace("\\", "/"))
                 if path.is_absolute() or ".." in path.parts:
                     raise RuntimeError("Update bevat een ongeldig bestandspad")

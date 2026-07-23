@@ -5,6 +5,7 @@ import zipfile
 from datetime import date, timedelta
 from email.message import EmailMessage
 
+import pytest
 from cryptography.fernet import Fernet
 
 from nowa_crm.core.database import Database
@@ -33,7 +34,7 @@ from nowa_crm.modules.daystart.service import DaystartService
 from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
-from nowa_crm.core.updater import ReleaseInfo, _version_tuple
+from nowa_crm.core.updater import ReleaseInfo, UpdateService, _version_tuple
 
 
 def test_customer_and_vault_roundtrip(tmp_path: Path):
@@ -346,6 +347,17 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
         assert conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] >= 8
     assert _version_tuple("v0.10.0") > _version_tuple("0.3.0")
     assert ReleaseInfo("v99.0.0", "Test", "", "https://github.com/test.zip", "").is_newer
+    update_zip=tmp_path/"NOWA_CRM-Windows.zip"
+    with zipfile.ZipFile(update_zip,"w") as package:
+        package.writestr("NOWA_CRM/NOWA_CRM.exe",b"test-app")
+        package.writestr("NOWA_CRM/_internal/runtime.dll",b"runtime")
+    prepared=UpdateService().prepare_local_package(update_zip)
+    assert (prepared/"NOWA_CRM.exe").read_bytes()==b"test-app"
+    unsafe_zip=tmp_path/"onveilig.zip"
+    with zipfile.ZipFile(unsafe_zip,"w") as package:
+        package.writestr("NOWA_CRM/data/klanten.sqlite3",b"verboden")
+    with pytest.raises(RuntimeError,match="verboden gegevensbestand"):
+        UpdateService().prepare_local_package(unsafe_zip)
 
     import_db=Database(tmp_path/"customer-import.sqlite3");import_db.migrate()
     import_customers=CustomerService(import_db,EventBus());import_customers.create("OUD-1","Uit te faseren klant")

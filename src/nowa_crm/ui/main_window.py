@@ -147,8 +147,11 @@ class MainWindow(QMainWindow):
     def _update_page(self):
         page,box=self._page("Updates",f"Geïnstalleerde versie: {__version__}")
         card=QFrame(); card.setObjectName("Card"); content=QVBoxLayout(card)
-        self.update_status=QLabel("Controleer GitHub Releases op een nieuwe, geteste Windows-versie."); self.update_status.setWordWrap(True); content.addWidget(self.update_status)
-        row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.setObjectName("Primary"); check.clicked.connect(self.check_for_updates); releases=QPushButton("Releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL))); row.addWidget(check); row.addWidget(releases); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
+        self.update_status=QLabel("De broncode en releases staan privé op GitHub. Meld je daar aan om een Windows-updatepakket te downloaden."); self.update_status.setWordWrap(True); content.addWidget(self.update_status)
+        row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.clicked.connect(self.check_for_updates)
+        releases=QPushButton("GitHub-releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL)))
+        local=QPushButton("Updatepakket kiezen"); local.setObjectName("Primary"); local.clicked.connect(self.install_local_update)
+        row.addWidget(local); row.addWidget(releases); row.addWidget(check); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
     def _dashboard(self):
         page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); grid.setHorizontalSpacing(14); grid.setVerticalSpacing(14); self.kpis=[]
         card_data=(("KL","Klanten","blue"),("OF","Open offertes","purple"),("KV","Kluisitems","teal"),("GB","Actieve gebruikers","orange"),("LI","Licenties","purple"),("HW","Hardware","blue"),("TK","Open taken","orange"),("AP","Actiepunten","teal"))
@@ -559,6 +562,23 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self,"Update gereed","NOWA CRM sluit nu af en start automatisch opnieuw met de nieuwe versie."); QApplication.quit()
         except Exception as exc:
             self.update_status.setText(f"Updatecontrole mislukt: {exc}")
+    def install_local_update(self):
+        archive,_=QFileDialog.getOpenFileName(self,"Kies NOWA CRM-updatepakket","","ZIP-pakketten (*.zip)")
+        if not archive:return
+        try:
+            self.update_status.setText("Het lokale updatepakket wordt veilig gecontroleerd…");QApplication.processEvents()
+            package=UpdateService().prepare_local_package(Path(archive))
+            answer=QMessageBox.question(
+                self,"NOWA CRM bijwerken",
+                "Het Windows-pakket is geldig. Nu installeren?\n\n"
+                "Alleen programmabestanden worden vervangen. Klantgegevens, kluis en instellingen blijven lokaal behouden."
+            )
+            if answer!=QMessageBox.Yes:return
+            UpdateService().install_after_exit(package)
+            QMessageBox.information(self,"Update gereed","NOWA CRM sluit nu af en start automatisch opnieuw met de nieuwe versie.")
+            QApplication.quit()
+        except Exception as exc:
+            self.update_status.setText(f"Updatepakket geweigerd: {exc}")
     def refresh_all(self):
         self.refresh_customers(); self.refresh_proposals(); self.refresh_vault()
         if hasattr(self,"operations_page"):self.operations_page.reload_customers()
