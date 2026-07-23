@@ -238,8 +238,12 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert len(snapshot["proposals"]) == 3
     assert len(snapshot["vault"]) == 2
     assert len(snapshot["users"]) == len(snapshot["licenses"]) == len(snapshot["hardware"]) == 1
+    assert 0<=snapshot["pulse"]["score"]<=100
+    assert snapshot["pulse"]["label"] in ("Sterk","Aandacht","Kritiek")
+    assert len(snapshot["pulse"]["briefing"])==4
     assert any(item["kind"] == "Gesprek" for item in dossier.timeline(customer_id))
     assert any(item["kind"] == "E-mail" for item in dossier.timeline(customer_id))
+    assert all(item["group"] in ("Communicatie","Service","Commercieel","Werk","Dossier") for item in dossier.timeline(customer_id))
     assets = CustomerAssetsService(db,tmp_path/"documents")
     location_id = assets.add_location(customer_id,"Hoofdkantoor","Coolsingel 1","Rotterdam")
     assert assets.add_location(customer_id,"Hoofdkantoor") == location_id
