@@ -207,11 +207,11 @@ class TelephonyService:
                 AND (ce.subject<>'' OR ce.notes<>'' OR ce.outcome<>'')
                 ORDER BY CASE WHEN ? IS NOT NULL AND ce.contact_id=? THEN 0 ELSE 1 END,ce.started_at DESC LIMIT 3""",
                 (contact_id,contact_id,customer_id,current_call_id,contact_id,contact_id))]
-            open_items=[dict(row) for row in conn.execute("""SELECT kind,reference,title,priority,status,due_at FROM (
-                SELECT 'Ticket' kind,number reference,subject title,priority,status,sla_due_at due_at,updated_at
+            open_items=[dict(row) for row in conn.execute("""SELECT kind,entity_id,reference,title,priority,status,due_at FROM (
+                SELECT 'Ticket' kind,id entity_id,number reference,subject title,priority,status,sla_due_at due_at,updated_at
                 FROM service_tickets WHERE customer_id=? AND status NOT IN ('Opgelost','Gesloten','Afgerond')
                 UNION ALL
-                SELECT 'Actie',CAST(id AS TEXT),title,priority,status,due_date,updated_at
+                SELECT 'Actie',id,CAST(id AS TEXT),title,priority,status,due_date,updated_at
                 FROM action_items WHERE customer_id=? AND status NOT IN ('Gereed','Geannuleerd')
                 ) ORDER BY CASE priority WHEN 'Kritiek' THEN 0 WHEN 'Hoog' THEN 1 ELSE 2 END,
                 CASE WHEN due_at<>'' THEN due_at ELSE '9999-12-31' END,updated_at DESC LIMIT 5""",

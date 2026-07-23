@@ -111,8 +111,8 @@ class MainWindow(QMainWindow):
         nav.addStretch();self.active_call_id=None;self.call_timer=QTimer(self);self.call_timer.timeout.connect(self.update_call_tracking);self.call_timer.setInterval(1000)
         self.call_panel=QFrame();self.call_panel.setObjectName("ActiveCallPanel");call_box=QVBoxLayout(self.call_panel);call_box.setContentsMargins(11,10,11,10);call_box.setSpacing(5)
         self.call_caption=QLabel("ACTIEF GESPREK");self.call_caption.setObjectName("ActiveCallCaption");self.call_name=QLabel();self.call_name.setObjectName("ActiveCallName");self.call_name.setWordWrap(True)
-        call_row=QHBoxLayout();self.call_duration=QLabel("00:00:00");self.call_duration.setObjectName("ActiveCallDuration");end_call=QPushButton("Gesprek beëindigen");end_call.setObjectName("EndCall");end_call.clicked.connect(self.end_active_call)
-        call_row.addWidget(self.call_duration);call_row.addStretch();call_row.addWidget(end_call);call_box.addWidget(self.call_caption);call_box.addWidget(self.call_name);call_box.addLayout(call_row);self.call_panel.hide();nav.addWidget(self.call_panel)
+        call_row=QHBoxLayout();self.call_duration=QLabel("00:00:00");self.call_duration.setObjectName("ActiveCallDuration");open_workspace=QPushButton("Open");open_workspace.setObjectName("OpenCallWorkspace");open_workspace.clicked.connect(self.open_active_call_workspace);end_call=QPushButton("Einde");end_call.setObjectName("EndCall");end_call.clicked.connect(self.end_active_call)
+        call_row.addWidget(self.call_duration);call_row.addStretch();call_row.addWidget(open_workspace);call_row.addWidget(end_call);call_box.addWidget(self.call_caption);call_box.addWidget(self.call_name);call_box.addLayout(call_row);self.call_panel.hide();nav.addWidget(self.call_panel)
         self.sip_nav_status=QLabel("SIP  •  niet actief");self.sip_nav_status.setObjectName("SipSidebarStatus");self.sip_nav_status.setProperty("sipState","idle");nav.addWidget(self.sip_nav_status)
         self.integrations_page.sip_status_changed.connect(self.update_sip_sidebar_status)
         version=QLabel(f"Versie {__version__}  •  lokaal"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
@@ -556,7 +556,7 @@ class MainWindow(QMainWindow):
             except RuntimeError:pass
         if self.isMinimized():self.showNormal()
         popup=IncomingCallPopup(call_id,self.customers,self.telephony,self.open_call,
-            self.open_customer,self.open_vault,self.create_ticket_from_communication,self)
+            self.open_customer,self.open_vault,self.create_ticket_from_communication,self.open_call_workspace_item,self)
         self.incoming_call_popup=popup
         popup.completed.connect(self.handle_call_finished)
         popup.destroyed.connect(lambda:self._clear_incoming_popup(popup))
@@ -579,6 +579,20 @@ class MainWindow(QMainWindow):
             self.stop_call_tracking(self.active_call_id);return
         seconds=self.telephony.elapsed_seconds(self.active_call_id);hours,remainder=divmod(seconds,3600);minutes,seconds=divmod(remainder,60)
         self.call_duration.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+
+    def open_active_call_workspace(self):
+        if not self.active_call_id:return
+        if self.incoming_call_popup:
+            try:
+                if self.incoming_call_popup.call_id==self.active_call_id:
+                    self.incoming_call_popup.show();self.incoming_call_popup.raise_();self.incoming_call_popup.activateWindow();return
+            except RuntimeError:self.incoming_call_popup=None
+        self.show_incoming_call(self.active_call_id)
+
+    def open_call_workspace_item(self,kind,entity_id,title):
+        if kind=="Ticket":self.open_service_ticket(entity_id)
+        else:
+            self._show(1);self.workspace_page.search.setText(title)
 
     def stop_call_tracking(self,call_id=None):
         if call_id is not None and self.active_call_id!=call_id:return

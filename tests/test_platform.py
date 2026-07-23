@@ -64,6 +64,9 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     call_workspace_ui = (source_root / "nowa_crm" / "ui" / "incoming_call_popup.py").read_text(encoding="utf-8")
     assert "CENTRALE WERKPLEK" in call_workspace_ui and "_return_to_workspace" in call_workspace_ui
     assert "CallQuickBlock" in call_workspace_ui and "schedule_autosave" in call_workspace_ui
+    assert "missed_timer" not in call_workspace_ui and "_next_workdays" in call_workspace_ui
+    assert "CallOpenItem" in call_workspace_ui and "Controle voor afsluiten" in call_workspace_ui
+    assert "Minimaliseren" in call_workspace_ui and "CallFollowup" in call_workspace_ui
     db = Database(tmp_path / "test.sqlite3"); db.migrate()
     assert (tmp_path / "backups").exists()
     auth = AuthService(db)
