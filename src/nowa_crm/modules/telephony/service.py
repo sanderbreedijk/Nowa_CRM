@@ -117,6 +117,23 @@ class TelephonyService:
                 SUM(customer_id IS NULL) unknown FROM call_events""").fetchone()
         return {key:int(row[key] or 0) for key in ("total","missed","callbacks","unknown")}
 
+    def customer_briefing(self, customer_id: int | None) -> dict:
+        if not customer_id:
+            return {"open_tickets": 0, "open_actions": 0, "recent_calls": [], "summary": "Nummer nog niet gekoppeld"}
+        with self.db.transaction() as conn:
+            tickets = conn.execute("""SELECT COUNT(*) total FROM service_tickets
+                WHERE customer_id=? AND status NOT IN ('Gesloten','Afgerond')""", (customer_id,)).fetchone()
+            actions = conn.execute("""SELECT COUNT(*) total FROM action_items
+                WHERE customer_id=? AND status NOT IN ('Gereed','Geannuleerd')""", (customer_id,)).fetchone()
+            recent = [dict(row) for row in conn.execute("""SELECT started_at,subject,outcome,status
+                FROM call_events WHERE customer_id=? ORDER BY started_at DESC,id DESC LIMIT 3""", (customer_id,))]
+        open_tickets, open_actions = int(tickets["total"]), int(actions["total"])
+        parts = [f"{open_tickets} open servicetickets", f"{open_actions} open acties"]
+        if recent:
+            parts.append(f"laatste contact {recent[0]['started_at'][:10]}")
+        return {"open_tickets": open_tickets, "open_actions": open_actions, "recent_calls": recent,
+                "summary": " · ".join(parts)}
+
     def select_match(self,call_id: int,customer_id: int,contact_id: int | None=None) -> None:
         with self.db.transaction() as conn:
             conn.execute("UPDATE call_events SET customer_id=?,contact_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
