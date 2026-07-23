@@ -32,6 +32,7 @@ from nowa_crm.modules.integrations.service import IntegrationService
 from nowa_crm.modules.daystart.service import DaystartService
 from nowa_crm.ui.dialogs import ContactDialog, CustomerDialog, VaultDialog
 from nowa_crm.ui.proposal_dialog import ProposalDialog
+from nowa_crm.ui.approval_manager_dialog import ApprovalManagerDialog
 from nowa_crm.ui.vault_verification_dialog import VaultVerificationDialog
 from nowa_crm.ui.operations_page import OperationsPage
 from nowa_crm.ui.workspace_page import WorkspacePage
@@ -234,7 +235,7 @@ class MainWindow(QMainWindow):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Offerteoverzicht")); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals);self.proposal_customer=QComboBox();self.proposal_customer.addItem("Alle klanten",None);[self.proposal_customer.addItem(c.name,c.id) for c in self.customers.search()];self.proposal_customer.currentIndexChanged.connect(self.refresh_proposals);self.proposal_status=QComboBox();self.proposal_status.addItems(["Alle statussen","concept","verzonden","geaccepteerd","afgewezen","verlopen"]);self.proposal_status.currentTextChanged.connect(self.refresh_proposals);self.proposal_period=QComboBox();self.proposal_period.addItems(["Alle perioden","Deze maand","Dit jaar"]);self.proposal_period.currentTextChanged.connect(self.refresh_proposals);row.addWidget(self.proposal_search,1);row.addWidget(self.proposal_customer);row.addWidget(self.proposal_status);row.addWidget(self.proposal_period);box.addWidget(searchbar)
         body=QHBoxLayout();self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True);self.proposal_table.setAlternatingRowColors(True); self.proposal_table.doubleClicked.connect(self.edit_proposal)
         actions=QFrame();actions.setObjectName("LeftActionPanel");side=QVBoxLayout(actions);side.setContentsMargins(16,16,16,16);side.setSpacing(10);head=QLabel("Offerte-acties");head.setObjectName("PanelTitle");side.addWidget(head);sub=QLabel("Selecteer een offerte voor de acties hieronder.");sub.setObjectName("PanelText");sub.setWordWrap(True);side.addWidget(sub)
-        for symbol,text,handler,primary in (("+","Nieuwe offerte",self.add_proposal,True),("OP","Openen",self.edit_proposal,False),("PDF","Controleer & PDF",self.export_selected_proposal,False),("KO","Dupliceren",self.duplicate_proposal,False),("RV","Nieuwe revisie",self.revise_proposal,False),("CK","Controleer offerte",self.validate_proposal,False),("IM","Oude offerte importeren",self.import_legacy_proposal,False)):
+        for symbol,text,handler,primary in (("+","Nieuwe offerte",self.add_proposal,True),("OP","Openen",self.edit_proposal,False),("AK","Akkoordbeheer",self.open_approval_manager,False),("PDF","Controleer & PDF",self.export_selected_proposal,False),("KO","Dupliceren",self.duplicate_proposal,False),("RV","Nieuwe revisie",self.revise_proposal,False),("CK","Controleer offerte",self.validate_proposal,False),("IM","Oude offerte importeren",self.import_legacy_proposal,False)):
             button=QPushButton(text);button.setObjectName("SidePrimary" if primary else "SideAction");button.setIcon(nav_icon(symbol));button.setIconSize(QSize(28,28));button.clicked.connect(handler);side.addWidget(button)
         side.addStretch();actions.setFixedWidth(245);body.addWidget(actions);body.addWidget(self.proposal_table,1);box.addLayout(body,1);return page
     def _vault_page(self):
@@ -413,6 +414,8 @@ class MainWindow(QMainWindow):
     def edit_proposal(self,*_):
         proposal_id=self._selected_id(self.proposal_table,6)
         if proposal_id:ProposalDialog(self.proposals,proposal_id,self).exec(); self.refresh_all()
+    def open_approval_manager(self):
+        ApprovalManagerDialog(self.proposals,self.open_proposal,self).exec();self.refresh_all()
     def duplicate_proposal(self):
         proposal_id=self._selected_id(self.proposal_table,6)
         if not proposal_id:return
