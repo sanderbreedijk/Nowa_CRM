@@ -10,13 +10,15 @@ from PySide6.QtWidgets import (QCheckBox,QComboBox,QDialog,QDialogButtonBox,QDou
 from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.proposals.approval import ProposalApprovalService
+from nowa_crm.modules.proposals.delivery import ProposalDeliveryService
 
 def money(cents:int)->str:
     return f"EUR {cents/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
 
 class ProposalDialog(QDialog):
-    def __init__(self,service:ProposalService,proposal_id:int,parent=None):
+    def __init__(self,service:ProposalService,proposal_id:int,parent=None,mail=None):
         super().__init__(parent);self.service=service;self.proposal_id=proposal_id;self.approvals=ProposalApprovalService(service)
+        self.delivery=ProposalDeliveryService(service,mail) if mail else None
         self.setWindowTitle("Professionele offerte-editor")
         self.setWindowFlags(Qt.Window|Qt.WindowMinMaxButtonsHint|Qt.WindowCloseButtonHint)
         self.setMinimumSize(1024,700);self.resize(1500,900)
@@ -56,7 +58,9 @@ class ProposalDialog(QDialog):
         self.template=QComboBox();self.template.addItem("Kies sjabloon...",None)
         for x in service.templates():self.template.addItem(x["name"],x["id"])
         toolbox.addWidget(QLabel("Offertesjabloon"),2,0,1,2);toolbox.addWidget(self.template,3,0);b=QPushButton("Toepassen");b.clicked.connect(self._apply_template);toolbox.addWidget(b,3,1)
-        for index,(label,callback) in enumerate((("Hoofdstukken",self._sections),("Uit klantdossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Revisiegeschiedenis",self._revision_history),("Voorbeeld / PDF",self._pdf),("Online akkoord",self._online_approval))):
+        tool_actions=[("Hoofdstukken",self._sections),("Uit klantdossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Revisiegeschiedenis",self._revision_history),("Voorbeeld / PDF",self._pdf),("Online akkoord",self._online_approval)]
+        if self.delivery:tool_actions.append(("Verzenden via NOWA-mailbox",self._send_proposal))
+        for index,(label,callback) in enumerate(tool_actions):
             b=QPushButton(label);b.clicked.connect(callback);toolbox.addWidget(b,4+index//2,index%2)
         lower.addTab(tools,"Catalogus, sjablonen en revisies");splitter.addWidget(lower);splitter.setStretchFactor(0,3);splitter.setStretchFactor(1,2);splitter.setSizes([500,270]);box.addWidget(splitter,1)
 
@@ -215,3 +219,31 @@ class ProposalDialog(QDialog):
             if QMessageBox.question(self,"Akkoordportaal gereed",f"Het zelfstandige akkoordportaal is lokaal gemaakt:\n\n{result['path']}\n\nEr is niets naar internet gestuurd. Openen om te controleren?")==QMessageBox.Yes:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(result["path"])))
         except Exception as e:QMessageBox.warning(self,"Online akkoord",str(e))
+
+    def _send_proposal(self):
+        try:
+            defaults=self.delivery.defaults(self.proposal_id)
+        except Exception as exc:
+            QMessageBox.warning(self,"Offerte verzenden",str(exc));return
+        recipient,ok=QInputDialog.getText(
+            self,"Offerte verzenden","Ontvanger",text=defaults["recipient"])
+        if not ok:return
+        from datetime import date,timedelta
+        expiry,ok=QInputDialog.getText(
+            self,"Offerte verzenden","Akkoord geldig tot (jjjj-mm-dd)",
+            text=(date.today()+timedelta(days=14)).isoformat())
+        if not ok:return
+        try:
+            result=self.delivery.prepare(self.proposal_id,recipient,expiry)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(result["eml_path"])))
+            answer=QMessageBox.question(
+                self,"Outlook-concept gereed",
+                f"Het concept is geopend vanuit {result['sender']} naar {result['recipient']}.\n\n"
+                "Bijgevoegd zijn de offerte-PDF en het digitale akkoord.\n\n"
+                "Heb je het bericht in Outlook verzonden?")
+            if answer==QMessageBox.Yes:
+                self.delivery.mail.mark_sent(result["message_id"])
+                self.service.set_status(self.proposal_id,"verzonden")
+                self.refresh()
+        except Exception as exc:
+            QMessageBox.warning(self,"Offerte verzenden",str(exc))
