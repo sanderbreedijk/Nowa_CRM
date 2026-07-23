@@ -23,6 +23,7 @@ QLabel#SearchHint { background-color: #FFFFFF; color: #6C7A8D; border: 1px solid
 QFrame#Card, QGroupBox { background-color: #FFFFFF; border: 1px solid #DDE4EC; border-radius: 12px; padding: 14px; }
 QFrame#StatCard { background-color: #FFFFFF; border: 1px solid #DCE5EF; border-radius: 15px; }
 QFrame#StatCard:hover { background-color: #FBFDFF; border-color: #B8CBE0; }
+QLabel#CardLink { color: #1677E8; font-size: 12px; font-weight: 700; }
 QLabel#KpiIcon { min-width: 38px; max-width: 38px; min-height: 38px; max-height: 38px; border-radius: 11px; font-size: 11px; font-weight: 800; qproperty-alignment: AlignCenter; }
 QLabel#KpiIcon[accent="blue"] { background-color: #E5F1FF; color: #1265C4; }
 QLabel#KpiIcon[accent="purple"] { background-color: #F0EAFE; color: #6B43C5; }
@@ -60,12 +61,17 @@ QLabel#MiniKpi { color: #102A4C; font-size: 20px; font-weight: 750; }
 QLabel#SectionTitle { color: #183453; font-size: 16px; font-weight: 750; }
 QLabel#AttentionBanner { background-color: #FFF4E6; color: #9A4B11; border: 1px solid #F4D7B2; border-radius: 10px; padding: 10px 13px; font-weight: 650; }
 QLabel#CallBriefing { background-color: #EAF4FF; color: #0B3158; border: 1px solid #B8D7F5; border-radius: 12px; padding: 14px 16px; font-size: 14px; font-weight: 650; }
-QDialog#IncomingCallPopup { background-color:#FFFFFF; border:1px solid #9CC8F5; border-radius:18px; }
-QLabel#CallPopupIcon { min-width:46px; max-width:46px; min-height:46px; max-height:46px; border-radius:14px; background-color:#1677E8; color:#FFFFFF; font-size:11px; font-weight:800; qproperty-alignment:AlignCenter; }
-QLabel#CallPopupTitle { color:#102A4C; font-size:18px; font-weight:800; }
-QLabel#CallPopupPhone { color:#4D6682; font-size:13px; }
-QLabel#CallPopupCustomer { background-color:#EAF4FF; color:#0B3158; border:1px solid #C5DFF7; border-radius:11px; padding:11px 13px; font-size:15px; font-weight:750; }
-QLabel#CallPopupContext { color:#53677F; font-size:12px; padding:3px 2px; }
+QDialog#IncomingCallPopup { background-color:#F8FBFF; border:1px solid #83B9EC; border-radius:20px; }
+QLabel#CallPopupIcon { min-width:48px; max-width:48px; min-height:48px; max-height:48px; border-radius:15px; background-color:#1677E8; color:#FFFFFF; font-size:11px; font-weight:800; qproperty-alignment:AlignCenter; }
+QLabel#CallPopupStatus { color:#16815F; font-size:10px; font-weight:800; letter-spacing:1px; }
+QLabel#CallPopupPhone { color:#102A4C; font-size:21px; font-weight:800; }
+QFrame#CallIdentity { background-color:#FFFFFF; border:1px solid #D7E5F2; border-radius:13px; }
+QLabel#CallPopupCustomer { color:#0B3158; font-size:16px; font-weight:800; }
+QLabel#CallPopupContext { color:#64778D; font-size:12px; }
+QPushButton#CallPrimary { background-color:#1677E8; color:#FFFFFF; border:none; min-height:34px; font-size:14px; font-weight:750; }
+QPushButton#CallPrimary:hover { background-color:#0F66CB; }
+QPushButton#CallQuiet { border:none; background:transparent; color:#6B7D91; }
+QFrame#CallDivider { color:#DCE6F0; }
 QPushButton#CallPopupClose { min-width:30px; max-width:30px; min-height:30px; max-height:30px; padding:0; border:none; background:transparent; color:#6B7D91; font-size:22px; }
 QFrame#LeftActionPanel { background-color: #EAF2FB; border: 1px solid #CFDDEB; border-radius: 15px; }
 QLabel#PanelTitle { color: #102A4C; font-size: 18px; font-weight: 750; padding: 2px 2px 0 2px; }

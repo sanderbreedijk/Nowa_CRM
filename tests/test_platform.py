@@ -50,6 +50,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert "NavSection" in navigation_ui
     assert all(section in navigation_ui for section in ("Start","Klanten","Verkoop","Service","Projecten","Systeem"))
     assert "Gemiste oproepen" in navigation_ui
+    assert "ClickableCard" in navigation_ui and "CardLink" in navigation_ui
     db = Database(tmp_path / "test.sqlite3"); db.migrate()
     assert (tmp_path / "backups").exists()
     auth = AuthService(db)
@@ -488,4 +489,3 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
-
