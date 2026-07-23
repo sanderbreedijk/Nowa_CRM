@@ -369,6 +369,10 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert recovery.valid and recovery.files>=3
     assert (recovery.folder/"vault.key").read_bytes()==b"lokale-kluissleutel"
     assert BackupService(backup_db,backup_root).latest().valid
+    assert BackupService(backup_db,backup_root).prepare_restore(recovery.folder).valid
+    (recovery.folder/"vault.key").write_bytes(b"gemanipuleerd")
+    with pytest.raises(RuntimeError,match="beschadigd of onvolledig"):
+        BackupService(backup_db,backup_root).prepare_restore(recovery.folder)
 
     import_db=Database(tmp_path/"customer-import.sqlite3");import_db.migrate()
     import_customers=CustomerService(import_db,EventBus());import_customers.create("OUD-1","Uit te faseren klant")
