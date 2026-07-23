@@ -234,7 +234,7 @@ class ProposalApprovalService:
         title = html.escape(package["proposal"]["title"])
         return f"""<!doctype html>
 <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>NOWA akkoord â€“ {title}</title>
+<title>NOWA akkoord – {title}</title>
 <style>
 :root{{--navy:#0b2342;--blue:#1677ff;--bg:#f3f6fb;--line:#d9e2ef;--muted:#5d6d83}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--navy);font:15px Segoe UI,Arial,sans-serif}}
@@ -250,7 +250,7 @@ input[type=number]{{max-width:110px}}label{{font-weight:600;display:block;margin
 .accept input{{width:auto;margin-top:3px}}button{{border:0;border-radius:10px;background:var(--blue);color:white;padding:13px 20px;font-weight:700;cursor:pointer}}
 .delta{{font-weight:700}}@media(max-width:760px){{.stats{{grid-template-columns:1fr}}table{{font-size:13px}}th,td{{padding:8px 5px}}}}
 </style></head><body>
-<header><div class="brand">NOWA SOLUTIONS Â· DIGITAAL AKKOORD</div><h1 id="title"></h1><div id="customer"></div></header>
+<header><div class="brand">NOWA SOLUTIONS · DIGITAAL AKKOORD</div><h1 id="title"></h1><div id="customer"></div></header>
 <main><section class="card"><h2>Offerteoverzicht</h2><div class="stats">
 <div class="stat"><b>Offertenummer</b><div id="number"></div></div>
 <div class="stat"><b>Eenmalig excl. btw</b><div id="once"></div></div>
@@ -258,7 +258,7 @@ input[type=number]{{max-width:110px}}label{{font-weight:600;display:block;margin
 <p class="muted" id="expiry"></p></section>
 <section class="card"><h2>Onderdelen</h2><table><thead><tr><th>Omschrijving</th><th>Aantal</th><th>Periode</th><th>Prijs</th></tr></thead><tbody id="lines"></tbody></table></section>
 <section class="card" id="licenses-card"><h2>Bestaande licenties aanpassen</h2>
-<p class="muted">Controleer het gewenste nieuwe totaal. Een lager aantal is een vermindering; nul beÃ«indigt de registratie.</p>
+<p class="muted">Controleer het gewenste nieuwe totaal. Een lager aantal is een vermindering; nul beëindigt de registratie.</p>
 <table><thead><tr><th>Licentie</th><th>Huidig</th><th>Gewenst</th><th>Verschil</th><th>Ingangsdatum</th></tr></thead><tbody id="licenses"></tbody></table></section>
 <section class="card"><h2>Akkoordverklaring</h2>
 <label>Naam akkoordgever</label><input id="name" autocomplete="name">
@@ -268,7 +268,7 @@ input[type=number]{{max-width:110px}}label{{font-weight:600;display:block;margin
 <button id="download">Akkoord bevestigen en bewijs downloaden</button>
 <p class="muted">Stuur het gedownloade akkoordbestand terug naar NOWA Solutions. Uw gegevens blijven in dit bestand en worden niet door deze pagina verzonden.</p></section></main>
 <script>const p={payload};const euro=c=>new Intl.NumberFormat('nl-NL',{{style:'currency',currency:'EUR'}}).format(c/100);
-title.textContent=p.proposal.title;customer.textContent=p.proposal.customer_name;number.textContent=p.proposal.number+' Â· revisie '+p.proposal.revision;
+title.textContent=p.proposal.title;customer.textContent=p.proposal.customer_name;number.textContent=p.proposal.number+' · revisie '+p.proposal.revision;
 once.textContent=euro(p.totals.subtotal_cents);monthly.textContent=euro(p.totals.monthly_cents);expiry.textContent='Geldig tot en met '+p.expires_at;
 p.lines.forEach(x=>{{const r=lines.insertRow();r.innerHTML='<td></td><td></td><td></td><td></td>';r.cells[0].textContent=x.description+(x.optional?' (optie)':'');r.cells[1].textContent=x.quantity;r.cells[2].textContent=x.billing_period;r.cells[3].textContent=euro(x.unit_price_cents);}});
 if(!p.license_changes.length)document.querySelector('#licenses-card').hidden=true;
