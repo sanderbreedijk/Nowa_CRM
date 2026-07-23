@@ -49,6 +49,8 @@ from nowa_crm.ui.communications_page import CommunicationsPage
 from nowa_crm.ui.documents_page import DocumentsPage
 from nowa_crm.ui.integrations_page import IntegrationsPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
+from nowa_crm.core.backup import BackupService
+from nowa_crm.core.paths import data_dir
 from nowa_crm import __version__
 from nowa_crm.ui.icons import app_icon, nav_icon
 
@@ -151,7 +153,14 @@ class MainWindow(QMainWindow):
         row=QHBoxLayout(); check=QPushButton("Controleren op updates"); check.clicked.connect(self.check_for_updates)
         releases=QPushButton("GitHub-releases openen"); releases.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES_URL)))
         local=QPushButton("Updatepakket kiezen"); local.setObjectName("Primary"); local.clicked.connect(self.install_local_update)
-        row.addWidget(local); row.addWidget(releases); row.addWidget(check); row.addStretch(); content.addLayout(row); box.addWidget(card); box.addStretch(); return page
+        row.addWidget(local); row.addWidget(releases); row.addWidget(check); row.addStretch(); content.addLayout(row); box.addWidget(card)
+        backup_card=QFrame();backup_card.setObjectName("Card");backup_box=QVBoxLayout(backup_card)
+        backup_title=QLabel("Lokale gegevensbescherming");backup_title.setObjectName("SectionTitle");backup_box.addWidget(backup_title)
+        self.backup_status=QLabel();self.backup_status.setWordWrap(True);backup_box.addWidget(self.backup_status)
+        backup_row=QHBoxLayout();make_backup=QPushButton("Complete herstelset maken");make_backup.setObjectName("Primary");make_backup.clicked.connect(self.create_recovery_backup)
+        open_backups=QPushButton("Back-upmap openen");open_backups.clicked.connect(self.open_backup_folder)
+        backup_row.addWidget(make_backup);backup_row.addWidget(open_backups);backup_row.addStretch();backup_box.addLayout(backup_row)
+        box.addWidget(backup_card);self.refresh_backup_status();box.addStretch();return page
     def _dashboard(self):
         page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); grid.setHorizontalSpacing(14); grid.setVerticalSpacing(14); self.kpis=[]
         card_data=(("KL","Klanten","blue"),("OF","Open offertes","purple"),("KV","Kluisitems","teal"),("GB","Actieve gebruikers","orange"),("LI","Licenties","purple"),("HW","Hardware","blue"),("TK","Open taken","orange"),("AP","Actiepunten","teal"))
@@ -579,6 +588,28 @@ class MainWindow(QMainWindow):
             QApplication.quit()
         except Exception as exc:
             self.update_status.setText(f"Updatepakket geweigerd: {exc}")
+    def refresh_backup_status(self):
+        if not hasattr(self,"backup_status"):return
+        latest=BackupService(self.customers.db).latest()
+        if not latest:self.backup_status.setText("Er is nog geen complete herstelset gemaakt.");return
+        size=latest.size_bytes/(1024*1024)
+        status="gecontroleerd en geldig" if latest.valid else "beschadigd of onvolledig"
+        self.backup_status.setText(f"Laatste herstelset: {latest.created_at} · {latest.files} bestanden · {size:.1f} MB · {status}.")
+    def create_recovery_backup(self):
+        try:
+            self.backup_status.setText("Database, kluis en klantbestanden worden lokaal veiliggesteld…");QApplication.processEvents()
+            result=BackupService(self.customers.db).create()
+            self.refresh_backup_status()
+            QMessageBox.information(
+                self,"Herstelset gereed",
+                f"De complete lokale herstelset is gemaakt en gecontroleerd.\n\n{result.folder}\n\n"
+                "Let op: deze map bevat ook de kluissleutel. Bewaar een externe kopie uitsluitend op een beveiligde locatie."
+            )
+        except Exception as exc:
+            self.backup_status.setText(f"Herstelset maken mislukt: {exc}")
+    def open_backup_folder(self):
+        folder=data_dir()/"backups"/"herstelsets";folder.mkdir(parents=True,exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
     def refresh_all(self):
         self.refresh_customers(); self.refresh_proposals(); self.refresh_vault()
         if hasattr(self,"operations_page"):self.operations_page.reload_customers()
@@ -593,6 +624,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,"communications_page"):self.communications_page.reload_customers()
         if hasattr(self,"documents_page"):self.documents_page.reload_customers()
         if hasattr(self,"integrations_page"):self.integrations_page.reload()
+        self.refresh_backup_status()
         if hasattr(self,"day_table"):self.refresh_daystart()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
