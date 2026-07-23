@@ -56,6 +56,13 @@ QLabel#MiniKpi { color: #102A4C; font-size: 20px; font-weight: 750; }
 QLabel#SectionTitle { color: #183453; font-size: 16px; font-weight: 750; }
 QLabel#AttentionBanner { background-color: #FFF4E6; color: #9A4B11; border: 1px solid #F4D7B2; border-radius: 10px; padding: 10px 13px; font-weight: 650; }
 QLabel#CallBriefing { background-color: #EAF4FF; color: #0B3158; border: 1px solid #B8D7F5; border-radius: 12px; padding: 14px 16px; font-size: 14px; font-weight: 650; }
+QDialog#IncomingCallPopup { background-color:#FFFFFF; border:1px solid #9CC8F5; border-radius:18px; }
+QLabel#CallPopupIcon { min-width:46px; max-width:46px; min-height:46px; max-height:46px; border-radius:14px; background-color:#1677E8; color:#FFFFFF; font-size:11px; font-weight:800; qproperty-alignment:AlignCenter; }
+QLabel#CallPopupTitle { color:#102A4C; font-size:18px; font-weight:800; }
+QLabel#CallPopupPhone { color:#4D6682; font-size:13px; }
+QLabel#CallPopupCustomer { background-color:#EAF4FF; color:#0B3158; border:1px solid #C5DFF7; border-radius:11px; padding:11px 13px; font-size:15px; font-weight:750; }
+QLabel#CallPopupContext { color:#53677F; font-size:12px; padding:3px 2px; }
+QPushButton#CallPopupClose { min-width:30px; max-width:30px; min-height:30px; max-height:30px; padding:0; border:none; background:transparent; color:#6B7D91; font-size:22px; }
 QFrame#LeftActionPanel { background-color: #EAF2FB; border: 1px solid #CFDDEB; border-radius: 15px; }
 QLabel#PanelTitle { color: #102A4C; font-size: 18px; font-weight: 750; padding: 2px 2px 0 2px; }
 QLabel#PanelText { color: #68788D; font-size: 12px; padding: 0 2px 8px 2px; }
