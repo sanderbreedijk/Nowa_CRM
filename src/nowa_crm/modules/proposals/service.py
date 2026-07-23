@@ -253,6 +253,7 @@ class ProposalService:
         with self.db.transaction() as conn:
             conn.execute("INSERT INTO proposal_revisions(proposal_id,revision_number,label,snapshot_json) VALUES(?,?,?,?)",(proposal_id,revision,label.strip(),json.dumps(snapshot,ensure_ascii=False)))
             conn.execute("UPDATE proposals SET revision=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(revision,proposal_id))
+            conn.execute("UPDATE proposal_publications SET status='ingetrokken',revoked_at=CURRENT_TIMESTAMP WHERE proposal_id=? AND status IN ('voorbereid','gepubliceerd')",(proposal_id,))
         return revision
 
     def revisions(self, proposal_id: int) -> list[dict]:

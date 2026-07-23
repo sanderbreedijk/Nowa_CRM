@@ -9,13 +9,14 @@ from PySide6.QtWidgets import (QCheckBox,QComboBox,QDialog,QDialogButtonBox,QDou
 
 from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.modules.proposals.service import ProposalService
+from nowa_crm.modules.proposals.approval import ProposalApprovalService
 
 def money(cents:int)->str:
     return f"EUR {cents/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
 
 class ProposalDialog(QDialog):
     def __init__(self,service:ProposalService,proposal_id:int,parent=None):
-        super().__init__(parent);self.service=service;self.proposal_id=proposal_id
+        super().__init__(parent);self.service=service;self.proposal_id=proposal_id;self.approvals=ProposalApprovalService(service)
         self.setWindowTitle("Professionele offerte-editor")
         self.setWindowFlags(Qt.Window|Qt.WindowMinMaxButtonsHint|Qt.WindowCloseButtonHint)
         self.setMinimumSize(1024,700);self.resize(1500,900)
@@ -55,7 +56,7 @@ class ProposalDialog(QDialog):
         self.template=QComboBox();self.template.addItem("Kies sjabloon...",None)
         for x in service.templates():self.template.addItem(x["name"],x["id"])
         toolbox.addWidget(QLabel("Offertesjabloon"),2,0,1,2);toolbox.addWidget(self.template,3,0);b=QPushButton("Toepassen");b.clicked.connect(self._apply_template);toolbox.addWidget(b,3,1)
-        for index,(label,callback) in enumerate((("Hoofdstukken",self._sections),("Uit klantdossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Revisiegeschiedenis",self._revision_history),("Voorbeeld / PDF",self._pdf))):
+        for index,(label,callback) in enumerate((("Hoofdstukken",self._sections),("Uit klantdossier",self._assets),("Bereken uit intake",self._calculate),("Revisie bewaren",self._revision),("Revisiegeschiedenis",self._revision_history),("Voorbeeld / PDF",self._pdf),("Online akkoord",self._online_approval))):
             b=QPushButton(label);b.clicked.connect(callback);toolbox.addWidget(b,4+index//2,index%2)
         lower.addTab(tools,"Catalogus, sjablonen en revisies");splitter.addWidget(lower);splitter.setStretchFactor(0,3);splitter.setStretchFactor(1,2);splitter.setSizes([500,270]);box.addWidget(splitter,1)
 
@@ -171,3 +172,23 @@ class ProposalDialog(QDialog):
             path=export_proposal_pdf(self.service,self.proposal_id)
             if QMessageBox.question(self,"Voorbeeld gereed",f"PDF opgeslagen:\n{path}\n\nNu openen?")==QMessageBox.Yes:QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         except Exception as e:QMessageBox.warning(self,"PDF export",str(e))
+    def _online_approval(self):
+        history=self.approvals.history(self.proposal_id);active=next((x for x in history if x["status"] in ("voorbereid","gepubliceerd")),None)
+        choices=["Nieuw akkoordpakket voorbereiden","Publicatiehistorie bekijken"]
+        if active:choices.insert(1,"Actieve publicatie intrekken")
+        choice,ok=QInputDialog.getItem(self,"Online akkoord","Actie",choices,0,False)
+        if not ok:return
+        if choice=="Actieve publicatie intrekken":
+            try:self.approvals.revoke(active["id"]);QMessageBox.information(self,"Online akkoord","De actieve publicatie is lokaal ingetrokken.")
+            except Exception as e:QMessageBox.warning(self,"Online akkoord",str(e))
+            return
+        if choice=="Publicatiehistorie bekijken":
+            text="\n".join(f"R{x['revision']} · {x['status']} · vervalt {x['expires_at']} · {x['recipient_email'] or 'geen e-mail'}" for x in history) or "Nog geen akkoordpakketten.";QMessageBox.information(self,"Publicatiehistorie",text);return
+        email,ok=QInputDialog.getText(self,"Online akkoord","E-mailadres ontvanger (optioneel)")
+        if not ok:return
+        from datetime import date,timedelta
+        expiry,ok=QInputDialog.getText(self,"Online akkoord","Geldig tot (jjjj-mm-dd)",text=(date.today()+timedelta(days=14)).isoformat())
+        if not ok:return
+        try:
+            result=self.approvals.prepare(self.proposal_id,email,expiry);QMessageBox.information(self,"Akkoordpakket gereed",f"Het beveiligde overdrachtspakket is lokaal gemaakt:\n\n{result['path']}\n\nEr is nog niets naar internet gestuurd. Een nieuwe revisie trekt dit pakket automatisch in.")
+        except Exception as e:QMessageBox.warning(self,"Online akkoord",str(e))
