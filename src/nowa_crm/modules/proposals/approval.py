@@ -25,9 +25,14 @@ class ProposalApprovalService:
         warnings=self.proposals.validate(proposal_id)
         if warnings:raise ValueError("Los eerst de offertecontrole op:\n- " + "\n- ".join(warnings))
         token=secrets.token_urlsafe(32);token_hash=sha256(token.encode()).hexdigest();lines=self.proposals.lines(proposal_id);totals=self.proposals.totals(proposal_id)
+        with self.db.transaction() as conn:
+            licenses=[dict(x) for x in conn.execute("SELECT id,product,supplier,quantity,unit_price_cents,included_in_proposal,renewal_date FROM customer_licenses WHERE customer_id=? ORDER BY product COLLATE NOCASE",(proposal.customer_id,))]
+        license_changes=[{"license_id":x["id"],"product":x["product"],"supplier":x["supplier"],"current_quantity":x["quantity"],"requested_quantity":x["quantity"],"difference":0,
+                          "unit_price_cents":x["unit_price_cents"],"current_monthly_cents":x["quantity"]*x["unit_price_cents"],"requested_monthly_cents":x["quantity"]*x["unit_price_cents"],
+                          "effective_date":"","included_in_proposal":bool(x["included_in_proposal"]),"renewal_date":x["renewal_date"]} for x in licenses]
         snapshot={"format":"nowa-proposal-approval-v1","proposal":{"number":proposal.number,"revision":proposal.revision,"title":proposal.title,"customer_name":proposal.customer_name,"status":proposal.status},
                   "lines":[{"group":x.group_name,"kind":x.kind,"description":x.description,"quantity":x.quantity,"unit_price_cents":x.unit_price_cents,"billing_period":x.billing_period,"optional":bool(x.optional)} for x in lines if x.active],
-                  "totals":{**totals,"monthly_cents":self.proposals.monthly_total(proposal_id)},"sections":self.proposals.sections(proposal_id),"expires_at":expires_at}
+                  "totals":{**totals,"monthly_cents":self.proposals.monthly_total(proposal_id)},"sections":self.proposals.sections(proposal_id),"license_changes":license_changes,"expires_at":expires_at}
         folder=output_dir or data_dir()/"exports"/"online-akkoord";folder.mkdir(parents=True,exist_ok=True);target=folder/f"{proposal.number}-R{proposal.revision}-akkoordpakket.json"
         package={**snapshot,"access_token":token,"recipient_email":recipient_email.strip()};target.write_text(json.dumps(package,ensure_ascii=False,indent=2),encoding="utf-8")
         with self.db.transaction() as conn:
