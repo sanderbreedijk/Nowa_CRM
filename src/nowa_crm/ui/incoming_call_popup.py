@@ -26,6 +26,8 @@ class IncomingCallPopup(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);self.resize(980,690);self.setMinimumSize(820,600)
         self.handled=False;self.missed_timer=QTimer(self);self.missed_timer.setSingleShot(True)
         self.missed_timer.timeout.connect(self.auto_missed);self.missed_timer.start(45000)
+        self.autosave_timer=QTimer(self);self.autosave_timer.setSingleShot(True);self.autosave_timer.setInterval(900)
+        self.autosave_timer.timeout.connect(self.autosave)
 
         root=QVBoxLayout(self);root.setContentsMargins(24,22,24,22);root.setSpacing(14)
         top=QHBoxLayout();icon=QLabel("TEL");icon.setObjectName("CallPopupIcon");top.addWidget(icon)
@@ -38,6 +40,14 @@ class IncomingCallPopup(QDialog):
         self.customer=QLabel();self.customer.setObjectName("CallPopupCustomer");self.customer.setWordWrap(True);identity_box.addWidget(self.customer)
         self.context=QLabel();self.context.setObjectName("CallPopupContext");self.context.setWordWrap(True);identity_box.addWidget(self.context)
         self.matches=QComboBox();self.matches.setObjectName("CallMatch");self.matches.currentIndexChanged.connect(self.select_match);identity_box.addWidget(self.matches)
+        insight_row=QHBoxLayout();insight_row.setSpacing(10)
+        organisation=QFrame();organisation.setObjectName("CallInsight");organisation_box=QVBoxLayout(organisation);organisation_box.setContentsMargins(12,10,12,10)
+        organisation_title=QLabel("ORGANISATIE IN ÉÉN OOGOPSLAG");organisation_title.setObjectName("CallInsightTitle");organisation_box.addWidget(organisation_title)
+        self.organisation_summary=QLabel();self.organisation_summary.setObjectName("CallInsightText");self.organisation_summary.setWordWrap(True);organisation_box.addWidget(self.organisation_summary)
+        history=QFrame();history.setObjectName("CallInsight");history_box=QVBoxLayout(history);history_box.setContentsMargins(12,10,12,10)
+        history_title=QLabel("LAATSTE 3 GESPREKSSAMENVATTINGEN");history_title.setObjectName("CallInsightTitle");history_box.addWidget(history_title)
+        self.recent_summary=QLabel();self.recent_summary.setObjectName("CallInsightText");self.recent_summary.setWordWrap(True);history_box.addWidget(self.recent_summary)
+        insight_row.addWidget(organisation,1);insight_row.addWidget(history,1);identity_box.addLayout(insight_row)
         root.addWidget(identity)
 
         body=QHBoxLayout();body.setSpacing(14)
@@ -45,12 +55,21 @@ class IncomingCallPopup(QDialog):
         heading=QLabel("Gespreksregistratie");heading.setObjectName("SectionTitle");form.addRow(heading)
         self.subject=QLineEdit();self.subject.setPlaceholderText("Waar gaat het gesprek over?")
         self.notes=QTextEdit();self.notes.setPlaceholderText("Noteer afspraken, vragen en uitgevoerde handelingen…");self.notes.setMinimumHeight(190)
+        quick=QHBoxLayout()
+        for label,text in (("Vraag","Vraag / aanleiding:\n"),("Actie","Uitgevoerde actie:\n"),
+                           ("Afspraak","Afspraak / vervolg:\n"),("Controle","Gecontroleerd:\n")):
+            button=QPushButton(label);button.setObjectName("CallQuickBlock")
+            button.clicked.connect(lambda checked=False,value=text:self.insert_quick_block(value));quick.addWidget(button)
         self.outcome=QComboBox();self.outcome.addItems(["Beantwoord","Informatie verstrekt","Afspraak gemaakt","Doorgezet","Geen gehoor","Overig"])
         self.priority=QComboBox();self.priority.addItems(["Laag","Normaal","Hoog","Kritiek"]);self.priority.setCurrentText("Normaal")
         options=QHBoxLayout();options.addWidget(self.outcome,1);options.addWidget(self.priority,1)
         self.callback=QCheckBox("Terugbelactie maken");self.callback_due=QLineEdit();self.callback_due.setPlaceholderText("Terugbeldatum: jjjj-mm-dd")
         callback_row=QHBoxLayout();callback_row.addWidget(self.callback);callback_row.addWidget(self.callback_due,1)
-        form.addRow("Onderwerp",self.subject);form.addRow("Notities",self.notes);form.addRow("Resultaat / prioriteit",options);form.addRow("Opvolging",callback_row)
+        form.addRow("Onderwerp",self.subject);form.addRow("Snelle invoer",quick);form.addRow("Notities",self.notes);form.addRow("Resultaat / prioriteit",options);form.addRow("Opvolging",callback_row)
+        self.draft_status=QLabel("Wijzigingen worden automatisch lokaal opgeslagen");self.draft_status.setObjectName("CallDraftStatus");form.addRow("",self.draft_status)
+        self.subject.textChanged.connect(self.schedule_autosave);self.notes.textChanged.connect(self.schedule_autosave)
+        self.outcome.currentTextChanged.connect(self.schedule_autosave);self.priority.currentTextChanged.connect(self.schedule_autosave)
+        self.callback_due.textChanged.connect(self.schedule_autosave)
         body.addWidget(input_panel,3)
 
         actions=QFrame();actions.setObjectName("CallActionPanel");action_box=QVBoxLayout(actions);action_box.setContentsMargins(16,16,16,16);action_box.setSpacing(10)
@@ -85,12 +104,33 @@ class IncomingCallPopup(QDialog):
             contact=f" · {call['contact_name']}" if call["contact_name"] else ""
             self.customer.setText(f"{call['customer_name']}{contact}")
             self.context.setText(self.telephony.customer_briefing(call["customer_id"])["summary"])
+            snapshot=self.telephony.call_workspace_snapshot(call["customer_id"],call["contact_id"],self.call_id)
+            licenses=" · ".join(f"{item['product']} × {item['quantity']}" for item in snapshot["licenses"]) or "Geen licenties vastgelegd"
+            departments=" · ".join(f"{item['department']} ({item['users']})" for item in snapshot["departments"]) or "Geen afdelingen vastgelegd"
+            self.organisation_summary.setText(
+                f"{snapshot['users']} gebruikers  ·  {snapshot['teams']} Teams  ·  {snapshot['shared_mailboxes']} gedeelde mailboxen  ·  {snapshot['sharepoint_sites']} SharePoint-sites\n"
+                f"Licenties: {licenses}\nAfdelingen / hiërarchie: {departments}")
+            summaries=[]
+            for item in snapshot["recent_calls"]:
+                title=item["subject"] or item["outcome"] or "Telefoongesprek";notes=(item["notes"] or "").replace("\n"," ").strip()
+                if len(notes)>110:notes=notes[:107]+"…"
+                person=f"{item['contact_name']} · " if item["contact_name"] else ""
+                summaries.append(f"{item['started_at'][:10]} · {person}{title}"+(f" — {notes}" if notes else ""))
+            self.recent_summary.setText("\n".join(summaries) or "Nog geen eerdere gesprekssamenvattingen.")
+            open_lines=[]
+            for item in snapshot["open_items"]:
+                due=f" · {item['due_at'][:10]}" if item["due_at"] else ""
+                open_lines.append(f"{item['priority']} · {item['kind']} {item['reference']} · {item['title']}{due}")
+            briefing=self.telephony.customer_briefing(call["customer_id"])["summary"]
+            self.context.setText(briefing+("\nOPENSTAAND: "+" | ".join(open_lines) if open_lines else "\nGeen openstaande tickets of acties."))
         elif len(matches)>1:
             self.customer.setText(f"{len(matches)} mogelijke klanten gevonden")
             self.context.setText("Kies de juiste klant om alle directe acties beschikbaar te maken.")
+            self.organisation_summary.setText("Kies eerst de juiste organisatie.");self.recent_summary.setText("Na de keuze verschijnt de gesprekshistorie.")
         else:
             self.customer.setText("Onbekende beller")
             self.context.setText("Koppel het nummer eenmalig; volgende oproepen worden direct herkend.")
+            self.organisation_summary.setText("Nog geen organisatiegegevens beschikbaar.");self.recent_summary.setText("Nog geen gekoppelde gesprekshistorie.")
         self.dossier.setEnabled(bool(call["customer_id"]));self.link.setVisible(not bool(call["customer_id"]))
 
     def accept_call(self):
@@ -134,6 +174,25 @@ class IncomingCallPopup(QDialog):
 
     def make_callback(self):
         self._handled();self.callback.setChecked(True);self.callback_due.setFocus()
+
+    def insert_quick_block(self,text):
+        current=self.notes.toPlainText()
+        self.notes.setPlainText(current+("\n\n" if current.strip() else "")+text)
+        self.notes.moveCursor(self.notes.textCursor().MoveOperation.End);self.notes.setFocus()
+
+    def schedule_autosave(self,*_):
+        if hasattr(self,"autosave_timer"):
+            self.draft_status.setText("Opslaan…");self.autosave_timer.start()
+
+    def autosave(self):
+        call=self.telephony.get(self.call_id)
+        if not call or call.get("ended_at"):return
+        try:
+            self.telephony.save_call_draft(self.call_id,self.subject.text(),self.notes.toPlainText(),
+                                            self.outcome.currentText(),self.priority.currentText(),self.callback_due.text())
+            self.draft_status.setText("✓ Automatisch lokaal opgeslagen")
+        except Exception:
+            self.draft_status.setText("Tussentijds opslaan mislukt — bij beëindigen wordt opnieuw opgeslagen")
 
     def finish_workflow(self):
         call=self.telephony.get(self.call_id)

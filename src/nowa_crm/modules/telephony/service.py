@@ -101,6 +101,14 @@ class TelephonyService:
             self.workspace.add_action(call["customer_id"],f"Terugbellen: {call['contact_name'] or call['phone_number']}",assigned_to or self.actor,callback_due,priority,notes,
                                       "Terugbellen",source_type="Telefoon",source_id=call_id)
 
+    def save_call_draft(self, call_id: int, subject: str, notes: str, outcome: str,
+                        priority: str = "Normaal", callback_due: str = "") -> None:
+        """Slaat tussentijdse gespreksinvoer lokaal op zonder het gesprek af te ronden."""
+        with self.db.transaction() as conn:
+            conn.execute("""UPDATE call_events SET subject=?,notes=?,outcome=?,priority=?,callback_due=?,
+                updated_at=CURRENT_TIMESTAMP WHERE id=? AND ended_at IS NULL""",
+                (subject.strip(),notes.strip(),outcome.strip(),priority.strip(),callback_due.strip(),call_id))
+
     def mark_missed(self, phone_number: str, external_id: str = "") -> int:
         call_id=self.register_call(phone_number,"inkomend",external_id)
         self.mark_existing_missed(call_id)
@@ -176,6 +184,42 @@ class TelephonyService:
             parts.append(f"laatste contact {recent[0]['started_at'][:10]}")
         return {"open_tickets": open_tickets, "open_actions": open_actions, "recent_calls": recent,
                 "summary": " · ".join(parts)}
+
+    def call_workspace_snapshot(self, customer_id: int | None, contact_id: int | None = None,
+                                current_call_id: int | None = None) -> dict:
+        if not customer_id:
+            return {"users":0,"teams":0,"shared_mailboxes":0,"sharepoint_sites":0,
+                    "licenses":[],"departments":[],"recent_calls":[],"open_items":[]}
+        with self.db.transaction() as conn:
+            users=int(conn.execute("SELECT COUNT(*) FROM customer_users WHERE customer_id=? AND active=1",(customer_id,)).fetchone()[0])
+            licenses=[dict(row) for row in conn.execute("""SELECT product,SUM(quantity) quantity FROM customer_licenses
+                WHERE customer_id=? GROUP BY product ORDER BY quantity DESC,product LIMIT 6""",(customer_id,))]
+            departments=[dict(row) for row in conn.execute("""SELECT COALESCE(NULLIF(department,''),'Niet ingedeeld') department,COUNT(*) users
+                FROM customer_users WHERE customer_id=? AND active=1 GROUP BY COALESCE(NULLIF(department,''),'Niet ingedeeld')
+                ORDER BY users DESC,department LIMIT 6""",(customer_id,))]
+            intake=conn.execute("""SELECT teams_count,shared_mailboxes,sharepoint_sites FROM project_intakes
+                WHERE customer_id=?""",(customer_id,)).fetchone()
+            recent=[dict(row) for row in conn.execute("""SELECT ce.id,ce.started_at,ce.subject,ce.notes,ce.outcome,
+                COALESCE(ct.name,'Organisatie') contact_name,
+                CASE WHEN ? IS NOT NULL AND ce.contact_id=? THEN 'contact' ELSE 'organisatie' END scope
+                FROM call_events ce LEFT JOIN contacts ct ON ct.id=ce.contact_id
+                WHERE ce.customer_id=? AND ce.status='afgerond' AND ce.id<>COALESCE(?,0)
+                AND (ce.subject<>'' OR ce.notes<>'' OR ce.outcome<>'')
+                ORDER BY CASE WHEN ? IS NOT NULL AND ce.contact_id=? THEN 0 ELSE 1 END,ce.started_at DESC LIMIT 3""",
+                (contact_id,contact_id,customer_id,current_call_id,contact_id,contact_id))]
+            open_items=[dict(row) for row in conn.execute("""SELECT kind,reference,title,priority,status,due_at FROM (
+                SELECT 'Ticket' kind,number reference,subject title,priority,status,sla_due_at due_at,updated_at
+                FROM service_tickets WHERE customer_id=? AND status NOT IN ('Opgelost','Gesloten','Afgerond')
+                UNION ALL
+                SELECT 'Actie',CAST(id AS TEXT),title,priority,status,due_date,updated_at
+                FROM action_items WHERE customer_id=? AND status NOT IN ('Gereed','Geannuleerd')
+                ) ORDER BY CASE priority WHEN 'Kritiek' THEN 0 WHEN 'Hoog' THEN 1 ELSE 2 END,
+                CASE WHEN due_at<>'' THEN due_at ELSE '9999-12-31' END,updated_at DESC LIMIT 5""",
+                (customer_id,customer_id))]
+        return {"users":users,"teams":int(intake["teams_count"] if intake else 0),
+                "shared_mailboxes":int(intake["shared_mailboxes"] if intake else 0),
+                "sharepoint_sites":int(intake["sharepoint_sites"] if intake else 0),
+                "licenses":licenses,"departments":departments,"recent_calls":recent,"open_items":open_items}
 
     def select_match(self,call_id: int,customer_id: int,contact_id: int | None=None) -> None:
         with self.db.transaction() as conn:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHeaderView, QHBoxLayout,
                                QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
                                QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem,
                                QVBoxLayout, QWidget)
@@ -194,7 +194,8 @@ class MainWindow(QMainWindow):
         box.addWidget(backup_card);self.refresh_backup_status();box.addStretch();return page
     def _dashboard(self):
         page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); grid.setHorizontalSpacing(14); grid.setVerticalSpacing(14); self.kpis=[]
-        card_data=(("KL","Klanten","blue",2),("OF","Open offertes","purple",5),("KV","Kluisitems","teal",6),("GB","Actieve gebruikers","orange",4),("LI","Licenties","purple",4),("HW","Hardware","blue",4),("TK","Open taken","orange",4),("AP","Actiepunten","teal",1))
+        card_data=(("KL","Klanten","blue",2),("OF","Open offertes","purple",5),("KV","Kluisitems","teal",6),
+                   ("GB","Actieve gebruikers","orange",4),("TK","Open taken","orange",4),("AP","Actiepunten","teal",1))
         self.kpi_cards=[]
         for i,(symbol,title,accent,page_index) in enumerate(card_data):
             card=ClickableCard(page_index);card.clicked.connect(lambda x=page_index:self._show(x))
@@ -204,15 +205,24 @@ class MainWindow(QMainWindow):
             top.addWidget(icon);top.addStretch();top.addWidget(value);c.addLayout(top)
             bottom=QHBoxLayout();label=QLabel(title);label.setObjectName("KpiLabel");hint=QLabel("Open  →");hint.setObjectName("CardLink")
             bottom.addWidget(label);bottom.addStretch();bottom.addWidget(hint);c.addLayout(bottom)
-            grid.addWidget(card,i//4,i%4);self.kpis.append(value);self.kpi_cards.append(card)
+            grid.addWidget(card,i//3,i%3);self.kpis.append(value);self.kpi_cards.append(card)
         box.addLayout(grid)
         toolbar=QFrame(); toolbar.setObjectName("Toolbar"); filters=QHBoxLayout(toolbar); filters.setContentsMargins(12,9,12,9); filters.setSpacing(9); filter_label=QLabel("Werkbak"); filter_label.setObjectName("ToolbarTitle"); filters.addWidget(filter_label)
         self.day_owner=QLineEdit();self.day_owner.setPlaceholderText("Zoek medewerker…");self.day_owner.textChanged.connect(self.refresh_daystart)
-        self.day_priority=QComboBox();self.day_priority.addItems(["Alle","Kritiek","Hoog","Normaal","Laag"]);self.day_priority.currentIndexChanged.connect(self.refresh_daystart)
-        self.day_period=QComboBox();self.day_period.addItems(["Actueel","Vandaag","Te laat"]);self.day_period.currentIndexChanged.connect(self.refresh_daystart);self.day_summary=QLabel()
+        self.day_priority=QComboBox()
+        for label,value in (("Alle prioriteiten","Alle"),("Kritiek","Kritiek"),("Hoog","Hoog"),("Normaal","Normaal"),("Laag","Laag")):self.day_priority.addItem(label,value)
+        self.day_priority.currentIndexChanged.connect(self.refresh_daystart)
+        self.day_period=QComboBox()
+        for label,value in (("Alles actueel","Actueel"),("Alleen vandaag","Vandaag"),("Alleen te laat","Te laat")):self.day_period.addItem(label,value)
+        self.day_period.currentIndexChanged.connect(self.refresh_daystart);self.day_summary=QLabel()
         self.day_summary.setObjectName("SummaryPill"); filters.addWidget(self.day_owner,1);filters.addWidget(self.day_priority);filters.addWidget(self.day_period);filters.addWidget(self.day_summary);box.addWidget(toolbar)
-        self.day_table=QTableWidget(0,9);self.day_table.setHorizontalHeaderLabels(["Prioriteit","Soort","Deadline","Klant","Onderwerp","Toegewezen","Status / detail","Klant-ID","Item-ID"])
-        self.day_table.setColumnHidden(7,True);self.day_table.setColumnHidden(8,True);self.day_table.horizontalHeader().setStretchLastSection(True);self.day_table.doubleClicked.connect(self.open_daystart_customer)
+        self.day_table=QTableWidget(0,9);self.day_table.setHorizontalHeaderLabels(["Prioriteit","Actie","Wanneer","Klant","Wat is er nodig?","Eigenaar","Status","Klant-ID","Item-ID"])
+        self.day_table.setColumnHidden(7,True);self.day_table.setColumnHidden(8,True);self.day_table.verticalHeader().hide()
+        self.day_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.day_table.setWordWrap(False)
+        header=self.day_table.horizontalHeader()
+        for column in (0,1,2,5):header.setSectionResizeMode(column,QHeaderView.ResizeMode.ResizeToContents)
+        for column in (3,4,6):header.setSectionResizeMode(column,QHeaderView.ResizeMode.Stretch)
+        self.day_table.doubleClicked.connect(self.open_daystart_customer)
         empty=QFrame(); empty.setObjectName("EmptyState"); empty_box=QVBoxLayout(empty); empty_box.setAlignment(Qt.AlignCenter); empty_box.setSpacing(8)
         empty_icon=QLabel("✓"); empty_icon.setObjectName("EmptyIcon"); empty_icon.setAlignment(Qt.AlignCenter); empty_title=QLabel("Alles bijgewerkt"); empty_title.setObjectName("EmptyTitle"); empty_title.setAlignment(Qt.AlignCenter)
         empty_text=QLabel("Er staan geen open acties in je werkbak.\nNieuwe taken en meldingen verschijnen hier automatisch."); empty_text.setObjectName("EmptyText"); empty_text.setAlignment(Qt.AlignCenter)
@@ -231,10 +241,27 @@ class MainWindow(QMainWindow):
 
     def refresh_daystart(self,*_):
         if not hasattr(self,"day_table"):return
-        rows=self.daystart_service.items(self.day_owner.text(),self.day_priority.currentText(),self.day_period.currentText());self.day_table.setRowCount(len(rows))
+        rows=self.daystart_service.items(self.day_owner.text(),self.day_priority.currentData(),self.day_period.currentData());self.day_table.setRowCount(len(rows))
         for r,item in enumerate(rows):
             values=(item["priority"],item["kind"],item["due_at"],item["customer_name"],item["title"],item["assigned_to"],item["detail"],item["customer_id"] or "",item["entity_id"])
-            for c,value in enumerate(values):self.day_table.setItem(r,c,QTableWidgetItem(str(value or "")))
+            for c,value in enumerate(values):
+                cell=QTableWidgetItem(str(value or ""));cell.setTextAlignment((Qt.AlignVCenter|Qt.AlignLeft) if c not in (0,2) else Qt.AlignCenter)
+                if c==0:
+                    colors={"Kritiek":("#FDE8E7","#A3221B"),"Hoog":("#FFF0DE","#9A4B11"),"Normaal":("#EAF4FF","#1265C4"),"Laag":("#EEF3F7","#596B7E")}
+                    background,foreground=colors.get(str(value),("#EEF3F7","#596B7E"));cell.setBackground(QColor(background));cell.setForeground(QColor(foreground))
+                elif c==2 and value:
+                    from datetime import date
+                    day=str(value)[:10];today=date.today().isoformat()
+                    background,foreground=("#FDE8E7","#A3221B") if day<today else ("#FFF0DE","#9A4B11") if day==today else ("#EAF4FF","#1265C4")
+                    cell.setBackground(QColor(background));cell.setForeground(QColor(foreground))
+                elif c==5:
+                    employee=str(value or "Niet toegewezen")
+                    palette=(("#E8F1FC","#1B5F9E"),("#E8F7F1","#176B50"),("#F1EAFE","#6841B5"),
+                             ("#FFF0DE","#9A4B11"),("#FCEAEC","#9B2942"),("#E7F5F7","#176878"))
+                    background,foreground=palette[sum(ord(char) for char in employee.lower())%len(palette)]
+                    cell.setText(employee);cell.setBackground(QColor(background));cell.setForeground(QColor(foreground))
+                self.day_table.setItem(r,c,cell)
+            self.day_table.setRowHeight(r,40)
         summary=self.daystart_service.summary();self.day_summary.setText(f"{summary['total']} open · {summary['overdue']} te laat · {summary['urgent']} urgent")
         has_rows=bool(rows); self.day_content.setCurrentIndex(0 if has_rows else 1)
         for button in self.day_action_buttons: button.setEnabled(has_rows)
@@ -771,7 +798,8 @@ class MainWindow(QMainWindow):
             self.nav_buttons[19].setText(f"Gemiste oproepen  ·  {missed}" if missed else "Gemiste oproepen")
         self.refresh_backup_status()
         if hasattr(self,"day_table"):self.refresh_daystart()
-        stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))
+        stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),
+                                                   stats["users"],stats["open_tasks"],len(self.workspace.actions()))
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
         if not hasattr(self,"customer_table"):return

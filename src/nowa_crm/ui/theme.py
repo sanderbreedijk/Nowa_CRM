@@ -75,10 +75,16 @@ QFrame#CallIdentity { background-color:#FFFFFF; border:1px solid #D7E5F2; border
 QLabel#CallPopupCustomer { color:#0B3158; font-size:16px; font-weight:800; }
 QLabel#CallPopupContext { color:#64778D; font-size:12px; }
 QFrame#CallInputPanel, QFrame#CallActionPanel { background-color:#FFFFFF; border:1px solid #D7E5F2; border-radius:14px; }
+QFrame#CallInsight { background-color:#F7FAFE; border:1px solid #DCE7F2; border-radius:10px; }
+QLabel#CallInsightTitle { color:#53708E; font-size:9px; font-weight:800; letter-spacing:1px; }
+QLabel#CallInsightText { color:#183B60; font-size:11px; line-height:1.25; }
 QFrame#CallFooter { background-color:#EDF4FB; border:1px solid #D2E0EE; border-radius:12px; }
 QPushButton#CallAccept { background-color:#16815F; color:#FFFFFF; border:none; min-height:30px; font-weight:750; }
 QPushButton#CallAction { text-align:left; background-color:#F7FAFE; color:#173A60; border:1px solid #C9D9E9; border-radius:12px; padding:11px 14px; font-size:12px; font-weight:750; }
 QPushButton#CallAction:hover { background-color:#EAF4FF; border-color:#8EBBE7; }
+QPushButton#CallQuickBlock { min-height:28px; padding:4px 10px; background-color:#EEF5FF; color:#154A7E; border-color:#BFD6F2; }
+QPushButton#CallQuickBlock:hover { background-color:#DCEBFF; border-color:#4197FF; }
+QLabel#CallDraftStatus { color:#52708F; font-size:11px; }
 QPushButton#EndCallPrimary { background-color:#C93B3B; color:#FFFFFF; border:none; min-height:32px; font-size:13px; font-weight:800; }
 QPushButton#EndCallPrimary:hover { background-color:#AC2E2E; }
 QPushButton#CallPrimary { background-color:#1677E8; color:#FFFFFF; border:none; min-height:34px; font-size:14px; font-weight:750; }

@@ -58,8 +58,12 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     servicedesk_ui = (source_root / "nowa_crm" / "ui" / "servicedesk_page.py").read_text(encoding="utf-8")
     assert "TicketDraftDialog" in servicedesk_ui and "create_ticket_from_source" in servicedesk_ui
     assert "ActiveCallPanel" in navigation_ui and "end_active_call" in navigation_ui
+    assert "Alle prioriteiten" in navigation_ui and "Wat is er nodig?" in navigation_ui
+    assert '("LI","Licenties"' not in navigation_ui and '("HW","Hardware"' not in navigation_ui
+    assert "Niet toegewezen" in navigation_ui and "day<today" in navigation_ui
     call_workspace_ui = (source_root / "nowa_crm" / "ui" / "incoming_call_popup.py").read_text(encoding="utf-8")
     assert "CENTRALE WERKPLEK" in call_workspace_ui and "_return_to_workspace" in call_workspace_ui
+    assert "CallQuickBlock" in call_workspace_ui and "schedule_autosave" in call_workspace_ui
     db = Database(tmp_path / "test.sqlite3"); db.migrate()
     assert (tmp_path / "backups").exists()
     auth = AuthService(db)
@@ -240,6 +244,11 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
         conn.execute("UPDATE call_events SET started_at=datetime('now','-31 days') WHERE id=?",(old_missed,))
     assert telephony.cleanup_missed_calls(30)==1 and telephony.get(old_missed) is None
     assert telephony.missed_stats()["total"]>=1
+    telephony.mark_missed("06-12345678","daystart-missed-1")
+    telephony.mark_missed("06-12345678","daystart-missed-2")
+    daystart_calls=[item for item in DaystartService(db).items()
+                    if item["kind"]=="Terugbellen" and item["title"].startswith("Gemiste oproepen")]
+    assert len(daystart_calls)==1
     assert any(item["title"].startswith("Terugbellen:") for item in workspace.actions(customer_id))
     calls = []
     coligo = ColigoAdapter(); coligo.start(calls.append)
@@ -254,6 +263,17 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert len(snapshot["proposals"]) == 3
     assert len(snapshot["vault"]) == 2
     assert len(snapshot["users"]) == len(snapshot["licenses"]) == len(snapshot["hardware"]) == 1
+    call_snapshot=telephony.call_workspace_snapshot(customer_id,contact_id)
+    assert call_snapshot["users"]==1 and call_snapshot["teams"]==1
+    assert call_snapshot["licenses"][0]["product"]=="Microsoft 365 Business Premium"
+    assert call_snapshot["departments"][0]["department"]=="Directie"
+    assert len(call_snapshot["recent_calls"])<=3
+    assert call_snapshot["open_items"]
+    draft_call=telephony.register_call("06-12345678",external_id="autosave-draft")
+    telephony.save_call_draft(draft_call,"Tussentijds","Nog bezig","Beantwoord","Hoog","2026-08-03")
+    saved_draft=telephony.get(draft_call)
+    assert saved_draft["subject"]=="Tussentijds" and saved_draft["notes"]=="Nog bezig"
+    assert saved_draft["status"]=="nieuw" and saved_draft["ended_at"] is None
     assert 0<=snapshot["pulse"]["score"]<=100
     assert snapshot["pulse"]["label"] in ("Sterk","Aandacht","Kritiek")
     assert len(snapshot["pulse"]["briefing"])==4
