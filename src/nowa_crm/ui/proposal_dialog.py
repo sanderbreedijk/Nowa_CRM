@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt,QUrl,QTimer
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox,QComboBox,QDialog,QDialogButtonBox,QDoubleSpinBox,QFormLayout,
-    QGridLayout,QGroupBox,QHeaderView,QHBoxLayout,QInputDialog,QLabel,QLineEdit,QMessageBox,
+    QFileDialog,QGridLayout,QGroupBox,QHeaderView,QHBoxLayout,QInputDialog,QLabel,QLineEdit,QMessageBox,
     QPushButton,QSplitter,QTableWidget,QTableWidgetItem,QTabWidget,QTextEdit,QVBoxLayout,
     QWidget,QAbstractItemView)
 
@@ -173,22 +173,45 @@ class ProposalDialog(QDialog):
             if QMessageBox.question(self,"Voorbeeld gereed",f"PDF opgeslagen:\n{path}\n\nNu openen?")==QMessageBox.Yes:QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         except Exception as e:QMessageBox.warning(self,"PDF export",str(e))
     def _online_approval(self):
-        history=self.approvals.history(self.proposal_id);active=next((x for x in history if x["status"] in ("voorbereid","gepubliceerd")),None)
-        choices=["Nieuw akkoordpakket voorbereiden","Publicatiehistorie bekijken"]
+        history=self.approvals.history(self.proposal_id)
+        active=next((x for x in history if x["status"] in ("voorbereid","gepubliceerd")),None)
+        accepted=next((x for x in history if x["status"]=="geaccepteerd" and not x["applied_at"]),None)
+        choices=["Nieuw akkoordportaal voorbereiden","Akkoordbestand importeren","Publicatiehistorie bekijken"]
         if active:choices.insert(1,"Actieve publicatie intrekken")
+        if accepted:choices.insert(1,"Geaccepteerde licentiewijzigingen verwerken")
         choice,ok=QInputDialog.getItem(self,"Online akkoord","Actie",choices,0,False)
         if not ok:return
+        if choice=="Geaccepteerde licentiewijzigingen verwerken":
+            if QMessageBox.question(self,"Licenties verwerken","De gecontroleerde aantallen worden nu in het lokale klantdossier verwerkt. Doorgaan?")!=QMessageBox.Yes:return
+            try:
+                result=self.approvals.apply_license_changes(accepted["id"])
+                QMessageBox.information(self,"Licenties verwerkt",f"{result['changed']} licentiewijziging(en) zijn lokaal verwerkt.")
+            except Exception as e:QMessageBox.warning(self,"Licenties verwerken",str(e))
+            return
         if choice=="Actieve publicatie intrekken":
             try:self.approvals.revoke(active["id"]);QMessageBox.information(self,"Online akkoord","De actieve publicatie is lokaal ingetrokken.")
             except Exception as e:QMessageBox.warning(self,"Online akkoord",str(e))
             return
+        if choice=="Akkoordbestand importeren":
+            path,_=QFileDialog.getOpenFileName(self,"Akkoordbestand kiezen","","NOWA akkoord (*.json)")
+            if not path:return
+            try:
+                result=self.approvals.import_decision(path)
+                changes=[x for x in result["license_changes"] if x["difference"]]
+                detail="\n".join(f"• {x['product']}: {x['current_quantity']} → {x['requested_quantity']} ({x['difference']:+d})" for x in changes) or "Geen licentiewijzigingen."
+                QMessageBox.information(self,"Akkoord gecontroleerd",f"Akkoord van {result['accepted_by']} is geldig.\n\n{detail}\n\nVerwerk de wijzigingen daarna via Online akkoord.")
+            except Exception as e:QMessageBox.warning(self,"Akkoord importeren",str(e))
+            return
         if choice=="Publicatiehistorie bekijken":
-            text="\n".join(f"R{x['revision']} · {x['status']} · vervalt {x['expires_at']} · {x['recipient_email'] or 'geen e-mail'}" for x in history) or "Nog geen akkoordpakketten.";QMessageBox.information(self,"Publicatiehistorie",text);return
+            text="\n".join(f"R{x['revision']} · {x['status']} · vervalt {x['expires_at']} · {x['accepted_by'] or x['recipient_email'] or 'geen naam/e-mail'}"+(" · verwerkt" if x["applied_at"] else "") for x in history) or "Nog geen akkoordportalen."
+            QMessageBox.information(self,"Publicatiehistorie",text);return
         email,ok=QInputDialog.getText(self,"Online akkoord","E-mailadres ontvanger (optioneel)")
         if not ok:return
         from datetime import date,timedelta
         expiry,ok=QInputDialog.getText(self,"Online akkoord","Geldig tot (jjjj-mm-dd)",text=(date.today()+timedelta(days=14)).isoformat())
         if not ok:return
         try:
-            result=self.approvals.prepare(self.proposal_id,email,expiry);QMessageBox.information(self,"Akkoordpakket gereed",f"Het beveiligde overdrachtspakket is lokaal gemaakt:\n\n{result['path']}\n\nEr is nog niets naar internet gestuurd. Een nieuwe revisie trekt dit pakket automatisch in.")
+            result=self.approvals.prepare(self.proposal_id,email,expiry)
+            if QMessageBox.question(self,"Akkoordportaal gereed",f"Het zelfstandige akkoordportaal is lokaal gemaakt:\n\n{result['path']}\n\nEr is niets naar internet gestuurd. Openen om te controleren?")==QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(result["path"])))
         except Exception as e:QMessageBox.warning(self,"Online akkoord",str(e))
