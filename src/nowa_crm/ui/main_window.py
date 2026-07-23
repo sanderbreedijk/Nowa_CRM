@@ -93,7 +93,9 @@ class MainWindow(QMainWindow):
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
-        nav.addStretch(); version=QLabel(f"Versie {__version__}  •  lokaal"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
+        nav.addStretch();self.sip_nav_status=QLabel("SIP  •  niet actief");self.sip_nav_status.setObjectName("SipSidebarStatus");self.sip_nav_status.setProperty("sipState","idle");nav.addWidget(self.sip_nav_status)
+        self.integrations_page.sip_status_changed.connect(self.update_sip_sidebar_status)
+        version=QLabel(f"Versie {__version__}  •  lokaal"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
         self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
         self.refresh_all()
         QTimer.singleShot(800,self.show_followup_reminder)
@@ -133,6 +135,12 @@ class MainWindow(QMainWindow):
     def _open_nav_section(self,name):
         for section,(header,content) in self.nav_sections.items():
             active=section==name;content.setVisible(active);header.setText(f"{'—' if active else '+'}  {section.upper()}")
+
+    def update_sip_sidebar_status(self,state,detail=""):
+        labels={"luistert":"luistert","verbinden":"verbinden…","verbonden":"verbonden","fout":"fout"}
+        self.sip_nav_status.setText(f"SIP  •  {labels.get(state,state)}")
+        self.sip_nav_status.setToolTip(detail);self.sip_nav_status.setProperty("sipState",state)
+        self.sip_nav_status.style().unpolish(self.sip_nav_status);self.sip_nav_status.style().polish(self.sip_nav_status)
 
     def _show(self,index):
         self.stack.setCurrentIndex(index)
@@ -263,10 +271,10 @@ class MainWindow(QMainWindow):
     def _selected_id(self,table,col):
         row=table.currentRow(); item=table.item(row,col) if row>=0 else None; return int(item.text()) if item else None
     def open_selected_customer(self,*_):
-        customer_id=self._selected_id(self.customer_table,9)
+        customer_id=self._selected_id(self.customer_table,8)
         if customer_id:self.open_customer(customer_id)
     def refresh_customer_card(self):
-        customer_id=self._selected_id(self.customer_table,9)
+        customer_id=self._selected_id(self.customer_table,8)
         customer=self.customers.get(customer_id) if customer_id else None
         if not customer:self.customer_card_name.setText("Selecteer een klant");self.customer_card_meta.setText("De belangrijkste gegevens en acties verschijnen hier.");self.customer_card_warning.hide();return
         contacts=self.customers.contacts(customer.id);self.customer_card_name.setText(f"{customer.name}  ·  {customer.customer_number}  ·  {customer.status}")
@@ -278,13 +286,13 @@ class MainWindow(QMainWindow):
         if not contacts:missing.append("geen contactpersoon")
         self.customer_card_warning.setText("Aanvullen  ·  "+"  ·  ".join(missing));self.customer_card_warning.setVisible(bool(missing))
     def customer_quick_proposal(self):
-        customer_id=self._selected_id(self.customer_table,9)
+        customer_id=self._selected_id(self.customer_table,8)
         if customer_id:self.add_proposal_for_customer(customer_id)
     def customer_quick_mail(self):
-        customer_id=self._selected_id(self.customer_table,9)
+        customer_id=self._selected_id(self.customer_table,8)
         if customer_id:self.start_customer_mail(customer_id)
     def customer_quick_vault(self):
-        customer_id=self._selected_id(self.customer_table,9);customer=self.customers.get(customer_id) if customer_id else None
+        customer_id=self._selected_id(self.customer_table,8);customer=self.customers.get(customer_id) if customer_id else None
         if customer:self.open_vault(customer.name)
     def add_customer(self):
         dlg=CustomerDialog(self)
@@ -292,14 +300,14 @@ class MainWindow(QMainWindow):
             try:self.customers.create(*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def edit_customer(self,*_):
-        cid=self._selected_id(self.customer_table,9)
+        cid=self._selected_id(self.customer_table,8)
         if not cid:return
         customer=self.customers.get(cid); dlg=CustomerDialog(self,customer)
         if dlg.exec():
             try:self.customers.update(cid,*dlg.values()); self.refresh_all(); self.mail_page.reload()
             except Exception as e: QMessageBox.critical(self,"Klant opslaan",str(e))
     def manage_contacts(self):
-        cid=self._selected_id(self.customer_table,9)
+        cid=self._selected_id(self.customer_table,8)
         if not cid: QMessageBox.information(self,"Contactpersonen","Selecteer eerst een klant."); return
         existing=self.customers.contacts(cid); summary="\n".join(f"• {x.name} — {x.role or 'contact'} — {x.phone or x.email}" for x in existing) or "Nog geen contactpersonen."
         if QMessageBox.question(self,"Contactpersonen",summary+"\n\nNieuwe contactpersoon toevoegen?")!=QMessageBox.Yes:return
@@ -674,7 +682,7 @@ class MainWindow(QMainWindow):
         for label,value in zip(self.kpis,values):label.setText(str(value))
     def refresh_customers(self,*_):
         if not hasattr(self,"customer_table"):return
-        selected_id=self._selected_id(self.customer_table,9);rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows));selected_row=-1
+        selected_id=self._selected_id(self.customer_table,8);rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows));selected_row=-1
         for r,x in enumerate(rows):
             for c,v in enumerate((x.customer_number,x.name,x.status,x.tags,x.email,x.phone,x.mobile_phone,x.city,str(x.id))):
                 item=QTableWidgetItem(v)
