@@ -183,7 +183,7 @@ class TelephonyService:
         if recent:
             parts.append(f"laatste contact {recent[0]['started_at'][:10]}")
         return {"open_tickets": open_tickets, "open_actions": open_actions, "recent_calls": recent,
-                "summary": " Â· ".join(parts)}
+                "summary": " · ".join(parts)}
 
     def call_workspace_snapshot(self, customer_id: int | None, contact_id: int | None = None,
                                 current_call_id: int | None = None) -> dict:
@@ -255,4 +255,3 @@ class TelephonyService:
 def _same_number(left: str, right: str) -> bool:
     if not left or not right:return False
     return left==right or (len(left)>=8 and len(right)>=8 and left[-8:]==right[-8:])
-
