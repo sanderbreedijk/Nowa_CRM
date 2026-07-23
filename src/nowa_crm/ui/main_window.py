@@ -48,6 +48,7 @@ from nowa_crm.ui.security_page import SecurityPage
 from nowa_crm.ui.communications_page import CommunicationsPage
 from nowa_crm.ui.documents_page import DocumentsPage
 from nowa_crm.ui.integrations_page import IntegrationsPage
+from nowa_crm.ui.incoming_call_popup import IncomingCallPopup
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm.core.backup import BackupService
 from nowa_crm.core.paths import data_dir
@@ -75,7 +76,8 @@ class MainWindow(QMainWindow):
         self.documents_page=DocumentsPage(customers,self.documents_service,self.open_proposal,self)
         self.integration_service=IntegrationService(customers.db,mail,telephony,telephony.actor)
         self.daystart_service=DaystartService(customers.db)
-        self.integrations_page=IntegrationsPage(self.integration_service,self.open_call,self)
+        self.incoming_call_popup=None
+        self.integrations_page=IntegrationsPage(self.integration_service,self.show_incoming_call,self)
         self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony,self.servicedesk_service),self.open_mail_message,self.open_call,self.open_service_ticket,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
         self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self.start_customer_mail,self.start_customer_followup,self.add_proposal_for_customer,self.start_customer_call,self.start_customer_ticket,self)
@@ -479,6 +481,18 @@ class MainWindow(QMainWindow):
     def open_call(self,call_id):
         if call_id is not None:self.telephony_page.open_call(call_id)
         self._show(8)
+    def show_incoming_call(self,call_id):
+        if self.incoming_call_popup:
+            try:self.incoming_call_popup.close()
+            except RuntimeError:pass
+        if self.isMinimized():self.showNormal()
+        popup=IncomingCallPopup(call_id,self.customers,self.telephony,self.open_call,
+            self.open_customer,self.open_vault,self.create_ticket_from_communication,self)
+        self.incoming_call_popup=popup
+        popup.destroyed.connect(lambda:self._clear_incoming_popup(popup))
+        popup.show();popup.raise_()
+    def _clear_incoming_popup(self,popup):
+        if self.incoming_call_popup is popup:self.incoming_call_popup=None
     def create_ticket_from_communication(self,customer_id,subject,description,source_type,source_id):
         try:
             ticket_id=self.servicedesk_service.create_from_source(customer_id,subject or "Servicevraag",description,source_type,source_id)
