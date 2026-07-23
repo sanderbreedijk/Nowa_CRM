@@ -764,7 +764,8 @@ CREATE TABLE IF NOT EXISTS proposal_publications (
     accepted_at TEXT,
     accepted_by TEXT NOT NULL DEFAULT '',
     accepted_function TEXT NOT NULL DEFAULT '',
-    acceptance_comment TEXT NOT NULL DEFAULT ''
+    acceptance_comment TEXT NOT NULL DEFAULT '',
+    license_changes_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_proposal_publications ON proposal_publications(proposal_id,created_at DESC);
 """
