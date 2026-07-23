@@ -13,11 +13,12 @@ class Customer360Page(QWidget):
     """Compact klantwerkblad met directe acties en één chronologische tijdlijn."""
 
     def __init__(self, customers: CustomerService, service: Customer360Service, open_vault,
-                 open_proposal, start_mail, start_followup, start_proposal, parent=None):
+                 open_proposal, start_mail, start_followup, start_proposal, start_call=None, start_ticket=None, parent=None):
         super().__init__(parent)
         self.customers, self.service = customers, service
         self.open_vault, self.open_proposal = open_vault, open_proposal
         self.start_mail, self.start_followup, self.start_proposal = start_mail, start_followup, start_proposal
+        self.start_call,self.start_ticket=start_call,start_ticket
 
         root=QVBoxLayout(self); root.setContentsMargins(34,28,34,28); root.setSpacing(14)
         heading=QHBoxLayout(); titles=QVBoxLayout(); title=QLabel("360° klantdossier"); title.setObjectName("Title"); titles.addWidget(title)
@@ -28,9 +29,20 @@ class Customer360Page(QWidget):
         badge=QLabel("360"); badge.setObjectName("CustomerBadge"); hero_box.addWidget(badge)
         identity_box=QVBoxLayout(); self.identity=QLabel(); self.identity.setObjectName("CustomerName"); self.identity.setWordWrap(True); identity_box.addWidget(self.identity)
         self.contactline=QLabel(); self.contactline.setObjectName("CustomerMeta"); self.contactline.setWordWrap(True); identity_box.addWidget(self.contactline); hero_box.addLayout(identity_box,1)
-        for symbol,text,handler in (("OF","Nieuwe offerte",self._proposal),("ML","Nieuwe mail",self._mail),("OP","Opvolging",self._followup),("KV","IT-kluis",self._vault)):
+        for symbol,text,handler in (("TL","Bel klant",self._call),("TK","Serviceticket",self._ticket),("OF","Nieuwe offerte",self._proposal),("ML","Nieuwe mail",self._mail),("OP","Opvolging",self._followup),("KV","IT-kluis",self._vault)):
             button=QPushButton(text); button.setIcon(nav_icon(symbol)); button.setIconSize(QSize(24,24)); button.clicked.connect(handler); hero_box.addWidget(button)
         root.addWidget(hero)
+
+        cockpit=QHBoxLayout();cockpit.setSpacing(12)
+        pulse=QFrame();pulse.setObjectName("PulseCard");pulse_box=QVBoxLayout(pulse);pulse_box.setContentsMargins(20,16,20,16)
+        pulse_title=QLabel("KLANTPULS");pulse_title.setObjectName("PulseCaption");pulse_box.addWidget(pulse_title)
+        pulse_value=QHBoxLayout();self.pulse_score=QLabel("100");self.pulse_score.setObjectName("PulseScore");pulse_value.addWidget(self.pulse_score)
+        pulse_text=QVBoxLayout();self.pulse_label=QLabel("Sterk");self.pulse_label.setObjectName("PulseLabel");pulse_text.addWidget(self.pulse_label)
+        self.pulse_summary=QLabel("Geen urgente signalen");self.pulse_summary.setObjectName("PulseSummary");self.pulse_summary.setWordWrap(True);pulse_text.addWidget(self.pulse_summary);pulse_value.addLayout(pulse_text,1);pulse_box.addLayout(pulse_value);cockpit.addWidget(pulse,1)
+        briefing=QFrame();briefing.setObjectName("BriefingCard");briefing_box=QVBoxLayout(briefing);briefing_box.setContentsMargins(20,16,20,16)
+        briefing_title=QLabel("NOWA BRIEFING");briefing_title.setObjectName("PulseCaption");briefing_box.addWidget(briefing_title)
+        self.briefing=QLabel();self.briefing.setObjectName("BriefingText");self.briefing.setWordWrap(True);briefing_box.addWidget(self.briefing,1);cockpit.addWidget(briefing,2)
+        root.addLayout(cockpit)
 
         grid=QGridLayout(); grid.setHorizontalSpacing(12); grid.setVerticalSpacing(12); self.kpis=[]
         cards=(("CO","Contacten","blue"),("OF","Offertes","purple"),("KV","Kluisitems","teal"),("GB","Gebruikers","orange"),("LI","Licenties","purple"),
@@ -43,7 +55,9 @@ class Customer360Page(QWidget):
         root.addLayout(grid)
 
         self.warning=QLabel();self.warning.setObjectName("AttentionBanner");self.warning.setWordWrap(True);self.warning.hide();root.addWidget(self.warning)
-        timeline_head=QHBoxLayout(); timeline_title=QLabel("Klanttijdlijn");timeline_title.setObjectName("SectionTitle");timeline_head.addWidget(timeline_title);timeline_head.addStretch();self.timeline_count=QLabel();self.timeline_count.setObjectName("SummaryPill");timeline_head.addWidget(self.timeline_count);root.addLayout(timeline_head)
+        timeline_head=QHBoxLayout(); timeline_title=QLabel("Klanttijdlijn");timeline_title.setObjectName("SectionTitle");timeline_head.addWidget(timeline_title);timeline_head.addStretch()
+        self.timeline_filter=QComboBox();self.timeline_filter.addItems(["Alles","Communicatie","Service","Commercieel","Werk","Dossier"]);self.timeline_filter.currentIndexChanged.connect(self.reload_timeline);timeline_head.addWidget(self.timeline_filter)
+        self.timeline_count=QLabel();self.timeline_count.setObjectName("SummaryPill");timeline_head.addWidget(self.timeline_count);root.addLayout(timeline_head)
         self.timeline=QTableWidget(0,4);self.timeline.setHorizontalHeaderLabels(["Datum","Soort","Onderwerp","Status / detail"]);self.timeline.horizontalHeader().setStretchLastSection(True);self.timeline.setAlternatingRowColors(True);root.addWidget(self.timeline,1)
         self.reload_customers()
 
@@ -72,7 +86,15 @@ class Customer360Page(QWidget):
                 len([x for x in data["tickets"] if x["status"] not in ("Opgelost","Gesloten")]),len(data["mail"]),len(data["documents"]))
         for label,value in zip(self.kpis,values):label.setText(str(value))
         warnings=data["warnings"];self.warning.setText("Aandacht nodig  ·  "+"  ·  ".join(warnings));self.warning.setVisible(bool(warnings))
-        rows=self.service.timeline(customer_id);self.timeline.setRowCount(len(rows));self.timeline_count.setText(f"{len(rows)} gebeurtenissen")
+        pulse=data["pulse"];self.pulse_score.setText(str(pulse["score"]));self.pulse_label.setText(pulse["label"])
+        self.pulse_score.setStyleSheet(f"color:{pulse['color']}");self.pulse_label.setStyleSheet(f"color:{pulse['color']}")
+        self.pulse_summary.setText(" · ".join(pulse["signals"][:3]));self.briefing.setText("\n".join(f"• {line}" for line in pulse["briefing"]))
+        self.timeline_rows=self.service.timeline(customer_id);self.reload_timeline()
+
+    def reload_timeline(self,*_):
+        selected=self.timeline_filter.currentText() if hasattr(self,"timeline_filter") else "Alles"
+        rows=[row for row in getattr(self,"timeline_rows",[]) if selected=="Alles" or row.get("group")==selected]
+        self.timeline.setRowCount(len(rows));self.timeline_count.setText(f"{len(rows)} gebeurtenissen")
         for r,row in enumerate(rows):
             for col,value in enumerate((row["date"],row["kind"],row["title"],row["detail"])):self.timeline.setItem(r,col,QTableWidgetItem(str(value or "")))
 
@@ -84,3 +106,7 @@ class Customer360Page(QWidget):
         if self.customer.currentData():self.start_followup(self.customer.currentData())
     def _proposal(self):
         if self.customer.currentData():self.start_proposal(self.customer.currentData())
+    def _call(self):
+        if self.customer.currentData() and self.start_call:self.start_call(self.customer.currentData())
+    def _ticket(self):
+        if self.customer.currentData() and self.start_ticket:self.start_ticket(self.customer.currentData())
