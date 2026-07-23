@@ -46,7 +46,7 @@ class ProposalDialog(QDialog):
         form.addWidget(QLabel("Groep"),0,0);form.addWidget(self.group,0,1);form.addWidget(QLabel("Soort"),0,2);form.addWidget(self.kind,0,3)
         form.addWidget(QLabel("Omschrijving"),1,0);form.addWidget(self.description,1,1,1,3)
         form.addWidget(QLabel("Aantal"),2,0);form.addWidget(self.quantity,2,1);form.addWidget(QLabel("Facturatie"),2,2);form.addWidget(self.period,2,3)
-        form.addWidget(QLabel("Prijs excl. btw"),3,0);form.addWidget(self.price,3,1);self.optional=QCheckBox("Optionele regel â€” niet meetellen in offertetotaal");form.addWidget(self.optional,3,2,1,2)
+        form.addWidget(QLabel("Prijs excl. btw"),3,0);form.addWidget(self.price,3,1);self.optional=QCheckBox("Optionele regel — niet meetellen in offertetotaal");form.addWidget(self.optional,3,2,1,2)
         line_actions=QGridLayout()
         for index,(label,callback) in enumerate((("Nieuwe regel toevoegen",self._add),("Wijzig geselecteerde",self._update),("Dupliceren",self._duplicate_line),("Verwijderen",self._delete),("In-/uitschakelen",self._toggle),("Omhoog",lambda:self._move(-1)),("Omlaag",lambda:self._move(1)))):
             b=QPushButton(label);b.clicked.connect(callback);line_actions.addWidget(b,index//4,index%4)
@@ -84,10 +84,10 @@ class ProposalDialog(QDialog):
         for r,x in enumerate(lines):
             for c,v in enumerate(("Ja" if x.active else "Nee","Ja" if x.optional else "Nee",x.group_name,x.kind,x.description,f"{x.quantity:g}",x.billing_period,money(x.unit_price_cents),money(x.line_total_cents),str(x.id))):self.table.setItem(r,c,QTableWidgetItem(v))
         t=self.service.totals(self.proposal_id);monthly=self.service.monthly_total(self.proposal_id);self.total.setText(f"Eenmalig excl. btw: {money(t['subtotal_cents'])}  |  incl. btw: {money(t['total_cents'])}  |  maandelijks excl. btw: {money(monthly)}")
-        option_count=len([x for x in all_lines if x.active and x.optional]);self.once_total.setText(f"EENMALIG\n{money(t['subtotal_cents'])} excl. btw");self.month_total.setText(f"PER MAAND\n{money(monthly)} excl. btw");self.line_count.setText(f"OFFERTEREGELS\n{len([x for x in all_lines if x.active])} actief Â· {option_count} optie(s)")
-        group_totals=self.service.group_totals(self.proposal_id);self.total.setToolTip("\n".join(f"{name}: {money(values['eenmalig'])} eenmalig Â· {money(values['maandelijks'])} p/m" for name,values in group_totals.items()))
+        option_count=len([x for x in all_lines if x.active and x.optional]);self.once_total.setText(f"EENMALIG\n{money(t['subtotal_cents'])} excl. btw");self.month_total.setText(f"PER MAAND\n{money(monthly)} excl. btw");self.line_count.setText(f"OFFERTEREGELS\n{len([x for x in all_lines if x.active])} actief · {option_count} optie(s)")
+        group_totals=self.service.group_totals(self.proposal_id);self.total.setToolTip("\n".join(f"{name}: {money(values['eenmalig'])} eenmalig · {money(values['maandelijks'])} p/m" for name,values in group_totals.items()))
         if current_group and current_group in group_totals:
-            values=group_totals[current_group];self.group_subtotal.setText(f"Subtotaal {money(values['eenmalig'])} Â· {money(values['maandelijks'])} p/m")
+            values=group_totals[current_group];self.group_subtotal.setText(f"Subtotaal {money(values['eenmalig'])} · {money(values['maandelijks'])} p/m")
         else:self.group_subtotal.setText(f"{len(group_totals)} hoofdstukken")
 
     def _selected(self):
@@ -100,7 +100,7 @@ class ProposalDialog(QDialog):
         line_id=self._selected()
         if not line_id:return
         line=next(x for x in self.service.lines(self.proposal_id) if x.id==line_id);self._loading_form=True;self.editing_line_id=line_id
-        self.group.setText(line.group_name);self.kind.setCurrentText(line.kind);self.description.setText(line.description);self.quantity.setValue(line.quantity);self.period.setCurrentText(line.billing_period);self.price.setValue(line.unit_price_cents/100);self.optional.setChecked(bool(line.optional));self._loading_form=False;self.save_state.setText("Regel geopend Â· wijzigingen worden automatisch opgeslagen")
+        self.group.setText(line.group_name);self.kind.setCurrentText(line.kind);self.description.setText(line.description);self.quantity.setValue(line.quantity);self.period.setCurrentText(line.billing_period);self.price.setValue(line.unit_price_cents/100);self.optional.setChecked(bool(line.optional));self._loading_form=False;self.save_state.setText("Regel geopend · wijzigingen worden automatisch opgeslagen")
     def _update(self):
         line_id=self._selected()
         if not line_id:QMessageBox.information(self,"Offerteregel","Selecteer eerst een regel.");return
@@ -118,7 +118,7 @@ class ProposalDialog(QDialog):
         if self._selected():self.service.move_line(self._selected(),direction);self.refresh()
     def _schedule_autosave(self,*_):
         if self.editing_line_id and not self._loading_form:
-            self.save_state.setText("Wijzigingen opslaanâ€¦");self.autosave.start()
+            self.save_state.setText("Wijzigingen opslaan…");self.autosave.start()
     def _autosave_selected(self):
         if not self.editing_line_id or not self.description.text().strip():return
         try:
@@ -198,12 +198,12 @@ class ProposalDialog(QDialog):
             try:
                 result=self.approvals.import_decision(path)
                 changes=[x for x in result["license_changes"] if x["difference"]]
-                detail="\n".join(f"â€¢ {x['product']}: {x['current_quantity']} â†’ {x['requested_quantity']} ({x['difference']:+d})" for x in changes) or "Geen licentiewijzigingen."
+                detail="\n".join(f"• {x['product']}: {x['current_quantity']} → {x['requested_quantity']} ({x['difference']:+d})" for x in changes) or "Geen licentiewijzigingen."
                 QMessageBox.information(self,"Akkoord gecontroleerd",f"Akkoord van {result['accepted_by']} is geldig.\n\n{detail}\n\nVerwerk de wijzigingen daarna via Online akkoord.")
             except Exception as e:QMessageBox.warning(self,"Akkoord importeren",str(e))
             return
         if choice=="Publicatiehistorie bekijken":
-            text="\n".join(f"R{x['revision']} Â· {x['status']} Â· vervalt {x['expires_at']} Â· {x['accepted_by'] or x['recipient_email'] or 'geen naam/e-mail'}"+(" Â· verwerkt" if x["applied_at"] else "") for x in history) or "Nog geen akkoordportalen."
+            text="\n".join(f"R{x['revision']} · {x['status']} · vervalt {x['expires_at']} · {x['accepted_by'] or x['recipient_email'] or 'geen naam/e-mail'}"+(" · verwerkt" if x["applied_at"] else "") for x in history) or "Nog geen akkoordportalen."
             QMessageBox.information(self,"Publicatiehistorie",text);return
         email,ok=QInputDialog.getText(self,"Online akkoord","E-mailadres ontvanger (optioneel)")
         if not ok:return
