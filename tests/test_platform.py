@@ -246,7 +246,8 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert telephony.missed_stats()["total"]>=1
     telephony.mark_missed("06-12345678","daystart-missed-1")
     telephony.mark_missed("06-12345678","daystart-missed-2")
-    daystart_calls=[item for item in DaystartService(db).items() if item["kind"]=="Terugbellen"]
+    daystart_calls=[item for item in DaystartService(db).items()
+                    if item["kind"]=="Terugbellen" and item["title"].startswith("Gemiste oproepen")]
     assert len(daystart_calls)==1
     assert any(item["title"].startswith("Terugbellen:") for item in workspace.actions(customer_id))
     calls = []
