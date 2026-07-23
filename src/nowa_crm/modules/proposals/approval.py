@@ -144,14 +144,17 @@ class ProposalApprovalService:
             if publication["applied_at"]:
                 raise ValueError("Deze licentiewijzigingen zijn al verwerkt.")
             changes = json.loads(publication["license_changes_json"])
+            applied_ids = set(json.loads(publication["applied_license_ids_json"]))
             changed = 0
+            pending = 0
             for item in changes:
-                if item["requested_quantity"] == item["current_quantity"]:
+                license_id = int(item["license_id"])
+                if item["requested_quantity"] == item["current_quantity"] or license_id in applied_ids:
                     continue
                 effective = item.get("effective_date", "")
                 if effective and date.fromisoformat(effective) > date.today():
-                    raise ValueError(
-                        f"{item['product']} gaat pas in op {effective}; verwerk dit akkoord dan.")
+                    pending += 1
+                    continue
                 cursor = conn.execute(
                     """UPDATE customer_licenses SET quantity=?
                        WHERE id=? AND customer_id=? AND quantity=?""",
@@ -160,16 +163,70 @@ class ProposalApprovalService:
                 if cursor.rowcount != 1:
                     raise ValueError(
                         f"{item['product']} is intussen lokaal gewijzigd. Controleer dit handmatig.")
+                applied_ids.add(license_id)
                 changed += 1
-            conn.execute("""UPDATE proposal_publications
-                            SET applied_at=CURRENT_TIMESTAMP WHERE id=?""",
-                         (publication_id,))
+            remaining = [item for item in changes
+                         if item["requested_quantity"] != item["current_quantity"]
+                         and int(item["license_id"]) not in applied_ids]
+            conn.execute(
+                """UPDATE proposal_publications SET applied_license_ids_json=?,
+                   applied_at=CASE WHEN ?=0 THEN CURRENT_TIMESTAMP ELSE applied_at END
+                   WHERE id=?""",
+                (json.dumps(sorted(applied_ids)), len(remaining), publication_id))
             conn.execute(
                 """INSERT INTO customer_change_log(customer_id,action,changed_fields,detail)
                    VALUES(?,?,?,?)""",
                 (publication["customer_id"], "offerte-akkoord",
-                 "licenties", f"{changed} licentiewijziging(en) verwerkt"))
-        return {"changed": changed}
+                 "licenties", f"{changed} licentiewijziging(en) verwerkt; {pending} gepland"))
+        return {"changed": changed, "pending": pending, "complete": not remaining}
+
+    def overview(self) -> list[dict]:
+        """Returns one compact sales worklist without exposing tokens or snapshots."""
+        with self.db.transaction() as conn:
+            rows = [dict(row) for row in conn.execute(
+                """SELECT p.id,p.proposal_id,p.revision,p.recipient_email,p.expires_at,
+                          p.status,p.created_at,p.accepted_at,p.accepted_by,p.applied_at,
+                          p.license_changes_json,p.applied_license_ids_json,
+                          q.number,q.title,c.name customer_name
+                   FROM proposal_publications p
+                   JOIN proposals q ON q.id=p.proposal_id
+                   JOIN customers c ON c.id=q.customer_id
+                   ORDER BY COALESCE(p.accepted_at,p.created_at) DESC""")]
+        today = date.today()
+        result = []
+        for row in rows:
+            changes = json.loads(row.pop("license_changes_json") or "[]")
+            applied_ids = set(json.loads(row.pop("applied_license_ids_json") or "[]"))
+            changed = [item for item in changes
+                       if item["requested_quantity"] != item["current_quantity"]]
+            due = [item for item in changed if int(item["license_id"]) not in applied_ids
+                   and (not item.get("effective_date")
+                        or date.fromisoformat(item["effective_date"]) <= today)]
+            future = [item for item in changed if int(item["license_id"]) not in applied_ids
+                      and item.get("effective_date")
+                      and date.fromisoformat(item["effective_date"]) > today]
+            display_status = row["status"]
+            if display_status in ("voorbereid", "gepubliceerd") and date.fromisoformat(row["expires_at"]) < today:
+                display_status = "verlopen"
+            elif display_status == "geaccepteerd" and row["applied_at"]:
+                display_status = "verwerkt"
+            elif display_status == "geaccepteerd" and due:
+                display_status = "te verwerken"
+            elif display_status == "geaccepteerd" and future:
+                display_status = "ingepland"
+            row.update(display_status=display_status, changed_count=len(changed),
+                       due_count=len(due), future_count=len(future),
+                       next_effective=min((item["effective_date"] for item in future), default=""))
+            result.append(row)
+        return result
+
+    def expire_publications(self) -> int:
+        with self.db.transaction() as conn:
+            cursor = conn.execute(
+                """UPDATE proposal_publications SET status='verlopen'
+                   WHERE status IN ('voorbereid','gepubliceerd') AND expires_at<?""",
+                (date.today().isoformat(),))
+            return cursor.rowcount
 
     def history(self, proposal_id: int) -> list[dict]:
         with self.db.transaction() as conn:
