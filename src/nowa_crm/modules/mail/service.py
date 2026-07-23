@@ -127,15 +127,16 @@ class MailService:
             row=conn.execute("SELECT * FROM mail_messages WHERE id=?",(message_id,)).fetchone()
         return dict(row) if row else None
 
-    def add_attachment(self, message_id: int, source: Path) -> int:
+    def add_attachment(self, message_id: int, source: Path, display_name: str = "") -> int:
         if not source.is_file():
             raise ValueError("Bijlage niet gevonden")
         folder=self.attachments_root/str(message_id); folder.mkdir(parents=True,exist_ok=True)
         stored=f"{uuid4().hex}-{source.name}"; target=folder/stored; shutil.copy2(source,target)
         relative=target.relative_to(self.root)
+        original=Path(display_name).name if display_name.strip() else source.name
         with self.db.transaction() as conn:
             cur=conn.execute("INSERT INTO mail_attachments(message_id,original_name,stored_name,relative_path,size_bytes) VALUES(?,?,?,?,?)",
-                             (message_id,source.name,stored,str(relative),target.stat().st_size))
+                             (message_id,original,stored,str(relative),target.stat().st_size))
             return int(cur.lastrowid)
 
     def _store_attachment(self, message_id: int, filename: str, payload: bytes) -> int:
@@ -267,4 +268,3 @@ class _Safe(dict):
 def _safe_filename(value: str) -> str:
     cleaned="".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in value).strip("-")
     return cleaned[:60] or "concept"
-
