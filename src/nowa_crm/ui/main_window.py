@@ -67,19 +67,19 @@ class MainWindow(QMainWindow):
         self.operations_page=OperationsPage(customers,operations,self)
         self.workspace_page=WorkspacePage(customers,workspace,self.open_proposal,self.open_global_result,self)
         self.mail_page=MailPage(customers,mail,workspace,self)
-        self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self)
+        self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
+        self.telephony_page=TelephonyPage(customers,telephony,self.open_customer,self.open_vault,self.create_ticket_from_communication,self)
         self.assets_service=CustomerAssetsService(customers.db)
         self.legacy_proposal_import=LegacyProposalImportService(customers.db,proposals,operations,self.assets_service)
         self.documents_service=DocumentCenterService(customers.db,self.assets_service,mail)
         self.documents_page=DocumentsPage(customers,self.documents_service,self.open_proposal,self)
-        self.servicedesk_service=ServiceDeskService(customers.db,telephony.actor)
         self.integration_service=IntegrationService(customers.db,mail,telephony,telephony.actor)
         self.daystart_service=DaystartService(customers.db)
         self.integrations_page=IntegrationsPage(self.integration_service,self.open_call,self)
-        self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony),self.open_mail_message,self.open_call,self.create_ticket_from_communication,self)
+        self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony,self.servicedesk_service),self.open_mail_message,self.open_call,self.open_service_ticket,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
         self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self.start_customer_mail,self.start_customer_followup,self.add_proposal_for_customer,self)
-        self.servicedesk_page=ServiceDeskPage(customers,self.servicedesk_service,self)
+        self.servicedesk_page=ServiceDeskPage(customers,self.servicedesk_service,self.start_customer_mail,self.open_call,self.open_vault,self)
         self.assets_page=CustomerAssetsPage(customers,self.assets_service,self)
         self.reporting_page=ReportingPage(customers,self.reporting_service,self.open_mail_message,self)
         self.planning_service=PlanningService(customers.db)
@@ -243,7 +243,7 @@ class MainWindow(QMainWindow):
         for symbol,text,handler in (("360","Dossier",self.open_selected_customer),("OF","Offerte",self.customer_quick_proposal),("ML","Mail",self.customer_quick_mail),("KV","IT-kluis",self.customer_quick_vault)):
             button=QPushButton(text);button.setIcon(nav_icon(symbol));button.setIconSize(QSize(24,24));button.clicked.connect(handler);card.addWidget(button)
         box.addWidget(self.customer_card)
-        self.customer_table=QTableWidget(0,10); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","Status","Labels","E-mail","Telefoon","Mobiel","Plaats","Land","ID"]); self.customer_table.setColumnHidden(9,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer);self.customer_table.itemSelectionChanged.connect(self.refresh_customer_card); box.addWidget(self.customer_table,1); return page
+        self.customer_table=QTableWidget(0,9); self.customer_table.setHorizontalHeaderLabels(["Klantnummer","Naam","Status","Labels","E-mail","Telefoon","Mobiel","Plaats","ID"]); self.customer_table.setColumnHidden(8,True); self.customer_table.horizontalHeader().setStretchLastSection(True); self.customer_table.setAlternatingRowColors(True); self.customer_table.doubleClicked.connect(self.open_selected_customer);self.customer_table.itemSelectionChanged.connect(self.refresh_customer_card); box.addWidget(self.customer_table,1); return page
     def _proposal_page(self):
         page,box=self._page("Offertes","Versies en status overzichtelijk per klant beheren."); searchbar=QFrame();searchbar.setObjectName("Toolbar");row=QHBoxLayout(searchbar);row.setContentsMargins(12,9,12,9);row.addWidget(QLabel("Offerteoverzicht")); self.proposal_search=QLineEdit(); self.proposal_search.setPlaceholderText("Zoek offerte of klant…"); self.proposal_search.textChanged.connect(self.refresh_proposals);self.proposal_customer=QComboBox();self.proposal_customer.addItem("Alle klanten",None);[self.proposal_customer.addItem(c.name,c.id) for c in self.customers.search()];self.proposal_customer.currentIndexChanged.connect(self.refresh_proposals);self.proposal_status=QComboBox();self.proposal_status.addItems(["Alle statussen","concept","verzonden","geaccepteerd","afgewezen","verlopen"]);self.proposal_status.currentTextChanged.connect(self.refresh_proposals);self.proposal_period=QComboBox();self.proposal_period.addItems(["Alle perioden","Deze maand","Dit jaar"]);self.proposal_period.currentTextChanged.connect(self.refresh_proposals);row.addWidget(self.proposal_search,1);row.addWidget(self.proposal_customer);row.addWidget(self.proposal_status);row.addWidget(self.proposal_period);box.addWidget(searchbar)
         body=QHBoxLayout();self.proposal_table=QTableWidget(0,7); self.proposal_table.setHorizontalHeaderLabels(["Nummer","Klant","Titel","Status","Revisie","Totaal excl. btw","ID"]); self.proposal_table.setColumnHidden(6,True); self.proposal_table.horizontalHeader().setStretchLastSection(True);self.proposal_table.setAlternatingRowColors(True); self.proposal_table.doubleClicked.connect(self.edit_proposal)
@@ -268,7 +268,7 @@ class MainWindow(QMainWindow):
         customer=self.customers.get(customer_id) if customer_id else None
         if not customer:self.customer_card_name.setText("Selecteer een klant");self.customer_card_meta.setText("De belangrijkste gegevens en acties verschijnen hier.");self.customer_card_warning.hide();return
         contacts=self.customers.contacts(customer.id);self.customer_card_name.setText(f"{customer.name}  ·  {customer.customer_number}  ·  {customer.status}")
-        address=" ".join(x for x in (customer.street,customer.postal_code,customer.city,customer.country) if x);details=[customer.phone or customer.mobile_phone,customer.email,address,f"{len(contacts)} contactperso{'on' if len(contacts)==1 else 'nen'}",customer.tags]
+        address=" ".join(x for x in (customer.street,customer.postal_code,customer.city) if x);details=[customer.phone or customer.mobile_phone,customer.email,address,f"{len(contacts)} contactperso{'on' if len(contacts)==1 else 'nen'}",customer.tags]
         self.customer_card_meta.setText("   ·   ".join(x for x in details if x) or "Nog geen contactgegevens vastgelegd")
         missing=[]
         if not (customer.phone or customer.mobile_phone):missing.append("telefoonnummer ontbreekt")
@@ -477,6 +477,8 @@ class MainWindow(QMainWindow):
             ticket_id=self.servicedesk_service.create_from_source(customer_id,subject or "Servicevraag",description,source_type,source_id)
             self.servicedesk_page.open_ticket(ticket_id);self._show(9)
         except Exception as exc:QMessageBox.warning(self,"Serviceticket",str(exc))
+    def open_service_ticket(self,ticket_id):
+        self.servicedesk_page.open_ticket(ticket_id);self._show(9)
     def open_global_search(self):
         self._show(1);self.workspace_page.search.setFocus();self.workspace_page.search.selectAll()
     def open_global_result(self,kind,entity_id,customer_id,title):
@@ -653,7 +655,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self,"customer_table"):return
         selected_id=self._selected_id(self.customer_table,9);rows=self.customers.search(self.customer_search.text()); self.customer_table.setRowCount(len(rows));selected_row=-1
         for r,x in enumerate(rows):
-            for c,v in enumerate((x.customer_number,x.name,x.status,x.tags,x.email,x.phone,x.mobile_phone,x.city,x.country,str(x.id))):
+            for c,v in enumerate((x.customer_number,x.name,x.status,x.tags,x.email,x.phone,x.mobile_phone,x.city,str(x.id))):
                 item=QTableWidgetItem(v)
                 if c==2:item.setForeground(QColor({"actief":"#16815F","prospect":"#1265C4","tijdelijk gestopt":"#9A4B11","uitgeschreven":"#6B7280"}.get(x.status,"#344259")))
                 self.customer_table.setItem(r,c,item)
