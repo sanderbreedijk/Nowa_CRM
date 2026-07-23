@@ -1,7 +1,3 @@
-0
-Wall time: 0.7 seconds
-Output:
----BEGIN---
 from __future__ import annotations
 
 import json
@@ -131,4 +127,3 @@ Remove-Item -LiteralPath $PSCommandPath -Force
 """
         helper.write_text(script, encoding="utf-8-sig")
         subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper)], creationflags=subprocess.CREATE_NO_WINDOW)
-
