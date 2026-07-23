@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QFrame, QGridLayout,
@@ -16,16 +18,15 @@ class IncomingCallPopup(QDialog):
     completed=Signal(int,dict)
 
     def __init__(self, call_id: int, customers: CustomerService, telephony: TelephonyService,
-                 open_call, open_customer, open_vault, create_ticket, parent=None):
+                 open_call, open_customer, open_vault, create_ticket, open_item=None, parent=None):
         super().__init__(parent)
         self.call_id=call_id;self.customers=customers;self.telephony=telephony
         self.open_call_callback=open_call;self.open_customer_callback=open_customer
-        self.open_vault_callback=open_vault;self.create_ticket_callback=create_ticket
+        self.open_vault_callback=open_vault;self.create_ticket_callback=create_ticket;self.open_item_callback=open_item
         self.setObjectName("IncomingCallPopup");self.setWindowTitle("NOWA · Gesprekswerkplek")
         self.setWindowFlags(Qt.WindowType.Tool|Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);self.resize(980,690);self.setMinimumSize(820,600)
-        self.handled=False;self.missed_timer=QTimer(self);self.missed_timer.setSingleShot(True)
-        self.missed_timer.timeout.connect(self.auto_missed);self.missed_timer.start(45000)
+        self.handled=False
         self.autosave_timer=QTimer(self);self.autosave_timer.setSingleShot(True);self.autosave_timer.setInterval(900)
         self.autosave_timer.timeout.connect(self.autosave)
 
@@ -48,6 +49,8 @@ class IncomingCallPopup(QDialog):
         history_title=QLabel("LAATSTE 3 GESPREKSSAMENVATTINGEN");history_title.setObjectName("CallInsightTitle");history_box.addWidget(history_title)
         self.recent_summary=QLabel();self.recent_summary.setObjectName("CallInsightText");self.recent_summary.setWordWrap(True);history_box.addWidget(self.recent_summary)
         insight_row.addWidget(organisation,1);insight_row.addWidget(history,1);identity_box.addLayout(insight_row)
+        open_title=QLabel("OPENSTAANDE ZAKEN · KLIK OM TE OPENEN");open_title.setObjectName("CallInsightTitle");identity_box.addWidget(open_title)
+        self.open_items_row=QHBoxLayout();self.open_items_row.setSpacing(6);identity_box.addLayout(self.open_items_row)
         root.addWidget(identity)
 
         body=QHBoxLayout();body.setSpacing(14)
@@ -63,9 +66,20 @@ class IncomingCallPopup(QDialog):
         self.outcome=QComboBox();self.outcome.addItems(["Beantwoord","Informatie verstrekt","Afspraak gemaakt","Doorgezet","Geen gehoor","Overig"])
         self.priority=QComboBox();self.priority.addItems(["Laag","Normaal","Hoog","Kritiek"]);self.priority.setCurrentText("Normaal")
         options=QHBoxLayout();options.addWidget(self.outcome,1);options.addWidget(self.priority,1)
+        followup=QHBoxLayout()
+        for label,handler in (("Opgelost",self.mark_solved),("Ticket",self.create_ticket),
+                              ("Terugbellen",self.make_callback),("Offerte nodig",self.mark_proposal),
+                              ("Doorzetten",self.mark_forwarded)):
+            button=QPushButton(label);button.setObjectName("CallFollowup");button.clicked.connect(handler);followup.addWidget(button)
         self.callback=QCheckBox("Terugbelactie maken");self.callback_due=QLineEdit();self.callback_due.setPlaceholderText("Terugbeldatum: jjjj-mm-dd")
         callback_row=QHBoxLayout();callback_row.addWidget(self.callback);callback_row.addWidget(self.callback_due,1)
-        form.addRow("Onderwerp",self.subject);form.addRow("Snelle invoer",quick);form.addRow("Notities",self.notes);form.addRow("Resultaat / prioriteit",options);form.addRow("Opvolging",callback_row)
+        self.workday_buttons=[];workdays=QGridLayout();workdays.setSpacing(5)
+        for index,day in enumerate(_next_workdays()):
+            button=QPushButton(_workday_label(day));button.setObjectName("CallWorkday");button.setCheckable(True)
+            button.setProperty("date",day.isoformat());button.clicked.connect(
+                lambda checked=False,value=day.isoformat():self.select_callback_date(value))
+            workdays.addWidget(button,index//5,index%5);self.workday_buttons.append(button)
+        form.addRow("Onderwerp",self.subject);form.addRow("Snelle invoer",quick);form.addRow("Notities",self.notes);form.addRow("Resultaat / prioriteit",options);form.addRow("Snelle afronding",followup);form.addRow("Opvolging",callback_row);form.addRow("Komende 2 weken",workdays)
         self.draft_status=QLabel("Wijzigingen worden automatisch lokaal opgeslagen");self.draft_status.setObjectName("CallDraftStatus");form.addRow("",self.draft_status)
         self.subject.textChanged.connect(self.schedule_autosave);self.notes.textChanged.connect(self.schedule_autosave)
         self.outcome.currentTextChanged.connect(self.schedule_autosave);self.priority.currentTextChanged.connect(self.schedule_autosave)
@@ -84,14 +98,15 @@ class IncomingCallPopup(QDialog):
 
         footer=QFrame();footer.setObjectName("CallFooter");footer_row=QHBoxLayout(footer);footer_row.setContentsMargins(12,10,12,10)
         ignore=QPushButton("Niet opgenomen");ignore.setObjectName("CallQuiet");ignore.clicked.connect(self.ignore_call)
+        minimise=QPushButton("Minimaliseren");minimise.setObjectName("CallQuiet");minimise.clicked.connect(self.minimise)
         self.save=QPushButton("Alles opslaan en gesprek beëindigen");self.save.setObjectName("EndCallPrimary");self.save.clicked.connect(self.finish_workflow)
-        footer_row.addWidget(ignore);footer_row.addStretch();footer_row.addWidget(self.save);root.addWidget(footer)
+        footer_row.addWidget(ignore);footer_row.addWidget(minimise);footer_row.addStretch();footer_row.addWidget(self.save);root.addWidget(footer)
         self.reload()
 
     def reload(self):
         call=self.telephony.get(self.call_id)
         if not call:self.close();return
-        self.phone.setText(call["phone_number"]);recognition=self.telephony.recognize(call["phone_number"]);matches=recognition.get("matches",[])
+        self.phone.setText(call["phone_number"]);recognition=self.telephony.recognize(call["phone_number"]);matches=recognition.get("matches",[]);open_items=[]
         self.matches.blockSignals(True);self.matches.clear()
         for item in matches:
             label=f"{item['customer_number']} — {item['customer_name']}"
@@ -105,6 +120,7 @@ class IncomingCallPopup(QDialog):
             self.customer.setText(f"{call['customer_name']}{contact}")
             self.context.setText(self.telephony.customer_briefing(call["customer_id"])["summary"])
             snapshot=self.telephony.call_workspace_snapshot(call["customer_id"],call["contact_id"],self.call_id)
+            open_items=snapshot["open_items"]
             licenses=" · ".join(f"{item['product']} × {item['quantity']}" for item in snapshot["licenses"]) or "Geen licenties vastgelegd"
             departments=" · ".join(f"{item['department']} ({item['users']})" for item in snapshot["departments"]) or "Geen afdelingen vastgelegd"
             self.organisation_summary.setText(
@@ -131,6 +147,7 @@ class IncomingCallPopup(QDialog):
             self.customer.setText("Onbekende beller")
             self.context.setText("Koppel het nummer eenmalig; volgende oproepen worden direct herkend.")
             self.organisation_summary.setText("Nog geen organisatiegegevens beschikbaar.");self.recent_summary.setText("Nog geen gekoppelde gesprekshistorie.")
+        self._render_open_items(open_items)
         self.dossier.setEnabled(bool(call["customer_id"]));self.link.setVisible(not bool(call["customer_id"]))
 
     def accept_call(self):
@@ -175,6 +192,44 @@ class IncomingCallPopup(QDialog):
     def make_callback(self):
         self._handled();self.callback.setChecked(True);self.callback_due.setFocus()
 
+    def mark_solved(self):
+        self._handled();self.outcome.setCurrentText("Beantwoord")
+        if not self.subject.text().strip():self.subject.setText("Vraag opgelost")
+        self.insert_quick_block("Oplossing / resultaat:\n")
+
+    def mark_proposal(self):
+        self._handled();self.outcome.setCurrentText("Doorgezet")
+        if not self.subject.text().strip():self.subject.setText("Offerte gewenst")
+        self.insert_quick_block("Offertewens / gewenste levering:\n")
+
+    def mark_forwarded(self):
+        self._handled();self.outcome.setCurrentText("Doorgezet")
+        self.insert_quick_block("Doorgezet naar / reden:\n")
+
+    def minimise(self):
+        self._handled();self.autosave();self.hide()
+
+    def _render_open_items(self,items):
+        while self.open_items_row.count():
+            layout_item=self.open_items_row.takeAt(0)
+            if layout_item.widget():layout_item.widget().deleteLater()
+        if not items:
+            empty=QLabel("Geen openstaande tickets of acties");empty.setObjectName("PanelText");self.open_items_row.addWidget(empty);return
+        for item in items:
+            button=QPushButton(f"{item['priority']} · {item['kind']} {item['reference']}\n{item['title']}")
+            button.setObjectName("CallOpenItem");button.setToolTip(item["title"])
+            button.clicked.connect(lambda checked=False,data=item:self.open_existing_item(data));self.open_items_row.addWidget(button,1)
+
+    def open_existing_item(self,item):
+        if not self.open_item_callback:return
+        self._handled();self.hide()
+        try:self.open_item_callback(item["kind"],item["entity_id"],item["title"])
+        finally:self._return_to_workspace()
+
+    def select_callback_date(self,value):
+        self.callback.setChecked(True);self.callback_due.setText(value)
+        for button in self.workday_buttons:button.setChecked(button.property("date")==value)
+
     def insert_quick_block(self,text):
         current=self.notes.toPlainText()
         self.notes.setPlainText(current+("\n\n" if current.strip() else "")+text)
@@ -197,29 +252,33 @@ class IncomingCallPopup(QDialog):
     def finish_workflow(self):
         call=self.telephony.get(self.call_id)
         if not call:return
+        missing=[]
+        if not self.subject.text().strip():missing.append("onderwerp")
+        if not self.notes.toPlainText().strip():missing.append("gespreksnotities")
+        if self.callback.isChecked() and not self.callback_due.text().strip():missing.append("terugbeldatum")
+        if missing:
+            answer=QMessageBox.question(self,"Controle voor afsluiten",
+                "Nog niet ingevuld: "+", ".join(missing)+".\n\nToch opslaan en het gesprek beëindigen?")
+            if answer!=QMessageBox.Yes:return
         try:
             self.telephony.finish_call(self.call_id,self.subject.text(),self.notes.toPlainText(),self.outcome.currentText(),
                                        self.callback.isChecked(),self.callback_due.text(),self.priority.currentText(),self.telephony.actor)
         except Exception as exc:
             QMessageBox.warning(self,"Gesprek beëindigen",str(exc));return
-        self.handled=True;self.missed_timer.stop();saved=self.telephony.get(self.call_id);self.completed.emit(self.call_id,saved or {});self.close()
+        self.handled=True;saved=self.telephony.get(self.call_id);self.completed.emit(self.call_id,saved or {});self.close()
 
     def ignore_call(self):
-        self.handled=True;self.missed_timer.stop();self.telephony.finish_call(self.call_id,"Oproep niet opgenomen","","Geen gehoor");self.close()
+        self.handled=True;self.telephony.finish_call(self.call_id,"Oproep niet opgenomen","","Geen gehoor");self.close()
 
     def _handled(self):
-        self.handled=True;self.missed_timer.stop();self.telephony.acknowledge_call(self.call_id)
+        self.handled=True;self.telephony.acknowledge_call(self.call_id)
 
     def _return_to_workspace(self):
         self.show();self.raise_();self.activateWindow();self.notes.setFocus()
 
-    def auto_missed(self):
-        if not self.handled:self.telephony.mark_existing_missed(self.call_id);self.handled=True
-        self.close()
-
     def closeEvent(self,event):
         if not self.handled:self.telephony.mark_existing_missed(self.call_id);self.handled=True
-        self.missed_timer.stop();super().closeEvent(event)
+        self.autosave_timer.stop();super().closeEvent(event)
 
     def showEvent(self,event):
         super().showEvent(event)
@@ -231,3 +290,17 @@ class IncomingCallPopup(QDialog):
 def _action(text,handler):
     button=QPushButton(text);button.setObjectName("CallAction");button.setMinimumHeight(72);button.clicked.connect(handler)
     return button
+
+
+def _next_workdays(start: date | None = None) -> list[date]:
+    day=start or date.today();result=[]
+    while len(result)<10:
+        if day.weekday()<5:result.append(day)
+        day+=timedelta(days=1)
+    return result
+
+
+def _workday_label(day: date) -> str:
+    weekdays=("ma","di","wo","do","vr","za","zo")
+    months=("jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec")
+    return f"{weekdays[day.weekday()]}\n{day.day} {months[day.month-1]}"
