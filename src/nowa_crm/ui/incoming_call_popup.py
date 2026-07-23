@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import (QComboBox, QDialog, QHBoxLayout, QInputDialog, QLabel,
-                               QMessageBox, QPushButton, QVBoxLayout)
+from PySide6.QtWidgets import (QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout,
+                               QInputDialog, QLabel, QMessageBox, QPushButton, QVBoxLayout)
 
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.telephony.service import TelephonyService
@@ -20,24 +20,27 @@ class IncomingCallPopup(QDialog):
         self.open_vault_callback=open_vault;self.create_ticket_callback=create_ticket
         self.setObjectName("IncomingCallPopup");self.setWindowTitle("Inkomend gesprek")
         self.setWindowFlags(Qt.WindowType.Tool|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);self.setFixedWidth(430)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);self.setFixedWidth(460)
         self.handled=False;self.missed_timer=QTimer(self);self.missed_timer.setSingleShot(True);self.missed_timer.timeout.connect(self.auto_missed);self.missed_timer.start(45000)
-        root=QVBoxLayout(self);root.setContentsMargins(20,18,20,18);root.setSpacing(11)
+        root=QVBoxLayout(self);root.setContentsMargins(22,20,22,18);root.setSpacing(12)
         top=QHBoxLayout();icon=QLabel("TEL");icon.setObjectName("CallPopupIcon");top.addWidget(icon)
-        titles=QVBoxLayout();title=QLabel("Inkomend gesprek");title.setObjectName("CallPopupTitle");self.phone=QLabel()
-        self.phone.setObjectName("CallPopupPhone");titles.addWidget(title);titles.addWidget(self.phone);top.addLayout(titles,1)
+        titles=QVBoxLayout();status=QLabel("●  INKOMENDE OPROEP");status.setObjectName("CallPopupStatus");self.phone=QLabel()
+        self.phone.setObjectName("CallPopupPhone");titles.addWidget(status);titles.addWidget(self.phone);top.addLayout(titles,1)
         close=QPushButton("×");close.setObjectName("CallPopupClose");close.clicked.connect(self.close);top.addWidget(close);root.addLayout(top)
-        self.customer=QLabel();self.customer.setObjectName("CallPopupCustomer");self.customer.setWordWrap(True);root.addWidget(self.customer)
-        self.context=QLabel();self.context.setObjectName("CallPopupContext");self.context.setWordWrap(True);root.addWidget(self.context)
-        self.matches=QComboBox();self.matches.currentIndexChanged.connect(self.select_match);root.addWidget(self.matches)
-        actions=QHBoxLayout();dossier=QPushButton("Open dossier");dossier.setObjectName("Primary");dossier.clicked.connect(self.open_customer)
-        vault=QPushButton("IT-kluis");vault.clicked.connect(self.open_vault);phone=QPushButton("Telefonie");phone.clicked.connect(self.open_call)
-        actions.addWidget(dossier);actions.addWidget(vault);actions.addWidget(phone);root.addLayout(actions)
-        second=QHBoxLayout();self.link=QPushButton("Koppel nummer");self.link.clicked.connect(self.link_number)
+        identity=QFrame();identity.setObjectName("CallIdentity");identity_box=QVBoxLayout(identity);identity_box.setContentsMargins(15,13,15,13);identity_box.setSpacing(5)
+        self.customer=QLabel();self.customer.setObjectName("CallPopupCustomer");self.customer.setWordWrap(True);identity_box.addWidget(self.customer)
+        self.context=QLabel();self.context.setObjectName("CallPopupContext");self.context.setWordWrap(True);identity_box.addWidget(self.context);root.addWidget(identity)
+        self.matches=QComboBox();self.matches.setObjectName("CallMatch");self.matches.currentIndexChanged.connect(self.select_match);root.addWidget(self.matches)
+        self.dossier=QPushButton("Open klantdossier");self.dossier.setObjectName("CallPrimary");self.dossier.clicked.connect(self.open_customer);root.addWidget(self.dossier)
+        actions=QGridLayout();actions.setHorizontalSpacing(8);actions.setVerticalSpacing(8)
+        vault=QPushButton("IT-kluis");vault.clicked.connect(self.open_vault);phone=QPushButton("Gesprek openen");phone.clicked.connect(self.open_call)
         ticket=QPushButton("Serviceticket");ticket.clicked.connect(self.create_ticket);callback=QPushButton("Terugbellen");callback.clicked.connect(self.make_callback)
-        second.addWidget(self.link);second.addWidget(ticket);second.addWidget(callback);root.addLayout(second)
-        dismiss=QHBoxLayout();registered=QPushButton("Aangenomen / registreren");registered.clicked.connect(self.register_only)
-        ignore=QPushButton("Negeren");ignore.clicked.connect(self.ignore_call);dismiss.addStretch();dismiss.addWidget(registered);dismiss.addWidget(ignore);root.addLayout(dismiss)
+        self.link=QPushButton("Nummer koppelen");self.link.clicked.connect(self.link_number)
+        actions.addWidget(vault,0,0);actions.addWidget(phone,0,1);actions.addWidget(ticket,1,0);actions.addWidget(callback,1,1);actions.addWidget(self.link,2,0,1,2);root.addLayout(actions)
+        divider=QFrame();divider.setFrameShape(QFrame.Shape.HLine);divider.setObjectName("CallDivider");root.addWidget(divider)
+        dismiss=QHBoxLayout();ignore=QPushButton("Niet opnemen");ignore.setObjectName("CallQuiet");ignore.clicked.connect(self.ignore_call)
+        registered=QPushButton("Oproep aangenomen");registered.setObjectName("Primary");registered.clicked.connect(self.register_only)
+        dismiss.addWidget(ignore);dismiss.addStretch();dismiss.addWidget(registered);root.addLayout(dismiss)
         self.reload()
 
     def reload(self):
@@ -62,6 +65,8 @@ class IncomingCallPopup(QDialog):
         else:
             self.customer.setText("Onbekende beller")
             self.context.setText("Koppel dit nummer eenmalig; volgende oproepen worden direct herkend.")
+        self.dossier.setEnabled(bool(call["customer_id"]))
+        self.dossier.setText("Open klantdossier" if call["customer_id"] else "Kies of koppel eerst een klant")
         self.link.setVisible(not bool(call["customer_id"]))
 
     def select_match(self,index):
@@ -126,4 +131,3 @@ class IncomingCallPopup(QDialog):
         super().showEvent(event)
         screen=QGuiApplication.screenAt(self.parentWidget().frameGeometry().center()) if self.parentWidget() else QGuiApplication.primaryScreen()
         area=screen.availableGeometry();self.adjustSize();self.move(area.right()-self.width()-24,area.top()+24)
-
