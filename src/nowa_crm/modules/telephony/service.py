@@ -64,6 +64,12 @@ class TelephonyService:
                 FROM call_events ce LEFT JOIN customers c ON c.id=ce.customer_id LEFT JOIN contacts ct ON ct.id=ce.contact_id WHERE ce.id=?""",(call_id,)).fetchone()
         return dict(row) if row else None
 
+    def elapsed_seconds(self, call_id: int) -> int:
+        with self.db.transaction() as conn:
+            row=conn.execute("""SELECT MAX(0,CAST((julianday(COALESCE(ended_at,CURRENT_TIMESTAMP))-
+                julianday(started_at))*86400 AS INTEGER)) seconds FROM call_events WHERE id=?""",(call_id,)).fetchone()
+        return int(row["seconds"] or 0) if row else 0
+
     def history(self, customer_id: int | None = None, query: str = "", queue: str = "alle") -> list[dict]:
         term=f"%{query.strip()}%"; values=[query.strip(),term,term,term,term]; customer_clause=""
         if customer_id is not None:customer_clause=" AND ce.customer_id=?"; values.append(customer_id)
@@ -73,6 +79,7 @@ class TelephonyService:
         elif queue=="onbekend":queue_clause=" AND ce.customer_id IS NULL"
         with self.db.transaction() as conn:
             return [dict(row) for row in conn.execute("""SELECT ce.id,ce.customer_id,ce.contact_id,ce.started_at,ce.direction,ce.phone_number,ce.status,ce.subject,ce.outcome,
+                MAX(0,CAST((julianday(COALESCE(ce.ended_at,CURRENT_TIMESTAMP))-julianday(ce.started_at))*86400 AS INTEGER)) duration_seconds,
                 ce.priority,ce.assigned_to,ce.callback_due,ce.callback_status,COALESCE(c.name,'Onbekend') customer_name,COALESCE(ct.name,'') contact_name FROM call_events ce
                 LEFT JOIN customers c ON c.id=ce.customer_id LEFT JOIN contacts ct ON ct.id=ce.contact_id
                 WHERE (?='' OR ce.phone_number LIKE ? OR c.name LIKE ? OR ct.name LIKE ? OR ce.subject LIKE ?)"""+customer_clause+queue_clause+
@@ -204,4 +211,3 @@ class TelephonyService:
 def _same_number(left: str, right: str) -> bool:
     if not left or not right:return False
     return left==right or (len(left)>=8 and len(right)>=8 and left[-8:]==right[-8:])
-
