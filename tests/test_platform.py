@@ -301,6 +301,12 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert outlook_file.exists() and outlook_file.suffix == ".eml"
     coligo_call=integrations.ingest_coligo("06-12345678","coligo-live-1","Hoofdlijn")
     assert coligo_call["customer_id"] == customer_id
+    webhook_call=integrations.ingest_coligo_event({"remoteNumber":"+31 6 12345678","callId":"coligo-webhook-1","event":"ringing"})
+    assert webhook_call["customer_id"] == customer_id
+    webhook_missed=integrations.ingest_coligo_event({"caller":"0850000000","id":"coligo-webhook-2","status":"missed"})
+    assert integrations.telephony.get(webhook_missed["id"])["status"] == "gemist"
+    assert "open servicetickets" in telephony.customer_briefing(customer_id)["summary"]
+    assert telephony.customer_briefing(None)["summary"] == "Nummer nog niet gekoppeld"
     assert {item["provider"] for item in integrations.events()} == {"outlook","coligo"}
     documents=DocumentCenterService(db,assets,mail)
     documents.save_profile("NOWA Test","Teststraat 1","1000 AA Test","010-1234567","info@nowa.test",
