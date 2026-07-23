@@ -135,6 +135,11 @@ class IntegrationService:
             return [dict(row) for row in conn.execute(
                 "SELECT * FROM integration_events ORDER BY occurred_at DESC,id DESC LIMIT ?", (limit,))]
 
+    def cleanup_sip_connection_noise(self) -> int:
+        with self.db.transaction() as conn:
+            return int(conn.execute("""DELETE FROM integration_events
+                WHERE provider='sip' AND action='verbinding'""").rowcount)
+
     @staticmethod
     def _safe_settings(provider: str, settings: dict) -> dict:
         allowed = {"outlook": {"mode", "mailbox_address", "sender_address", "folder_path"},
