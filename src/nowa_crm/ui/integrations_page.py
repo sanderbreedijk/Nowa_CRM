@@ -12,6 +12,7 @@ from nowa_crm.integrations.sip_monitor import SipMonitor
 class IntegrationsPage(QWidget):
     def __init__(self, service: IntegrationService, incoming_call, parent=None):
         super().__init__(parent); self.service, self.incoming_call = service, incoming_call
+        self.service.cleanup_sip_connection_noise()
         self.sip=SipMonitor(self);self.sip.event_received.connect(self.receive_sip_event);self.sip.state_changed.connect(self.sip_state)
         root=QVBoxLayout(self);title=QLabel("Integratiecentrum");title.setObjectName("Title");root.addWidget(title)
         subtitle=QLabel("Beheer lokale Outlook-overdracht en SIP-nummerherkenning zonder klantdata in GitHub.")
@@ -93,7 +94,9 @@ class IntegrationsPage(QWidget):
     def sip_state(self,state,detail):
         labels={"luistert":"Luistert","verbinden":"Verbinden…","verbonden":"Verbonden","fout":"Fout"}
         self.sip_status.setText(f"{labels.get(state,state)} · {detail}")
-        self.service.log("sip","verbinding",f"{state} · {detail}",state!="fout")
+        if state in ("verbonden","fout"):
+            self.service.log("sip","verbinding",f"{state} · {detail}",state!="fout")
+            self.reload()
 
     def receive_sip_event(self,payload):
         try:
