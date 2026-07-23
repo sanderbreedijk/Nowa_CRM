@@ -16,10 +16,12 @@ class IntegrationsPage(QWidget):
         self.service.cleanup_sip_connection_noise()
         self.sip=SipMonitor(self);self.sip.event_received.connect(self.receive_sip_event);self.sip.state_changed.connect(self.sip_state)
         root=QVBoxLayout(self);title=QLabel("Integratiecentrum");title.setObjectName("Title");root.addWidget(title)
-        subtitle=QLabel("Beheer lokale Outlook-overdracht en SIP-nummerherkenning zonder klantdata in GitHub.")
+        subtitle=QLabel("Beheer lokale mail-, Shomi- en SIP-koppelingen zonder klantdata in GitHub.")
         subtitle.setObjectName("Subtitle");root.addWidget(subtitle)
-        cards=QGridLayout();self.outlook_card=self._outlook_card();self.sip_card=self._sip_card()
-        cards.addWidget(self.outlook_card,0,0);cards.addWidget(self.sip_card,0,1);root.addLayout(cards)
+        cards=QGridLayout();self.outlook_card=self._outlook_card();self.shomi_card=self._shomi_card()
+        self.calendar_card=self._calendar_card();self.sip_card=self._sip_card()
+        cards.addWidget(self.outlook_card,0,0);cards.addWidget(self.shomi_card,0,1)
+        cards.addWidget(self.calendar_card,1,0);cards.addWidget(self.sip_card,1,1);root.addLayout(cards)
         heading=QLabel("Koppelingslog");heading.setStyleSheet("font-size:16px;font-weight:700;color:#0B2342");root.addWidget(heading)
         self.events=QTableWidget(0,6);self.events.setHorizontalHeaderLabels(["Datum","Koppeling","Actie","Detail","Resultaat","ID"])
         self.events.setColumnHidden(5,True);self.events.horizontalHeader().setStretchLastSection(True);root.addWidget(self.events,1);self.reload()
@@ -51,12 +53,48 @@ class IntegrationsPage(QWidget):
         connect=QPushButton("Verbinden / testen");connect.clicked.connect(self.start_sip);stop=QPushButton("Stoppen");stop.clicked.connect(self.sip.stop)
         row.addWidget(save);row.addWidget(connect);row.addWidget(stop);form.addRow(row);return card
 
+    def _shomi_card(self):
+        card=QFrame();card.setObjectName("Card");form=QFormLayout(card)
+        heading=QLabel("Shomi · gesprekssamenvattingen");heading.setObjectName("Kpi");form.addRow(heading)
+        info=QLabel("Leest Shomi-mails uit de lokale Outlook-import en koppelt verslag en vervolgacties aan het gesprek.")
+        info.setWordWrap(True);info.setObjectName("Subtitle");form.addRow(info)
+        self.shomi_enabled=QCheckBox("Shomi-verwerking actief")
+        self.shomi_numbers=QLineEdit();self.shomi_numbers.setPlaceholderText("Eigen nummers, bijvoorbeeld +31182388817")
+        form.addRow(self.shomi_enabled);form.addRow("Eigen nummers",self.shomi_numbers)
+        row=QHBoxLayout();save=QPushButton("Shomi opslaan");save.setObjectName("Primary");save.clicked.connect(self.save_shomi)
+        process=QPushButton("Shomi-mail nu verwerken");process.clicked.connect(self.sync_shomi)
+        row.addWidget(save);row.addWidget(process);form.addRow(row)
+        return card
+
+    def _calendar_card(self):
+        card=QFrame();card.setObjectName("Card");form=QFormLayout(card)
+        heading=QLabel("Google Agenda · actieplanning");heading.setObjectName("Kpi");form.addRow(heading)
+        self.calendar_enabled=QCheckBox("Google Agenda-synchronisatie actief")
+        self.calendar_details=QCheckBox("Klantnaam en actie-inhoud met Google delen")
+        self.calendar_config=QLineEdit();self.calendar_config.setPlaceholderText("Google OAuth-clientbestand (.json)")
+        choose=QPushButton("Bestand kiezen");choose.clicked.connect(self.choose_calendar_config)
+        configrow=QHBoxLayout();configrow.addWidget(self.calendar_config,1);configrow.addWidget(choose)
+        self.calendar_id=QLineEdit("primary");self.calendar_id.setPlaceholderText("primary of agenda-ID")
+        self.calendar_status=QLabel("Niet verbonden");self.calendar_status.setWordWrap(True)
+        form.addRow(self.calendar_enabled);form.addRow(self.calendar_details);form.addRow("OAuth-client",configrow);form.addRow("Agenda",self.calendar_id);form.addRow("Status",self.calendar_status)
+        row=QHBoxLayout();save=QPushButton("Opslaan");save.clicked.connect(self.save_calendar)
+        connect=QPushButton("Verbinden");connect.setObjectName("Primary");connect.clicked.connect(self.connect_calendar)
+        sync=QPushButton("Acties synchroniseren");sync.clicked.connect(self.sync_calendar)
+        row.addWidget(save);row.addWidget(connect);row.addWidget(sync);form.addRow(row)
+        return card
+
     def reload(self):
-        outlook=self.service.settings("outlook");sip=self.service.settings("sip")
+        outlook=self.service.settings("outlook");sip=self.service.settings("sip");shomi=self.service.settings("shomi")
+        calendar=self.service.settings("google_calendar")
         self.outlook_enabled.setChecked(outlook["enabled"]);self.sender.setText(outlook["settings"].get("mailbox_address",outlook["settings"].get("sender_address","")));self.outlook_folder.setText(outlook["settings"].get("folder_path",""))
         s=sip["settings"];self.sip_enabled.setChecked(sip["enabled"]);self.sip_auto.setChecked(s.get("auto_start","")=="1")
         self.sip_server.setText(s.get("server",""));self.sip_server_port.setText(s.get("server_port","5080"));self.sip_local_port.setText(s.get("local_port","5080"))
         self.sip_username.setText(s.get("username",""));self.sip_domain.setText(s.get("domain",""));self.sip_transport.setText(s.get("transport","UDP"))
+        self.shomi_enabled.setChecked(shomi["enabled"]);self.shomi_numbers.setText(shomi["settings"].get("own_numbers",""))
+        self.calendar_enabled.setChecked(calendar["enabled"]);self.calendar_config.setText(calendar["settings"].get("client_config_path",""))
+        self.calendar_details.setChecked(calendar["settings"].get("include_details","")=="1")
+        self.calendar_id.setText(calendar["settings"].get("calendar_id","primary"))
+        self.calendar_status.setText("Lokaal verbonden" if self.service.google_calendar.connected() else "Niet verbonden")
         rows=self.service.events();self.events.setRowCount(len(rows))
         for r,row in enumerate(rows):
             values=(row["occurred_at"],row["provider"].title(),row["action"],row["detail"],"Geslaagd" if row["successful"] else "Mislukt",row["id"])
@@ -74,8 +112,42 @@ class IntegrationsPage(QWidget):
     def sync_outlook(self):
         try:
             self.save_outlook();result=self.service.sync_outlook_folder();self.reload()
-            QMessageBox.information(self,"Outlook-map ingelezen",f"{result['imported']} nieuwe berichten\n{result['linked']} automatisch gekoppeld\n{result['unlinked']} nog te koppelen\n{result['duplicates']} al aanwezig\n{result['errors']} fouten")
+            shomi=result.get("shomi",{})
+            QMessageBox.information(self,"Outlook-map ingelezen",f"{result['imported']} nieuwe berichten\n{result['linked']} automatisch gekoppeld\n{result['unlinked']} nog te koppelen\n{result['duplicates']} al aanwezig\n{result['errors']} fouten\n\nShomi: {shomi.get('processed',0)} verwerkt, {shomi.get('duplicates',0)} al aanwezig")
         except Exception as exc:QMessageBox.warning(self,"Outlook import",str(exc))
+
+    def save_shomi(self):
+        numbers=", ".join(part.strip() for part in self.shomi_numbers.text().replace(";",",").split(",") if part.strip())
+        self.service.save("shomi",self.shomi_enabled.isChecked(),{"mode":"email","own_numbers":numbers});self.reload()
+
+    def sync_shomi(self):
+        try:
+            self.save_shomi();result=self.service.sync_shomi_mail();self.reload()
+            QMessageBox.information(self,"Shomi verwerkt",f"{result['processed']} nieuwe gesprekken verwerkt\n{result['duplicates']} al aanwezig\n{result['errors']} fouten")
+        except Exception as exc:QMessageBox.warning(self,"Shomi",str(exc))
+
+    def choose_calendar_config(self):
+        path,_=QFileDialog.getOpenFileName(self,"Google OAuth-clientbestand kiezen",self.calendar_config.text(),"JSON-bestanden (*.json)")
+        if path:self.calendar_config.setText(path)
+
+    def save_calendar(self):
+        self.service.save("google_calendar",self.calendar_enabled.isChecked(),
+            {"client_config_path":self.calendar_config.text(),"calendar_id":self.calendar_id.text() or "primary",
+             "auto_sync":"0","include_details":"1" if self.calendar_details.isChecked() else "0"})
+        self.reload()
+
+    def connect_calendar(self):
+        try:
+            self.save_calendar();self.service.connect_google_calendar();self.reload()
+            QMessageBox.information(self,"Google Agenda","De verbinding is lokaal opgeslagen.")
+        except Exception as exc:QMessageBox.warning(self,"Google Agenda",str(exc))
+
+    def sync_calendar(self):
+        try:
+            self.save_calendar();result=self.service.sync_google_calendar();self.reload()
+            QMessageBox.information(self,"Google Agenda",
+                f"{result['created']} nieuwe afspraken\n{result['updated']} bijgewerkt\n{result['skipped']} zonder datum\n{result['errors']} fouten")
+        except Exception as exc:QMessageBox.warning(self,"Google Agenda",str(exc))
 
     def save_sip(self):
         try:ports=(int(self.sip_server_port.text()),int(self.sip_local_port.text()))
