@@ -9,8 +9,9 @@ from nowa_crm.modules.servicedesk.service import ServiceDeskService
 
 
 class ServiceDeskPage(QWidget):
-    def __init__(self,customers: CustomerService,service: ServiceDeskService,parent=None):
+    def __init__(self,customers: CustomerService,service: ServiceDeskService,open_mail=None,open_call=None,open_vault=None,parent=None):
         super().__init__(parent);self.customers=customers;self.service=service;self.ticket_id=None
+        self.open_mail,self.open_call,self.open_vault=open_mail,open_call,open_vault
         root=QVBoxLayout(self);title=QLabel("Slimme servicedesk");title.setObjectName("Title");root.addWidget(title)
         sub=QLabel("Bewaak servicevragen, automatische SLA-deadlines, voortgang en bestede tijd.");sub.setObjectName("Subtitle");root.addWidget(sub)
         filters=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText("Zoek ticket, klant of onderwerp…");self.search.textChanged.connect(self.reload)
@@ -33,6 +34,10 @@ class ServiceDeskPage(QWidget):
         for text,handler in (("Voortgang toevoegen",self.add_update),("Tijd registreren",self.add_time),("Ticket sluiten",self.close_ticket)):
             button=QPushButton(text);button.clicked.connect(handler);row.addWidget(button)
         form.addRow(row);split.addWidget(left);split.addWidget(right);split.setSizes([930,470]);root.addWidget(split,1);self.reload_customers()
+        direct=QHBoxLayout()
+        for text,handler in (("Klant mailen",self.mail_customer),("Open telefonie",self.call_customer),("Open IT-kluis",self.vault_customer)):
+            button=QPushButton(text);button.clicked.connect(handler);direct.addWidget(button)
+        form.addRow(direct)
 
     def reload_customers(self):
         current=self.customer_filter.currentData();self.customer_filter.blockSignals(True);self.customer_filter.clear();self.customer_filter.addItem("Alle klanten",None)
@@ -110,3 +115,14 @@ class ServiceDeskPage(QWidget):
         if not ok:return
         due,ok=QInputDialog.getText(self,"Onderhoudstaak","Eerstvolgende datum (jjjj-mm-dd)")
         if ok:self.service.add_maintenance(customers[labels.index(label)].id,title,frequency,due);QMessageBox.information(self,"Onderhoudstaak","Terugkerende onderhoudstaak lokaal opgeslagen.")
+
+    def mail_customer(self):
+        ticket=self.service.get(self.ticket_id) if self.ticket_id else None
+        if ticket and self.open_mail:self.open_mail(ticket["customer_id"])
+
+    def call_customer(self):
+        if self.ticket_id and self.open_call:self.open_call(None)
+
+    def vault_customer(self):
+        ticket=self.service.get(self.ticket_id) if self.ticket_id else None
+        if ticket and self.open_vault:self.open_vault(ticket["customer_phone"])

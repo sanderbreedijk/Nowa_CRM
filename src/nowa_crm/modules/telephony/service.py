@@ -3,14 +3,8 @@ from __future__ import annotations
 from uuid import uuid4
 
 from nowa_crm.core.database import Database
+from nowa_crm.core.phone import format_phone, normalize_phone
 from nowa_crm.modules.workspace.service import WorkspaceService
-
-
-def normalize_phone(value: str) -> str:
-    digits="".join(ch for ch in value if ch.isdigit())
-    if digits.startswith("0031"):digits="0"+digits[4:]
-    elif digits.startswith("31") and len(digits)>9:digits="0"+digits[2:]
-    return digits.lstrip("0") if len(digits)>10 else digits
 
 
 class TelephonyService:
@@ -20,27 +14,37 @@ class TelephonyService:
     def recognize(self, phone_number: str) -> dict:
         normalized=normalize_phone(phone_number)
         if len(normalized)<6:
-            return {"phone_number":phone_number,"normalized_number":normalized,"customer":None,"contact":None}
+            return {"phone_number":phone_number,"normalized_number":normalized,"customer":None,"contact":None,"matches":[]}
         with self.db.transaction() as conn:
-            alias=conn.execute("SELECT customer_id,contact_id FROM call_customer_aliases WHERE normalized_number=?",(normalized,)).fetchone()
+            links=conn.execute("""SELECT l.customer_id,l.contact_id,l.label,l.description,c.customer_number,c.name customer_name,
+                COALESCE(ct.name,l.label,'') contact_name,COALESCE(ct.role,l.description,'') contact_role
+                FROM call_number_links l JOIN customers c ON c.id=l.customer_id
+                LEFT JOIN contacts ct ON ct.id=l.contact_id
+                WHERE l.normalized_number=? AND c.active=1 ORDER BY c.name,contact_name""",(normalized,)).fetchall()
             contacts=conn.execute("SELECT id,customer_id,name,role,email,phone FROM contacts WHERE phone<>''").fetchall()
             customers=conn.execute("SELECT id,customer_number,name,email,phone,mobile_phone,city FROM customers WHERE active=1 AND (phone<>'' OR mobile_phone<>'')").fetchall()
-        if alias:
+        matches=[dict(row) for row in links]
+        if not matches:
+            for row in contacts:
+                if _same_number(normalized,normalize_phone(row["phone"])):
+                    customer=next((x for x in customers if x["id"]==row["customer_id"]),None)
+                    if customer:matches.append({"customer_id":row["customer_id"],"contact_id":row["id"],
+                        "customer_number":customer["customer_number"],"customer_name":customer["name"],
+                        "contact_name":row["name"],"contact_role":row["role"],"label":row["name"],"description":row["role"]})
+            for row in customers:
+                if (_same_number(normalized,normalize_phone(row["phone"])) or
+                        _same_number(normalized,normalize_phone(row["mobile_phone"]))):
+                    if not any(x["customer_id"]==row["id"] and x.get("contact_id") is None for x in matches):
+                        matches.append({"customer_id":row["id"],"contact_id":None,"customer_number":row["customer_number"],
+                            "customer_name":row["name"],"contact_name":"","contact_role":"","label":"","description":""})
+        if len(matches)==1:
+            selected=matches[0]
             with self.db.transaction() as conn:
-                customer=conn.execute("SELECT id,customer_number,name,email,phone,mobile_phone,city FROM customers WHERE id=?",(alias["customer_id"],)).fetchone()
-                contact_row=conn.execute("SELECT id,customer_id,name,role,email,phone FROM contacts WHERE id=?",(alias["contact_id"],)).fetchone() if alias["contact_id"] else None
+                customer=conn.execute("SELECT id,customer_number,name,email,phone,mobile_phone,city FROM customers WHERE id=?",(selected["customer_id"],)).fetchone()
+                contact_row=conn.execute("SELECT id,customer_id,name,role,email,phone FROM contacts WHERE id=?",(selected["contact_id"],)).fetchone() if selected.get("contact_id") else None
             return {"phone_number":phone_number,"normalized_number":normalized,"customer":dict(customer) if customer else None,
-                    "contact":dict(contact_row) if contact_row else None}
-        contact=next((dict(row) for row in contacts if _same_number(normalized,normalize_phone(row["phone"]))),None)
-        customer_row=None
-        if contact:
-            with self.db.transaction() as conn:
-                row=conn.execute("SELECT id,customer_number,name,email,phone,mobile_phone,city FROM customers WHERE id=?",(contact["customer_id"],)).fetchone()
-            customer_row=dict(row) if row else None
-        if not customer_row:
-            customer_row=next((dict(row) for row in customers if _same_number(normalized,normalize_phone(row["phone"]))
-                               or _same_number(normalized,normalize_phone(row["mobile_phone"]))),None)
-        return {"phone_number":phone_number,"normalized_number":normalized,"customer":customer_row,"contact":contact}
+                    "contact":dict(contact_row) if contact_row else None,"matches":matches}
+        return {"phone_number":phone_number,"normalized_number":normalized,"customer":None,"contact":None,"matches":matches}
 
     def register_call(self, phone_number: str, direction: str = "inkomend", external_id: str = "") -> int:
         if direction not in ("inkomend","uitgaand"):raise ValueError("Ongeldige gespreksrichting")
@@ -50,7 +54,7 @@ class TelephonyService:
                 existing=conn.execute("SELECT id FROM call_events WHERE external_id=?",(external_id,)).fetchone()
                 if existing:return int(existing["id"])
             cur=conn.execute("""INSERT INTO call_events(external_id,phone_number,normalized_number,direction,customer_id,contact_id,handled_by)
-                VALUES(?,?,?,?,?,?,?)""",(external_id or uuid4().hex,phone_number.strip(),match["normalized_number"],direction,
+                VALUES(?,?,?,?,?,?,?)""",(external_id or uuid4().hex,format_phone(phone_number),match["normalized_number"],direction,
                 customer["id"] if customer else None,contact["id"] if contact else None,self.actor))
             return int(cur.lastrowid)
 
@@ -113,18 +117,37 @@ class TelephonyService:
                 SUM(customer_id IS NULL) unknown FROM call_events""").fetchone()
         return {key:int(row[key] or 0) for key in ("total","missed","callbacks","unknown")}
 
-    def link_customer(self, call_id: int, customer_id: int, contact_id: int | None = None) -> None:
+    def select_match(self,call_id: int,customer_id: int,contact_id: int | None=None) -> None:
         with self.db.transaction() as conn:
-            call=conn.execute("SELECT normalized_number FROM call_events WHERE id=?",(call_id,)).fetchone()
+            conn.execute("UPDATE call_events SET customer_id=?,contact_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                         (customer_id,contact_id,call_id))
+
+    def link_customer(self, call_id: int, customer_id: int, contact_id: int | None = None,
+                      contact_name: str = "", description: str = "") -> int | None:
+        with self.db.transaction() as conn:
+            call=conn.execute("SELECT phone_number,normalized_number FROM call_events WHERE id=?",(call_id,)).fetchone()
+            if not call:raise ValueError("Gesprek niet gevonden")
+            if contact_name.strip() and contact_id is None:
+                existing=conn.execute("SELECT id FROM contacts WHERE customer_id=? AND name=? COLLATE NOCASE",
+                                      (customer_id,contact_name.strip())).fetchone()
+                if existing:
+                    contact_id=int(existing["id"])
+                    conn.execute("UPDATE contacts SET role=?,phone=? WHERE id=?",
+                                 (description.strip(),call["phone_number"],contact_id))
+                else:
+                    contact_id=int(conn.execute("INSERT INTO contacts(customer_id,name,role,phone) VALUES(?,?,?,?)",
+                        (customer_id,contact_name.strip(),description.strip(),call["phone_number"])).lastrowid)
             conn.execute("UPDATE call_events SET customer_id=?,contact_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,contact_id,call_id))
-            if call and call["normalized_number"]:
-                conn.execute("""INSERT INTO call_customer_aliases(customer_id,contact_id,normalized_number,source,created_by)
-                    VALUES(?,?,?,'gesprekskoppeling',?) ON CONFLICT(normalized_number) DO UPDATE SET
-                    customer_id=excluded.customer_id,contact_id=excluded.contact_id,source=excluded.source,created_by=excluded.created_by""",
-                    (customer_id,contact_id,call["normalized_number"],self.actor))
+            if call["normalized_number"]:
+                conn.execute("""INSERT INTO call_number_links(normalized_number,customer_id,contact_id,label,description,created_by)
+                    VALUES(?,?,?,?,?,?) ON CONFLICT(normalized_number,customer_id,contact_id) DO UPDATE SET
+                    label=excluded.label,description=excluded.description,created_by=excluded.created_by""",
+                    (call["normalized_number"],customer_id,contact_id,contact_name.strip(),description.strip(),self.actor))
+        if description.strip():
+            self.workspace.add_note(customer_id,f"Telefoonnummer gekoppeld: {contact_name or call['phone_number']}",description)
+        return contact_id
 
 
 def _same_number(left: str, right: str) -> bool:
     if not left or not right:return False
     return left==right or (len(left)>=8 and len(right)>=8 and left[-8:]==right[-8:])
-

@@ -47,7 +47,7 @@ class ServiceDeskService:
 
     def get(self,ticket_id: int) -> dict | None:
         with self.db.transaction() as conn:
-            row=conn.execute("""SELECT t.*,c.name customer_name,COALESCE(ct.name,'') contact_name,
+            row=conn.execute("""SELECT t.*,c.name customer_name,c.phone customer_phone,COALESCE(ct.name,'') contact_name,
                 COALESCE((SELECT SUM(minutes) FROM ticket_time_entries e WHERE e.ticket_id=t.id),0) minutes
                 FROM service_tickets t JOIN customers c ON c.id=t.customer_id LEFT JOIN contacts ct ON ct.id=t.contact_id WHERE t.id=?""",(ticket_id,)).fetchone()
         result=dict(row) if row else None

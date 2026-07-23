@@ -8,10 +8,11 @@ from nowa_crm.modules.customers.service import CustomerService
 
 
 class CommunicationsPage(QWidget):
-    def __init__(self, customers: CustomerService, service: CommunicationService, open_mail, open_call, create_ticket=None, parent=None):
+    def __init__(self, customers: CustomerService, service: CommunicationService, open_mail, open_call, open_ticket=None, create_ticket=None, parent=None):
         super().__init__(parent)
         self.customers, self.service = customers, service
         self.open_mail, self.open_call = open_mail, open_call
+        self.open_ticket = open_ticket
         self.create_ticket = create_ticket
         root = QVBoxLayout(self)
         title = QLabel("Communicatiecentrum"); title.setObjectName("Title"); root.addWidget(title)
@@ -19,7 +20,7 @@ class CommunicationsPage(QWidget):
         subtitle.setObjectName("Subtitle"); root.addWidget(subtitle)
         filters = QHBoxLayout()
         self.search = QLineEdit(); self.search.setPlaceholderText("Zoek op klant, onderwerp, adres, nummer of inhoud…")
-        self.customer = QComboBox(); self.channel = QComboBox(); self.channel.addItems(["Alles", "E-mail", "Telefoon"])
+        self.customer = QComboBox(); self.channel = QComboBox(); self.channel.addItems(["Alles", "E-mail", "Telefoon", "Serviceticket"])
         self.search.textChanged.connect(self.refresh); self.customer.currentIndexChanged.connect(self.refresh)
         self.channel.currentIndexChanged.connect(self.refresh)
         filters.addWidget(self.search, 1); filters.addWidget(self.customer); filters.addWidget(self.channel)
@@ -71,11 +72,13 @@ class CommunicationsPage(QWidget):
         channel = self.table.item(row, 8) if row >= 0 else None
         if not item_id or not channel: return
         if channel.text() == "E-mail": self.open_mail(int(item_id.text()))
-        else: self.open_call(int(item_id.text()))
+        elif channel.text() == "Telefoon": self.open_call(int(item_id.text()))
+        elif self.open_ticket: self.open_ticket(int(item_id.text()))
 
     def ticket_selected(self):
         row=self.table.currentRow()
         if row<0 or not self.create_ticket:return
+        if self.table.item(row,8).text()=="Serviceticket":return
         customer_id=self.table.item(row,9)
         if not customer_id or not customer_id.text():return
         self.create_ticket(int(customer_id.text()),self.table.item(row,4).text(),

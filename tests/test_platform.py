@@ -209,6 +209,13 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert telephony.get(unknown_call)["customer_id"] is None
     telephony.link_customer(unknown_call,customer_id)
     assert telephony.recognize("0850000000")["customer"]["id"]==customer_id
+    second_customer=customers.create("K-002","Tweede klant",phone="085 000 00 00")
+    second_call=telephony.register_call("0850000000",external_id="multi-link")
+    telephony.link_customer(second_call,second_customer,contact_name="Centrale",description="Algemeen nummer")
+    multiple=telephony.recognize("085-0000000")
+    assert multiple["customer"] is None and len(multiple["matches"])==2
+    telephony.select_match(second_call,second_customer,multiple["matches"][1].get("contact_id"))
+    assert telephony.get(second_call)["customer_id"]==second_customer
     assert telephony.register_call("0850000000",external_id="coligo-unknown-1")==unknown_call
     queue_before=telephony.queue_stats()
     missed_call=telephony.mark_missed("06-12345678","coligo-missed-1")
@@ -385,7 +392,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert (preview.created,preview.updated,preview.archived)==(1,0,1)
     result=importer.apply(preview);assert result["backup"].exists()
     imported_customer=import_customers.search("1643")[0]
-    assert imported_customer.mobile_phone=="0612345678" and imported_customer.country=="Nederland"
+    assert imported_customer.mobile_phone=="06-12345678" and imported_customer.country==""
     assert import_customers.contacts(imported_customer.id)[0].name=="Jan Bergstra"
     assert import_customers.search("Uit te faseren")==[]
     with import_db.transaction() as conn:

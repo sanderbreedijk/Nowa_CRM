@@ -9,6 +9,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from nowa_crm.core.database import Database
+from nowa_crm.core.phone import format_phone
 
 
 @dataclass(frozen=True)
@@ -34,15 +35,13 @@ class CustomerImportService:
         "adres": "street",
         "postcode": "postal_code",
         "plaats": "city",
-        "landnaam": "country",
-        "land": "country",
         "telefoon": "phone",
         "mobieletelefoon": "mobile_phone",
         "mobiel": "mobile_phone",
         "email": "email",
         "e-mail": "email",
     }
-    COMPARE_FIELDS = ("name", "email", "phone", "mobile_phone", "street", "postal_code", "city", "country")
+    COMPARE_FIELDS = ("name", "email", "phone", "mobile_phone", "street", "postal_code", "city")
 
     def __init__(self, db: Database, actor: str):
         self.db, self.actor = db, actor
@@ -57,7 +56,7 @@ class CustomerImportService:
             raise ValueError("Dubbele klantnummers in import: " + ", ".join(duplicates[:10]))
         with self.db.transaction() as conn:
             existing = {str(row["customer_number"]): dict(row) for row in conn.execute(
-                "SELECT customer_number,name,email,phone,mobile_phone,street,postal_code,city,country,active FROM customers"
+                "SELECT customer_number,name,email,phone,mobile_phone,street,postal_code,city,active FROM customers"
             )}
         created = updated = unchanged = 0
         changes = []
@@ -102,11 +101,11 @@ class CustomerImportService:
                  preview.unchanged, self.actor, str(backup))).lastrowid)
             for row in preview.rows:
                 current = conn.execute("SELECT * FROM customers WHERE customer_number=?", (row["customer_number"],)).fetchone()
-                values = tuple(row[field] for field in ("name", "email", "phone", "mobile_phone", "street", "postal_code", "city", "country"))
+                values = tuple(row[field] for field in ("name", "email", "phone", "mobile_phone", "street", "postal_code", "city"))
                 if current:
                     before = self._customer_state(dict(current))
                     customer_id = int(current["id"])
-                    conn.execute("""UPDATE customers SET name=?,email=?,phone=?,mobile_phone=?,street=?,postal_code=?,city=?,country=?,
+                    conn.execute("""UPDATE customers SET name=?,email=?,phone=?,mobile_phone=?,street=?,postal_code=?,city=?,
                         active=1,updated_at=CURRENT_TIMESTAMP WHERE id=?""", (*values, customer_id))
                     changed = [field for field in self.COMPARE_FIELDS if (before.get(field) or "") != row[field]]
                     if not before["active"]:
@@ -115,8 +114,8 @@ class CustomerImportService:
                 else:
                     before = {}
                     customer_id = int(conn.execute("""INSERT INTO customers
-                        (customer_number,name,email,phone,mobile_phone,street,postal_code,city,country)
-                        VALUES(?,?,?,?,?,?,?,?,?)""", (row["customer_number"], *values)).lastrowid)
+                        (customer_number,name,email,phone,mobile_phone,street,postal_code,city)
+                        VALUES(?,?,?,?,?,?,?,?)""", (row["customer_number"], *values)).lastrowid)
                     changed, action = list(self.COMPARE_FIELDS), "nieuw"
                 if row["contact_name"]:
                     contact = conn.execute(
@@ -300,8 +299,10 @@ class CustomerImportService:
             row["customer_number"] = number
             if not number or not row.get("name", ""):
                 raise ValueError("Elke importregel moet een klantnummer en naam bevatten.")
-            for field in ("contact_name", "street", "postal_code", "city", "country", "phone", "mobile_phone", "email"):
+            for field in ("contact_name", "street", "postal_code", "city", "phone", "mobile_phone", "email"):
                 row.setdefault(field, "")
+            row["phone"]=format_phone(row["phone"])
+            row["mobile_phone"]=format_phone(row["mobile_phone"])
             result.append(row)
         return result
 
@@ -321,4 +322,3 @@ class CustomerImportService:
         for letter in letters:
             value = value * 26 + ord(letter) - 64
         return value - 1
-
