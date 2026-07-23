@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import shutil
 import sqlite3
 import zipfile
 from datetime import date, timedelta
@@ -35,6 +36,7 @@ from nowa_crm.modules.proposals.pdf import export_proposal_pdf
 from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, UpdateService, _version_tuple
+from nowa_crm.core.backup import BackupService
 
 
 def test_customer_and_vault_roundtrip(tmp_path: Path):
@@ -358,6 +360,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
         package.writestr("NOWA_CRM/data/klanten.sqlite3",b"verboden")
     with pytest.raises(RuntimeError,match="verboden gegevensbestand"):
         UpdateService().prepare_local_package(unsafe_zip)
+    backup_root=tmp_path/"backup-data";backup_root.mkdir()
+    shutil.copy2(tmp_path/"test.sqlite3",backup_root/"nowa.sqlite3")
+    (backup_root/"vault.key").write_bytes(b"lokale-kluissleutel")
+    (backup_root/"documents").mkdir();(backup_root/"documents"/"contract.txt").write_text("test",encoding="utf-8")
+    backup_db=Database(backup_root/"nowa.sqlite3")
+    recovery=BackupService(backup_db,backup_root).create()
+    assert recovery.valid and recovery.files>=3
+    assert (recovery.folder/"vault.key").read_bytes()==b"lokale-kluissleutel"
+    assert BackupService(backup_db,backup_root).latest().valid
 
     import_db=Database(tmp_path/"customer-import.sqlite3");import_db.migrate()
     import_customers=CustomerService(import_db,EventBus());import_customers.create("OUD-1","Uit te faseren klant")
