@@ -96,7 +96,12 @@ class TelephonyService:
 
     def mark_missed(self, phone_number: str, external_id: str = "") -> int:
         call_id=self.register_call(phone_number,"inkomend",external_id)
+        self.mark_existing_missed(call_id)
+        return call_id
+
+    def mark_existing_missed(self, call_id: int) -> None:
         call=self.get(call_id)
+        if not call or call["status"]=="gemist":return
         with self.db.transaction() as conn:
             conn.execute("""UPDATE call_events SET status='gemist',subject='Gemiste oproep',outcome='Niet beantwoord',
                 priority='Hoog',assigned_to=?,callback_due=date('now'),callback_status='open',ended_at=CURRENT_TIMESTAMP,
@@ -105,11 +110,42 @@ class TelephonyService:
             self.workspace.add_action(call["customer_id"],f"Gemiste oproep terugbellen: {call['contact_name'] or call['phone_number']}",
                                       self.actor,"","Hoog","Automatisch aangemaakt vanuit telefonie.","Terugbellen",
                                       source_type="Telefoon",source_id=call_id)
-        return call_id
+
+    def acknowledge_call(self, call_id: int) -> None:
+        with self.db.transaction() as conn:
+            conn.execute("""UPDATE call_events SET status=CASE WHEN status='nieuw' THEN 'actief' ELSE status END,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?""",(call_id,))
 
     def complete_callback(self, call_id: int) -> None:
         with self.db.transaction() as conn:
             conn.execute("UPDATE call_events SET callback_status='afgerond',updated_at=CURRENT_TIMESTAMP WHERE id=?",(call_id,))
+
+    def missed_calls(self, open_only: bool = False) -> list[dict]:
+        clause=" AND ce.callback_status='open'" if open_only else ""
+        with self.db.transaction() as conn:
+            return [dict(row) for row in conn.execute("""SELECT ce.id,ce.customer_id,ce.started_at,ce.phone_number,ce.priority,
+                ce.assigned_to,ce.callback_status,ce.subject,COALESCE(c.name,'Onbekend') customer_name,
+                COALESCE(ct.name,'') contact_name FROM call_events ce
+                LEFT JOIN customers c ON c.id=ce.customer_id LEFT JOIN contacts ct ON ct.id=ce.contact_id
+                WHERE ce.status='gemist' AND datetime(ce.started_at)>=datetime('now','-30 days')"""+clause+
+                " ORDER BY ce.started_at DESC,ce.id DESC")]
+
+    def missed_stats(self) -> dict:
+        with self.db.transaction() as conn:
+            row=conn.execute("""SELECT COUNT(*) total,SUM(callback_status='open') open FROM call_events
+                WHERE status='gemist' AND datetime(started_at)>=datetime('now','-30 days')""").fetchone()
+        return {"total":int(row["total"] or 0),"open":int(row["open"] or 0)}
+
+    def cleanup_missed_calls(self, retention_days: int = 30) -> int:
+        days=max(1,int(retention_days))
+        with self.db.transaction() as conn:
+            ids=[int(row["id"]) for row in conn.execute("""SELECT id FROM call_events
+                WHERE status='gemist' AND datetime(started_at)<datetime('now',?)""",(f"-{days} days",))]
+            if not ids:return 0
+            placeholders=",".join("?" for _ in ids)
+            conn.execute(f"DELETE FROM action_items WHERE source_type='Telefoon' AND source_id IN ({placeholders})",ids)
+            conn.execute(f"DELETE FROM call_events WHERE id IN ({placeholders})",ids)
+            return len(ids)
 
     def queue_stats(self) -> dict:
         with self.db.transaction() as conn:
@@ -168,3 +204,4 @@ class TelephonyService:
 def _same_number(left: str, right: str) -> bool:
     if not left or not right:return False
     return left==right or (len(left)>=8 and len(right)>=8 and left[-8:]==right[-8:])
+

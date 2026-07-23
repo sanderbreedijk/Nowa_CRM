@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QComboBox, QDialog, QHBoxLayout, QInputDialog, QLabel,
                                QMessageBox, QPushButton, QVBoxLayout)
@@ -21,6 +21,7 @@ class IncomingCallPopup(QDialog):
         self.setObjectName("IncomingCallPopup");self.setWindowTitle("Inkomend gesprek")
         self.setWindowFlags(Qt.WindowType.Tool|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);self.setFixedWidth(430)
+        self.handled=False;self.missed_timer=QTimer(self);self.missed_timer.setSingleShot(True);self.missed_timer.timeout.connect(self.auto_missed);self.missed_timer.start(45000)
         root=QVBoxLayout(self);root.setContentsMargins(20,18,20,18);root.setSpacing(11)
         top=QHBoxLayout();icon=QLabel("TEL");icon.setObjectName("CallPopupIcon");top.addWidget(icon)
         titles=QVBoxLayout();title=QLabel("Inkomend gesprek");title.setObjectName("CallPopupTitle");self.phone=QLabel()
@@ -35,7 +36,7 @@ class IncomingCallPopup(QDialog):
         second=QHBoxLayout();self.link=QPushButton("Koppel nummer");self.link.clicked.connect(self.link_number)
         ticket=QPushButton("Serviceticket");ticket.clicked.connect(self.create_ticket);callback=QPushButton("Terugbellen");callback.clicked.connect(self.make_callback)
         second.addWidget(self.link);second.addWidget(ticket);second.addWidget(callback);root.addLayout(second)
-        dismiss=QHBoxLayout();registered=QPushButton("Alleen registreren");registered.clicked.connect(self.close)
+        dismiss=QHBoxLayout();registered=QPushButton("Aangenomen / registreren");registered.clicked.connect(self.register_only)
         ignore=QPushButton("Negeren");ignore.clicked.connect(self.ignore_call);dismiss.addStretch();dismiss.addWidget(registered);dismiss.addWidget(ignore);root.addLayout(dismiss)
         self.reload()
 
@@ -83,30 +84,46 @@ class IncomingCallPopup(QDialog):
     def open_customer(self):
         call=self.telephony.get(self.call_id)
         if not call or not call["customer_id"]:QMessageBox.information(self,"Klantdossier","Kies of koppel eerst de klant.");return
-        self.open_customer_callback(call["customer_id"]);self.close()
+        self._handled();self.open_customer_callback(call["customer_id"]);self.close()
 
     def open_vault(self):
-        self.open_vault_callback(self.phone.text());self.close()
+        self._handled();self.open_vault_callback(self.phone.text());self.close()
 
     def open_call(self):
-        self.open_call_callback(self.call_id);self.close()
+        self._handled();self.open_call_callback(self.call_id);self.close()
 
     def create_ticket(self):
         call=self.telephony.get(self.call_id)
         if not call or not call["customer_id"]:QMessageBox.information(self,"Serviceticket","Kies of koppel eerst de klant.");return
         subject=f"Telefoongesprek {call['contact_name'] or call['phone_number']}"
-        self.create_ticket_callback(call["customer_id"],subject,"Aangemaakt vanuit inkomende oproep.","Telefoon",self.call_id);self.close()
+        self._handled();self.create_ticket_callback(call["customer_id"],subject,"Aangemaakt vanuit inkomende oproep.","Telefoon",self.call_id);self.close()
 
     def make_callback(self):
         call=self.telephony.get(self.call_id)
         if not call or not call["customer_id"]:QMessageBox.information(self,"Terugbellen","Kies of koppel eerst de klant.");return
         self.telephony.finish_call(self.call_id,"Terugbelverzoek","Terugbellen naar aanleiding van inkomende oproep.","Terugbellen",True,"","Hoog",self.telephony.actor)
+        self.handled=True;self.missed_timer.stop()
         self.close()
 
     def ignore_call(self):
-        self.telephony.finish_call(self.call_id,"Oproep genegeerd","","Genegeerd");self.close()
+        self.handled=True;self.missed_timer.stop();self.telephony.finish_call(self.call_id,"Oproep genegeerd","","Genegeerd");self.close()
+
+    def register_only(self):
+        self._handled();self.close()
+
+    def _handled(self):
+        self.handled=True;self.missed_timer.stop();self.telephony.acknowledge_call(self.call_id)
+
+    def auto_missed(self):
+        if not self.handled:self.telephony.mark_existing_missed(self.call_id);self.handled=True
+        self.close()
+
+    def closeEvent(self,event):
+        if not self.handled:self.telephony.mark_existing_missed(self.call_id);self.handled=True
+        self.missed_timer.stop();super().closeEvent(event)
 
     def showEvent(self,event):
         super().showEvent(event)
         screen=QGuiApplication.screenAt(self.parentWidget().frameGeometry().center()) if self.parentWidget() else QGuiApplication.primaryScreen()
         area=screen.availableGeometry();self.adjustSize();self.move(area.right()-self.width()-24,area.top()+24)
+

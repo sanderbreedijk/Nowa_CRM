@@ -49,6 +49,7 @@ from nowa_crm.ui.communications_page import CommunicationsPage
 from nowa_crm.ui.documents_page import DocumentsPage
 from nowa_crm.ui.integrations_page import IntegrationsPage
 from nowa_crm.ui.incoming_call_popup import IncomingCallPopup
+from nowa_crm.ui.missed_calls_page import MissedCallsPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm.core.backup import BackupService
 from nowa_crm.core.paths import data_dir
@@ -89,7 +90,8 @@ class MainWindow(QMainWindow):
         self.security_service=SecurityService(customers.db)
         self.security_page=SecurityPage(customers,self.security_service,self)
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
-        pages=[("Overzicht",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° Dossier",self.customer360),("Beheer & Project",self.operations_page),("Offertes",self._proposal_page()),("IT Kluis",self._vault_page()),("Mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Oude import",self.migration_page),("Updates",self._update_page()),("Communicatie",self.communications_page),("Documentcentrum",self.documents_page),("Integraties",self.integrations_page)]
+        self.missed_calls_page=MissedCallsPage(telephony,self.open_call,self.open_customer,self)
+        pages=[("Dagstart",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° klantbeeld",self.customer360),("Beheer & projecten",self.operations_page),("Offertes",self._proposal_page()),("IT-kluis",self._vault_page()),("E-mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Import & migratie",self.migration_page),("Updates & herstel",self._update_page()),("Communicatie",self.communications_page),("Documenten",self.documents_page),("Koppelingen",self.integrations_page),("Gemiste oproepen",self.missed_calls_page)]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
@@ -115,9 +117,9 @@ class MainWindow(QMainWindow):
         if answer==QMessageBox.Yes:self._show(1)
 
     def _build_navigation(self,nav,pages):
-        groups=(("Start",(0,1)),("Relaties",(2,3,13)),("Verkoop",(5,17)),
-                ("Service",(16,6,8,9,12)),("Projecten",(4,11,10)),("Systeem",(18,7,14,15)))
-        symbols=("OV","WK","KL","360","BP","OF","KV","ML","TEL","SD","RP","PL","BV","AS","IM","UP","CM","DC","IN")
+        groups=(("Start",(0,1)),("Klanten",(2,3,16,7)),("Verkoop",(5,10)),
+                ("Service",(9,8,19,6)),("Projecten",(4,11,13,17,12)),("Systeem",(18,14,15)))
+        symbols=("OV","WK","KL","360","BP","OF","KV","ML","TEL","SD","RP","PL","BV","AS","IM","UP","CM","DC","IN","GO")
         self.nav_sections={};self.page_sections={};self.nav_buttons={}
         for section,indices in groups:
             header=QPushButton(section.upper());header.setObjectName("NavSection");nav.addWidget(header)
@@ -676,6 +678,10 @@ class MainWindow(QMainWindow):
         if hasattr(self,"communications_page"):self.communications_page.reload_customers()
         if hasattr(self,"documents_page"):self.documents_page.reload_customers()
         if hasattr(self,"integrations_page"):self.integrations_page.reload()
+        if hasattr(self,"missed_calls_page"):
+            self.missed_calls_page.reload()
+            missed=self.telephony.missed_stats()["open"]
+            self.nav_buttons[19].setText(f"Gemiste oproepen  ·  {missed}" if missed else "Gemiste oproepen")
         self.refresh_backup_status()
         if hasattr(self,"day_table"):self.refresh_daystart()
         stats=self.operations.dashboard(); values=(self.customers.count(),self.proposals.count_open(),self.vault.count(),stats["users"],stats["licenses"],stats["hardware"],stats["open_tasks"],len(self.workspace.actions()))

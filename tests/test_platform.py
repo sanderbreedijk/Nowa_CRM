@@ -48,7 +48,8 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert "360° klantdossier" in dossier_ui and "commerciële" in dossier_ui and "één klant" in dossier_ui
     navigation_ui = (source_root / "nowa_crm" / "ui" / "main_window.py").read_text(encoding="utf-8")
     assert "NavSection" in navigation_ui
-    assert all(section in navigation_ui for section in ("Start","Relaties","Verkoop","Service","Projecten","Systeem"))
+    assert all(section in navigation_ui for section in ("Start","Klanten","Verkoop","Service","Projecten","Systeem"))
+    assert "Gemiste oproepen" in navigation_ui
     db = Database(tmp_path / "test.sqlite3"); db.migrate()
     assert (tmp_path / "backups").exists()
     auth = AuthService(db)
@@ -224,6 +225,11 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     call_queue=telephony.queue_stats();assert call_queue["callbacks"]==queue_before["callbacks"]+1 and call_queue["missed"]==queue_before["missed"]+1
     telephony.complete_callback(missed_call)
     assert telephony.queue_stats()["callbacks"]==queue_before["callbacks"]
+    old_missed=telephony.mark_missed("010-9999999","old-missed-cleanup")
+    with db.transaction() as conn:
+        conn.execute("UPDATE call_events SET started_at=datetime('now','-31 days') WHERE id=?",(old_missed,))
+    assert telephony.cleanup_missed_calls(30)==1 and telephony.get(old_missed) is None
+    assert telephony.missed_stats()["total"]>=1
     assert any(item["title"].startswith("Terugbellen:") for item in workspace.actions(customer_id))
     calls = []
     coligo = ColigoAdapter(); coligo.start(calls.append)
@@ -482,3 +488,4 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
+
