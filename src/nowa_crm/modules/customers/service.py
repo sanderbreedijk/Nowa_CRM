@@ -5,7 +5,7 @@ import json
 
 from nowa_crm.core.database import Database
 from nowa_crm.core.events import Event, EventBus
-from nowa_crm.core.phone import format_phone
+from nowa_crm.core.phone import format_phone, normalize_phone
 
 
 @dataclass(frozen=True)
@@ -57,13 +57,17 @@ class CustomerService:
 
     def search(self, query: str = "") -> list[Customer]:
         term = f"%{query.strip()}%"
+        phone_term=f"%{normalize_phone(query)}%" if normalize_phone(query) else term
         with self.db.transaction() as conn:
             rows = conn.execute(
                 """SELECT id,customer_number,name,email,phone,street,postal_code,city,notes,country,mobile_phone,status,tags FROM customers
                    WHERE active=1 AND (?='' OR customer_number LIKE ? OR name LIKE ? OR email LIKE ? OR phone LIKE ? OR mobile_phone LIKE ? OR street LIKE ? OR postal_code LIKE ? OR city LIKE ? OR country LIKE ?
                    OR EXISTS(SELECT 1 FROM contacts ct WHERE ct.customer_id=customers.id AND (ct.name LIKE ? OR ct.email LIKE ? OR ct.phone LIKE ?))
+                   OR replace(replace(phone,'-',''),' ','') LIKE ? OR replace(replace(mobile_phone,'-',''),' ','') LIKE ?
+                   OR EXISTS(SELECT 1 FROM contacts ct WHERE ct.customer_id=customers.id AND replace(replace(ct.phone,'-',''),' ','') LIKE ?)
                    ) ORDER BY name COLLATE NOCASE LIMIT 5000""",
-                (query.strip(), term, term, term, term, term, term, term, term, term, term, term, term),
+                (query.strip(), term, term, term, term, term, term, term, term, term, term, term, term,
+                 phone_term,phone_term,phone_term),
             ).fetchall()
         return [Customer(**dict(row)) for row in rows]
 
