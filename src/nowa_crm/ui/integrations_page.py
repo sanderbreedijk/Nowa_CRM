@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox,QFileDialog,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QLabel,QLineEdit,
                                QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget)
@@ -10,6 +10,7 @@ from nowa_crm.integrations.sip_monitor import SipMonitor
 
 
 class IntegrationsPage(QWidget):
+    sip_status_changed=Signal(str,str)
     def __init__(self, service: IntegrationService, incoming_call, parent=None):
         super().__init__(parent); self.service, self.incoming_call = service, incoming_call
         self.service.cleanup_sip_connection_noise()
@@ -94,6 +95,7 @@ class IntegrationsPage(QWidget):
     def sip_state(self,state,detail):
         labels={"luistert":"Luistert","verbinden":"Verbinden…","verbonden":"Verbonden","fout":"Fout"}
         self.sip_status.setText(f"{labels.get(state,state)} · {detail}")
+        self.sip_status_changed.emit(state,detail)
         if state in ("verbonden","fout"):
             self.service.log("sip","verbinding",f"{state} · {detail}",state!="fout")
             self.reload()

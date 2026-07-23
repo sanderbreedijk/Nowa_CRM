@@ -6,6 +6,10 @@ QLabel#BrandIcon { min-width: 44px; max-width: 44px; min-height: 44px; max-heigh
 QLabel#Brand { color: #FFFFFF; font-size: 17px; line-height: 90%; font-weight: 750; padding-left: 7px; }
 QLabel#BrandCaption { color: #6F8BAA; font-size: 10px; font-weight: 700; letter-spacing: 2px; padding: 12px 7px 8px 7px; }
 QLabel#SidebarFooter { color: #7790AB; font-size: 11px; padding: 10px 8px 2px 8px; }
+QLabel#SipSidebarStatus { background-color:#173553; color:#A9BED3; border:1px solid #294866; border-radius:9px; padding:8px 10px; margin:3px 2px; font-size:11px; font-weight:700; }
+QLabel#SipSidebarStatus[sipState="verbonden"] { background-color:#123F38; color:#73E0BE; border-color:#286B5D; }
+QLabel#SipSidebarStatus[sipState="verbinden"], QLabel#SipSidebarStatus[sipState="luistert"] { background-color:#173E68; color:#8CC7FF; border-color:#285C8E; }
+QLabel#SipSidebarStatus[sipState="fout"] { background-color:#55272E; color:#FFB3BD; border-color:#7D3A44; }
 QWidget#ContentStack { border: none; }
 QPushButton#Nav { background-color: transparent; color: #D8E6F5; text-align: left; padding: 7px 10px; border: none; border-radius: 10px; font-weight: 600; }
 QPushButton#Nav:hover { background-color: #163553; color: #FFFFFF; }
