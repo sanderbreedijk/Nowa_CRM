@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
         self.integrations_page=IntegrationsPage(self.integration_service,self.open_call,self)
         self.communications_page=CommunicationsPage(customers,CommunicationService(mail,telephony,self.servicedesk_service),self.open_mail_message,self.open_call,self.open_service_ticket,self.create_ticket_from_communication,self)
         self.reporting_service=ReportingService(customers.db,telephony.actor,mail)
-        self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self.start_customer_mail,self.start_customer_followup,self.add_proposal_for_customer,self)
+        self.customer360=Customer360Page(customers,Customer360Service(customers,proposals,vault,operations,workspace,mail,telephony,self.assets_service,self.servicedesk_service,self.reporting_service),self.open_vault,self.open_proposal,self.start_customer_mail,self.start_customer_followup,self.add_proposal_for_customer,self.start_customer_call,self.start_customer_ticket,self)
         self.servicedesk_page=ServiceDeskPage(customers,self.servicedesk_service,self.start_customer_mail,self.open_call,self.open_vault,self)
         self.assets_page=CustomerAssetsPage(customers,self.assets_service,self)
         self.reporting_page=ReportingPage(customers,self.reporting_service,self.open_mail_message,self)
@@ -464,6 +464,13 @@ class MainWindow(QMainWindow):
         self.workspace_page.reload_customers();index=self.workspace_page.customer.findData(customer_id)
         if index>=0:self.workspace_page.customer.setCurrentIndex(index)
         self._show(1);self.workspace_page.add_action();self.refresh_all()
+    def start_customer_call(self,customer_id):
+        customer=self.customers.get(customer_id)
+        if not customer:return
+        self.telephony_page.phone.setText(customer.mobile_phone or customer.phone)
+        self._show(8);self.telephony_page.phone.setFocus();self.telephony_page.phone.selectAll()
+    def start_customer_ticket(self,customer_id):
+        self._show(9);self.servicedesk_page.create_ticket_for_customer(customer_id)
     def open_vault(self,query):
         self.vault_search.setText(query); self._show(6)
     def open_mail_message(self,message_id):
