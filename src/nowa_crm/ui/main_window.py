@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout,
                                QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -55,6 +55,18 @@ from nowa_crm.core.backup import BackupService
 from nowa_crm.core.paths import data_dir
 from nowa_crm import __version__
 from nowa_crm.ui.icons import app_icon, nav_icon
+
+
+class ClickableCard(QFrame):
+    clicked = Signal()
+
+    def __init__(self, page_index: int, parent=None):
+        super().__init__(parent);self.page_index=page_index
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mouseReleaseEvent(self,event):
+        if event.button()==Qt.MouseButton.LeftButton:self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -176,12 +188,17 @@ class MainWindow(QMainWindow):
         box.addWidget(backup_card);self.refresh_backup_status();box.addStretch();return page
     def _dashboard(self):
         page,box=self._page("Dagstart","Alles wat vandaag aandacht nodig heeft, lokaal in één werkbak."); grid=QGridLayout(); grid.setHorizontalSpacing(14); grid.setVerticalSpacing(14); self.kpis=[]
-        card_data=(("KL","Klanten","blue"),("OF","Open offertes","purple"),("KV","Kluisitems","teal"),("GB","Actieve gebruikers","orange"),("LI","Licenties","purple"),("HW","Hardware","blue"),("TK","Open taken","orange"),("AP","Actiepunten","teal"))
-        for i,(symbol,title,accent) in enumerate(card_data):
-            card=QFrame(); card.setObjectName("StatCard"); card.setProperty("accent",accent); card.setMinimumHeight(118)
+        card_data=(("KL","Klanten","blue",2),("OF","Open offertes","purple",5),("KV","Kluisitems","teal",6),("GB","Actieve gebruikers","orange",4),("LI","Licenties","purple",4),("HW","Hardware","blue",4),("TK","Open taken","orange",4),("AP","Actiepunten","teal",1))
+        self.kpi_cards=[]
+        for i,(symbol,title,accent,page_index) in enumerate(card_data):
+            card=ClickableCard(page_index);card.clicked.connect(lambda x=page_index:self._show(x))
+            card.setObjectName("StatCard");card.setProperty("accent",accent);card.setMinimumHeight(118)
             c=QVBoxLayout(card); c.setContentsMargins(20,17,20,17); c.setSpacing(4); top=QHBoxLayout()
             icon=QLabel(symbol); icon.setObjectName("KpiIcon"); icon.setProperty("accent",accent); value=QLabel("0"); value.setObjectName("Kpi")
-            top.addWidget(icon); top.addStretch(); top.addWidget(value); c.addLayout(top); label=QLabel(title); label.setObjectName("KpiLabel"); c.addWidget(label); grid.addWidget(card,i//4,i%4); self.kpis.append(value)
+            top.addWidget(icon);top.addStretch();top.addWidget(value);c.addLayout(top)
+            bottom=QHBoxLayout();label=QLabel(title);label.setObjectName("KpiLabel");hint=QLabel("Open  →");hint.setObjectName("CardLink")
+            bottom.addWidget(label);bottom.addStretch();bottom.addWidget(hint);c.addLayout(bottom)
+            grid.addWidget(card,i//4,i%4);self.kpis.append(value);self.kpi_cards.append(card)
         box.addLayout(grid)
         toolbar=QFrame(); toolbar.setObjectName("Toolbar"); filters=QHBoxLayout(toolbar); filters.setContentsMargins(12,9,12,9); filters.setSpacing(9); filter_label=QLabel("Werkbak"); filter_label.setObjectName("ToolbarTitle"); filters.addWidget(filter_label)
         self.day_owner=QLineEdit();self.day_owner.setPlaceholderText("Zoek medewerker…");self.day_owner.textChanged.connect(self.refresh_daystart)
