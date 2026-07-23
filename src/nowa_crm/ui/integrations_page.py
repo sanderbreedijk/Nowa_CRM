@@ -6,11 +6,14 @@ from PySide6.QtWidgets import (QCheckBox,QFileDialog,QFormLayout,QFrame,QGridLay
                                QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget)
 
 from nowa_crm.modules.integrations.service import IntegrationService
+from nowa_crm.integrations.coligo_bridge import ColigoBridge
 
 
 class IntegrationsPage(QWidget):
     def __init__(self, service: IntegrationService, open_call, parent=None):
         super().__init__(parent); self.service, self.open_call = service, open_call
+        self.bridge=ColigoBridge(self);self.bridge.event_received.connect(self.receive_coligo_event)
+        self.bridge.state_changed.connect(self.bridge_state)
         root=QVBoxLayout(self);title=QLabel("Integratiecentrum");title.setObjectName("Title");root.addWidget(title)
         subtitle=QLabel("Beheer lokale Outlook-overdracht en Coligo-nummerherkenning zonder tokens of klantdata in GitHub.")
         subtitle.setObjectName("Subtitle");root.addWidget(subtitle)
@@ -31,15 +34,21 @@ class IntegrationsPage(QWidget):
     def _coligo_card(self):
         card=QFrame();card.setObjectName("Card");form=QFormLayout(card);heading=QLabel("Coligo");heading.setObjectName("Kpi");form.addRow(heading)
         self.coligo_enabled=QCheckBox("Lokale Coligo-invoer actief");self.line_name=QLineEdit();self.line_name.setPlaceholderText("Bijvoorbeeld Hoofdlijn")
+        self.webhook_port=QLineEdit("8765");self.webhook_port.setPlaceholderText("8765")
+        self.webhook_key=QLineEdit();self.webhook_key.setEchoMode(QLineEdit.EchoMode.Password);self.webhook_key.setPlaceholderText("Optionele lokale beveiligingssleutel")
         self.phone=QLineEdit();self.phone.setPlaceholderText("Testnummer of inkomend nummer");self.external_id=QLineEdit();self.external_id.setPlaceholderText("Extern gespreks-ID")
-        form.addRow(self.coligo_enabled);form.addRow("Lijnnaam",self.line_name);form.addRow("Telefoonnummer",self.phone);form.addRow("Gespreks-ID",self.external_id)
+        self.bridge_status=QLabel("Ontvanger gestopt");self.bridge_status.setWordWrap(True)
+        form.addRow(self.coligo_enabled);form.addRow("Lijnnaam",self.line_name);form.addRow("Lokale poort",self.webhook_port);form.addRow("Webhook-sleutel",self.webhook_key)
+        form.addRow("Status",self.bridge_status);form.addRow("Testnummer",self.phone);form.addRow("Gespreks-ID",self.external_id)
         row=QHBoxLayout();save=QPushButton("Opslaan");save.setObjectName("Primary");save.clicked.connect(self.save_coligo)
-        ingest=QPushButton("Verwerk gesprek");ingest.clicked.connect(self.ingest_call);row.addWidget(save);row.addWidget(ingest);form.addRow(row);return card
+        listen=QPushButton("Ontvanger starten");listen.clicked.connect(self.start_bridge)
+        ingest=QPushButton("Test gesprek");ingest.clicked.connect(self.ingest_call);row.addWidget(save);row.addWidget(listen);row.addWidget(ingest);form.addRow(row);return card
 
     def reload(self):
         outlook=self.service.settings("outlook");coligo=self.service.settings("coligo")
         self.outlook_enabled.setChecked(outlook["enabled"]);self.sender.setText(outlook["settings"].get("mailbox_address",outlook["settings"].get("sender_address","")));self.outlook_folder.setText(outlook["settings"].get("folder_path",""))
         self.coligo_enabled.setChecked(coligo["enabled"]);self.line_name.setText(coligo["settings"].get("line_name",""))
+        self.webhook_port.setText(coligo["settings"].get("webhook_port","8765"));self.webhook_key.setText(coligo["settings"].get("webhook_key",""))
         rows=self.service.events();self.events.setRowCount(len(rows))
         for r,row in enumerate(rows):
             values=(row["occurred_at"],row["provider"].title(),row["action"],row["detail"],"Geslaagd" if row["successful"] else "Mislukt",row["id"])
@@ -61,7 +70,27 @@ class IntegrationsPage(QWidget):
         except Exception as exc:QMessageBox.warning(self,"Outlook import",str(exc))
 
     def save_coligo(self):
-        self.service.save("coligo",self.coligo_enabled.isChecked(),{"mode":"local_ingest","line_name":self.line_name.text()});self.reload()
+        try: port=int(self.webhook_port.text())
+        except ValueError:QMessageBox.warning(self,"Coligo","De lokale poort moet een getal zijn.");return False
+        if not 1024<=port<=65535:QMessageBox.warning(self,"Coligo","Kies een poort tussen 1024 en 65535.");return False
+        self.service.save("coligo",self.coligo_enabled.isChecked(),{"mode":"local_webhook","line_name":self.line_name.text(),
+            "webhook_port":str(port),"webhook_key":self.webhook_key.text()});self.reload()
+        return True
+
+    def start_bridge(self):
+        if not self.save_coligo():return
+        if not self.coligo_enabled.isChecked():QMessageBox.information(self,"Coligo","Schakel de lokale Coligo-invoer eerst in.");return
+        if self.bridge.start(int(self.webhook_port.text()),self.webhook_key.text()):
+            QMessageBox.information(self,"Coligo-ontvanger","De lokale ontvanger staat klaar. Gebruik POST /coligo en eventueel de header X-NOWA-Key.")
+
+    def bridge_state(self,running,detail):
+        self.bridge_status.setText(("Actief · " if running else "Niet actief · ")+detail)
+
+    def receive_coligo_event(self,payload):
+        try:
+            call=self.service.ingest_coligo_event(payload);self.reload();self.open_call(call["id"])
+        except Exception as exc:
+            self.service.log("coligo","webhook_fout",str(exc),False);self.reload()
 
     def open_latest(self):
         try:

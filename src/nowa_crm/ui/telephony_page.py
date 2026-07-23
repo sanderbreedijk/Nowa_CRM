@@ -20,6 +20,8 @@ class TelephonyPage(QWidget):
         missed=QPushButton("Gemiste oproep");missed.clicked.connect(self.missed_call)
         lookup.addWidget(self.phone,1); lookup.addWidget(incoming); lookup.addWidget(outgoing);lookup.addWidget(missed); root.addLayout(lookup)
         self.match=QLabel("Nog geen actief gesprek."); self.match.setWordWrap(True); self.match.setStyleSheet("font-size:16px;font-weight:700;color:#0B2342"); root.addWidget(self.match)
+        self.briefing=QLabel("Klantcontext verschijnt hier zodra het nummer is herkend.");self.briefing.setObjectName("CallBriefing")
+        self.briefing.setWordWrap(True);root.addWidget(self.briefing)
         quick=QHBoxLayout(); dossier=QPushButton("Open klantdossier"); dossier.clicked.connect(self._open_customer); vault=QPushButton("Open IT-kluis"); vault.clicked.connect(self._open_vault); link=QPushButton("Onbekend nummer toevoegen"); link.clicked.connect(self.link_customer)
         ticket=QPushButton("Maak serviceticket");ticket.clicked.connect(self.create_call_ticket)
         quick.addWidget(dossier); quick.addWidget(vault); quick.addWidget(link);quick.addWidget(ticket); quick.addStretch(); root.addLayout(quick)
@@ -50,6 +52,7 @@ class TelephonyPage(QWidget):
         try:
             self.call_id=self.service.mark_missed(self.phone.text());call=self.service.get(self.call_id)
             self.match.setText(f"Gemiste oproep: {call['customer_name']}\n{call['phone_number']}")
+            self.show_briefing(call)
             self.refresh_history()
         except Exception as exc:QMessageBox.warning(self,"Gemiste oproep",str(exc))
 
@@ -63,6 +66,7 @@ class TelephonyPage(QWidget):
             call=self.service.get(self.call_id)
             contact=f" · {call['contact_name']}" if call["contact_name"] else ""
             self.match.setText(f"{call['customer_name']}{contact}\n{call['phone_number']}")
+            self.show_briefing(call)
             self.subject.clear(); self.notes.clear(); self.callback.setChecked(False); self.refresh_history()
         except Exception as exc:QMessageBox.warning(self,"Telefonie",str(exc))
 
@@ -120,6 +124,7 @@ class TelephonyPage(QWidget):
         self.call_id=int(item.text()); call=self.service.get(self.call_id); self.phone.setText(call["phone_number"]); self.subject.setText(call["subject"]); self.notes.setPlainText(call["notes"]); self.outcome.setCurrentText(call["outcome"] or "Beantwoord")
         self.priority.setCurrentText(call["priority"]);self.assigned.setText(call["assigned_to"] or self.service.actor);self.callback_due.setText(call["callback_due"])
         self.callback.setChecked(call["callback_status"]=="open");self.match.setText(f"{call['customer_name']} · {call['contact_name']}\n{call['phone_number']}")
+        self.show_briefing(call)
 
     def complete_callback(self):
         row=self.table.currentRow();item=self.table.item(row,10) if row>=0 else None
@@ -133,6 +138,14 @@ class TelephonyPage(QWidget):
         self.phone.setText(call["phone_number"]); self.subject.setText(call["subject"]); self.notes.setPlainText(call["notes"])
         self.outcome.setCurrentText(call["outcome"] or "Beantwoord")
         self.match.setText(f"{call['customer_name']} · {call['contact_name']}\n{call['phone_number']}")
+        self.show_briefing(call)
+
+    def show_briefing(self,call):
+        context=self.service.customer_briefing(call.get("customer_id") if call else None)
+        title="Klant in beeld" if call and call.get("customer_id") else "Onbekende beller"
+        recent=context["recent_calls"]
+        last=f"\nLaatste gesprek: {recent[0]['subject'] or recent[0]['outcome'] or recent[0]['status']}" if recent else ""
+        self.briefing.setText(f"{title}  •  {context['summary']}{last}")
 
     def _open_customer(self):
         call=self.service.get(self.call_id) if self.call_id else None
