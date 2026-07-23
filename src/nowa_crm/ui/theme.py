@@ -34,6 +34,14 @@ QLabel#EmptyIcon { min-width: 64px; max-width: 64px; min-height: 64px; max-heigh
 QLabel#EmptyTitle { color: #183453; font-size: 21px; font-weight: 750; padding-top: 5px; }
 QLabel#EmptyText { color: #738196; font-size: 13px; }
 QFrame#CustomerHero { background-color: #FFFFFF; border: 1px solid #D8E4F0; border-radius: 15px; }
+QFrame#PulseCard { background-color: #0E2948; border: 1px solid #173D65; border-radius: 16px; }
+QFrame#BriefingCard { background-color: #EAF3FF; border: 1px solid #C9DDF4; border-radius: 16px; }
+QLabel#PulseCaption { color: #6EA9E4; font-size: 10px; font-weight: 800; letter-spacing: 2px; }
+QFrame#BriefingCard QLabel#PulseCaption { color: #3974AD; }
+QLabel#PulseScore { color: #39C69B; font-size: 42px; font-weight: 800; padding-right: 12px; }
+QLabel#PulseLabel { color: #39C69B; font-size: 18px; font-weight: 800; }
+QLabel#PulseSummary { color: #C8D8E9; font-size: 12px; }
+QLabel#BriefingText { color: #294C70; font-size: 13px; line-height: 140%; }
 QLabel#CustomerBadge { min-width: 54px; max-width: 54px; min-height: 54px; max-height: 54px; border-radius: 16px; background-color: #E5F1FF; color: #1265C4; font-size: 16px; font-weight: 800; qproperty-alignment: AlignCenter; }
 QLabel#CustomerName { color: #102A4C; font-size: 19px; font-weight: 750; }
 QLabel#CustomerMeta { color: #68788D; font-size: 12px; }
