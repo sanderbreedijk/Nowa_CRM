@@ -51,6 +51,15 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert all(section in navigation_ui for section in ("Start","Klanten","Verkoop","Service","Projecten","Systeem"))
     assert "Gemiste oproepen" in navigation_ui
     assert "ClickableCard" in navigation_ui and "CardLink" in navigation_ui
+    assert "self.customer_table.blockSignals(True)" in navigation_ui
+    assert 'call["status"]!="nieuw"' in navigation_ui
+    sip_ui = (source_root / "nowa_crm" / "integrations" / "sip_monitor.py").read_text(encoding="utf-8")
+    assert "seen_invites" in sip_ui and "if duplicate:continue" in sip_ui
+    servicedesk_ui = (source_root / "nowa_crm" / "ui" / "servicedesk_page.py").read_text(encoding="utf-8")
+    assert "TicketDraftDialog" in servicedesk_ui and "create_ticket_from_source" in servicedesk_ui
+    assert "ActiveCallPanel" in navigation_ui and "end_active_call" in navigation_ui
+    call_workspace_ui = (source_root / "nowa_crm" / "ui" / "incoming_call_popup.py").read_text(encoding="utf-8")
+    assert "CENTRALE WERKPLEK" in call_workspace_ui and "_return_to_workspace" in call_workspace_ui
     db = Database(tmp_path / "test.sqlite3"); db.migrate()
     assert (tmp_path / "backups").exists()
     auth = AuthService(db)
