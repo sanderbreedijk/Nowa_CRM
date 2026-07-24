@@ -532,6 +532,8 @@ def test_shomi_mail_parser_handles_direction_and_relative_follow_up():
     assert parsed["subject"]=="Apparaat ophalen"
     assert parsed["action_points"][0]["due_date"]=="2026-03-07"
     assert parsed["action_points"][0]["reminder_at"]=="2026-03-07T09:00"
+    assert parsed["action_points"][0]["duration_minutes"]==60
+    assert parsed["action_points"][0]["is_concrete"] is True
 
 
 def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
