@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 
 
@@ -14,3 +15,16 @@ def data_dir() -> Path:
 def database_path() -> Path:
     return data_dir() / "nowa.sqlite3"
 
+
+
+def content_dir() -> Path:
+    """Gedeelde documentopslag zonder database of instellingen op het netwerk."""
+    local=data_dir();config=local/"multiuser.json"
+    if config.exists():
+        try:
+            folder=json.loads(config.read_text(encoding="utf-8")).get("shared_documents","").strip()
+            if folder:
+                path=Path(folder);path.mkdir(parents=True,exist_ok=True);return path
+        except (OSError,ValueError,TypeError):
+            pass
+    return local

@@ -2,7 +2,9 @@ from pathlib import Path
 import json
 import shutil
 import sqlite3
+import socket
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from email.message import EmailMessage
 
@@ -39,6 +41,8 @@ from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, UpdateService, _version_tuple
 from nowa_crm.core.backup import BackupService
 from nowa_crm.modules.multiuser.service import MultiUserService
+from nowa_crm.core.central_server import CentralDatabaseServer
+from nowa_crm.core.remote_database import RemoteDatabase
 
 
 def test_customer_and_vault_roundtrip(tmp_path: Path):
@@ -585,3 +589,28 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
+
+
+def test_encrypted_central_database_supports_multiple_workstations(tmp_path: Path):
+    db=Database(tmp_path/"central.sqlite3");db.migrate()
+    AuthService(db).create_user("beheerder","Beheerder","veilig-wachtwoord","administrator")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1",0));port=probe.getsockname()[1]
+    server=CentralDatabaseServer(db,"127.0.0.1",port,"test-geheime-toegangssleutel");server.start()
+    try:
+        remote=RemoteDatabase("127.0.0.1",port,"test-geheime-toegangssleutel")
+        session=AuthService(remote).authenticate("beheerder","veilig-wachtwoord")
+        assert session and session.role=="administrator"
+        customers=CustomerService(remote,EventBus());first=customers.create("MU-100","Centrale klant")
+        key_path=tmp_path/"client-vault.key";key_path.write_bytes(remote.vault_key())
+        vault=VaultService(remote,key_path,"beheerder",session);vault.add(first,"Microsoft 365","admin","AlleenLokaalZichtbaar!")
+        with remote.transaction() as conn:
+            encrypted=conn.execute("SELECT secret FROM vault_entries WHERE customer_id=?",(first,)).fetchone()["secret"]
+        assert vault._cipher.decrypt(encrypted).decode()=="AlleenLokaalZichtbaar!"
+        def add_customer(number: int):
+            client=RemoteDatabase("127.0.0.1",port,"test-geheime-toegangssleutel")
+            return CustomerService(client,EventBus()).create(f"MU-{number}",f"Werkplek {number}")
+        with ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(add_customer,range(200,206)))
+        assert customers.count()==7
+        with pytest.raises(ConnectionError):RemoteDatabase("127.0.0.1",port,"onjuiste-sleutel").health()
+    finally:server.stop()

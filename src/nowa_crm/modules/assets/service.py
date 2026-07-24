@@ -5,14 +5,14 @@ from pathlib import Path
 from uuid import uuid4
 
 from nowa_crm.core.database import Database
-from nowa_crm.core.paths import data_dir
+from nowa_crm.core.paths import content_dir
 
 
 class CustomerAssetsService:
     TABLES={"locations":"customer_locations","software":"customer_software","documents":"customer_documents"}
 
     def __init__(self,db: Database,storage: Path | None=None):
-        self.db=db; self.storage=storage or data_dir()/"documents"
+        self.db=db; self.storage=storage or content_dir()/"documents"
 
     def list(self,kind: str,customer_id: int) -> list[dict]:
         table=self.TABLES[kind]; order="created_at DESC" if kind=="documents" else "name"
