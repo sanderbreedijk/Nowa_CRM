@@ -51,6 +51,8 @@ from nowa_crm.ui.integrations_page import IntegrationsPage
 from nowa_crm.ui.incoming_call_popup import IncomingCallPopup
 from nowa_crm.ui.missed_calls_page import MissedCallsPage
 from nowa_crm.ui.shomi_workbench_page import ShomiWorkbenchPage
+from nowa_crm.ui.multiuser_page import MultiUserPage
+from nowa_crm.modules.multiuser.service import MultiUserService
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm.core.backup import BackupService
 from nowa_crm.core.paths import data_dir
@@ -105,7 +107,8 @@ class MainWindow(QMainWindow):
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
         self.missed_calls_page=MissedCallsPage(telephony,self.open_call,self.open_customer,self)
         self.shomi_page=ShomiWorkbenchPage(self.integration_service,customers,self.open_call,self)
-        pages=[("Dagstart",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° klantbeeld",self.customer360),("Beheer & projecten",self.operations_page),("Offertes",self._proposal_page()),("IT-kluis",self._vault_page()),("E-mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Import & migratie",self.migration_page),("Updates & herstel",self._update_page()),("Communicatie",self.communications_page),("Documenten",self.documents_page),("Koppelingen",self.integrations_page),("Gemiste oproepen",self.missed_calls_page),("Shomi-werkbak",self.shomi_page)]
+        self.multiuser_page=MultiUserPage(MultiUserService(customers.db),self)
+        pages=[("Dagstart",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° klantbeeld",self.customer360),("Beheer & projecten",self.operations_page),("Offertes",self._proposal_page()),("IT-kluis",self._vault_page()),("E-mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Import & migratie",self.migration_page),("Updates & herstel",self._update_page()),("Communicatie",self.communications_page),("Documenten",self.documents_page),("Koppelingen",self.integrations_page),("Gemiste oproepen",self.missed_calls_page),("Shomi-werkbak",self.shomi_page),("Multi-user",self.multiuser_page)]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
@@ -139,8 +142,8 @@ class MainWindow(QMainWindow):
 
     def _build_navigation(self,nav,pages):
         groups=(("Start",(0,1)),("Klanten",(2,3,16,7)),("Verkoop",(5,10)),
-                ("Service",(20,9,8,19,6)),("Projecten",(4,11,13,17,12)),("Systeem",(18,14,15)))
-        symbols=("OV","WK","KL","360","BP","OF","KV","ML","TEL","SD","RP","PL","BV","AS","IM","UP","CM","DC","IN","GO","SH")
+                ("Service",(20,9,8,19,6)),("Projecten",(4,11,13,17,12)),("Systeem",(21,18,14,15)))
+        symbols=("OV","WK","KL","360","BP","OF","KV","ML","TEL","SD","RP","PL","BV","AS","IM","UP","CM","DC","IN","GO","SH","MU")
         self.nav_sections={};self.page_sections={};self.nav_buttons={}
         for section,indices in groups:
             header=QPushButton(section.upper());header.setObjectName("NavSection");nav.addWidget(header)
