@@ -25,6 +25,8 @@ class PostgresMigrator:
         source_counts = self._counts_sqlite()
         tables = [name for name in source_counts if name != "schema_versions"]
         with self.target.transaction() as target:
+            central_users=list(target.raw.execute("""SELECT username,display_name,password_hash,password_salt,
+                role,active,created_at,last_login_at FROM app_users"""))
             target.raw.execute("SET session_replication_role = replica")
             try:
                 for table in reversed(tables):
@@ -40,6 +42,16 @@ class PostgresMigrator:
                         target.raw.executemany(
                             f'INSERT INTO "{table}" ({names}) VALUES ({marks})',
                             [tuple(row[name] for name in columns) for row in rows])
+                if central_users:
+                    target.raw.executemany("""INSERT INTO app_users(
+                        username,display_name,password_hash,password_salt,role,active,created_at,last_login_at
+                    ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT(username) DO UPDATE SET
+                        display_name=excluded.display_name,password_hash=excluded.password_hash,
+                        password_salt=excluded.password_salt,role=excluded.role,active=excluded.active,
+                        last_login_at=excluded.last_login_at""",
+                        [tuple(row[name] for name in ("username","display_name","password_hash","password_salt",
+                            "role","active","created_at","last_login_at")) for row in central_users])
             finally:
                 target.raw.execute("SET session_replication_role = DEFAULT")
             serial_tables = {row["table_name"] for row in target.raw.execute(
@@ -52,8 +64,12 @@ class PostgresMigrator:
                             COALESCE((SELECT MAX(id) FROM "{table}"),1),
                             COALESCE((SELECT MAX(id) FROM "{table}"),0)>0)""", (table,))
         target_counts = self._counts_postgres(tables)
-        differences = {table: (source_counts[table], target_counts.get(table, -1))
-                       for table in tables if source_counts[table] != target_counts.get(table)}
+        with self.source.transaction() as source:
+            local_usernames={str(row[0]).lower() for row in source.execute("SELECT username FROM app_users")}
+        expected_counts=dict(source_counts)
+        expected_counts["app_users"]=len(local_usernames|{str(row["username"]).lower() for row in central_users})
+        differences = {table: (expected_counts[table], target_counts.get(table, -1))
+                       for table in tables if expected_counts[table] != target_counts.get(table)}
         if differences:
             raise RuntimeError(f"Controle na migratie mislukt: {differences}. Lokale database blijft actief.")
         manifest = backup.with_suffix(".postgres-migratie.json")
@@ -64,7 +80,8 @@ class PostgresMigrator:
             "warning": "Niet uploaden naar GitHub of andere openbare opslag."
         }, indent=2, ensure_ascii=False), encoding="utf-8")
         return {"backup": backup, "manifest": manifest, "tables": len(tables),
-                "rows": sum(source_counts[name] for name in tables), "verified": True}
+                "rows": sum(target_counts[name] for name in tables), "verified": True,
+                "central_users_preserved":len(central_users)}
 
     def _counts_sqlite(self):
         with self.source.transaction() as conn:
