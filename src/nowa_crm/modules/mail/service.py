@@ -268,4 +268,3 @@ class _Safe(dict):
 def _safe_filename(value: str) -> str:
     cleaned="".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in value).strip("-")
     return cleaned[:60] or "concept"
-
