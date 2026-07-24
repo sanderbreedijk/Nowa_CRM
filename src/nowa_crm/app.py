@@ -75,8 +75,7 @@ def main() -> int:
     try:db, _, _, _, _, _, _, _ = build_services()
     except ConnectionError as exc:
         from PySide6.QtWidgets import QMessageBox
-        QMessageBox.critical(None,"Centrale server niet bereikbaar",
-            f"{exc}\n\nStart de servercomputer of herstel in multiuser.json tijdelijk mode naar local.")
+        QMessageBox.critical(None,"Centrale server niet bereikbaar",f"{exc}\n\nStart de servercomputer of herstel de lokale modus.")
         return 1
     multiuser=MultiUserService(db);server_settings=multiuser.settings()
     if not getattr(db,"is_remote",False) and server_settings.get("server_enabled"):
@@ -96,4 +95,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
