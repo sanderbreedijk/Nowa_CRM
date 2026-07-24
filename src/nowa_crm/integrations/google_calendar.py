@@ -84,7 +84,7 @@ class GoogleCalendar:
         reminder=(action.get("reminder_at") or "").strip()
         due=(action.get("due_date") or "").strip()
         if reminder:
-            start=datetime.fromisoformat(reminder);end=start+timedelta(minutes=30)
+            start=datetime.fromisoformat(reminder);end=start+timedelta(minutes=max(5,int(action.get("duration_minutes") or 60)))
             timing={"start":{"dateTime":start.isoformat(),"timeZone":"Europe/Amsterdam"},
                     "end":{"dateTime":end.isoformat(),"timeZone":"Europe/Amsterdam"}}
         else:

@@ -155,8 +155,11 @@ class MailPage(QWidget):
         if not ok:return
         due,ok=QInputDialog.getText(self,"Actiepunt maken","Deadline (jjjj-mm-dd)",text=message["follow_up_at"][:10])
         if not ok:return
+        duration,ok=QInputDialog.getInt(self,"Benodigde tijd","Hoeveel minuten zijn nodig?",60,5,1440,5)
+        if not ok:return
         try:
-            self.workspace.add_action(message["customer_id"],title,self.mail.actor,due,message["priority"],message["body"][:500],"E-mail opvolgen",source_type="E-mail",source_id=message_id)
+            self.workspace.add_action(message["customer_id"],title,self.mail.actor,due,message["priority"],message["body"][:500],
+                "E-mail opvolgen",source_type="E-mail",source_id=message_id,duration_minutes=duration)
             self.mail.triage(message_id,"open",message["priority"],self.mail.actor,due);self.refresh_history()
             QMessageBox.information(self,"Actiepunt","Het actiepunt staat in de werkvoorraad en het klantdossier.")
         except Exception as exc:QMessageBox.warning(self,"Actiepunt",str(exc))
@@ -183,4 +186,3 @@ class MailPage(QWidget):
         body,ok=QInputDialog.getMultiLineText(self,"Ontvangen mail","Inhoud")
         if ok:
             self.mail.record_incoming(sender,"NOWA Solutions",subject,body); self.refresh_history()
-

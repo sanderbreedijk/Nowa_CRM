@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+
 from PySide6.QtCore import QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox,QFileDialog,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QLabel,QLineEdit,
+from PySide6.QtWidgets import (QCheckBox,QFileDialog,QFormLayout,QFrame,QGridLayout,QHBoxLayout,QInputDialog,QLabel,QLineEdit,
                                QMessageBox,QPushButton,QTableWidget,QTableWidgetItem,QVBoxLayout,QWidget)
 
 from nowa_crm.modules.integrations.service import IntegrationService
@@ -60,10 +62,12 @@ class IntegrationsPage(QWidget):
         info.setWordWrap(True);info.setObjectName("Subtitle");form.addRow(info)
         self.shomi_enabled=QCheckBox("Shomi-verwerking actief")
         self.shomi_numbers=QLineEdit();self.shomi_numbers.setPlaceholderText("Eigen nummers, bijvoorbeeld +31182388817")
-        form.addRow(self.shomi_enabled);form.addRow("Eigen nummers",self.shomi_numbers)
+        self.shomi_pending=QLabel("0 berichten te beoordelen")
+        form.addRow(self.shomi_enabled);form.addRow("Eigen nummers",self.shomi_numbers);form.addRow("Wachtrij",self.shomi_pending)
         row=QHBoxLayout();save=QPushButton("Shomi opslaan");save.setObjectName("Primary");save.clicked.connect(self.save_shomi)
         process=QPushButton("Shomi-mail nu verwerken");process.clicked.connect(self.sync_shomi)
-        row.addWidget(save);row.addWidget(process);form.addRow(row)
+        review=QPushButton("Te beoordelen openen");review.clicked.connect(self.review_shomi)
+        row.addWidget(save);row.addWidget(process);row.addWidget(review);form.addRow(row)
         return card
 
     def _calendar_card(self):
@@ -91,6 +95,7 @@ class IntegrationsPage(QWidget):
         self.sip_server.setText(s.get("server",""));self.sip_server_port.setText(s.get("server_port","5080"));self.sip_local_port.setText(s.get("local_port","5080"))
         self.sip_username.setText(s.get("username",""));self.sip_domain.setText(s.get("domain",""));self.sip_transport.setText(s.get("transport","UDP"))
         self.shomi_enabled.setChecked(shomi["enabled"]);self.shomi_numbers.setText(shomi["settings"].get("own_numbers",""))
+        pending=self.service.pending_shomi_reviews();self.shomi_pending.setText(f"{len(pending)} berichten te beoordelen")
         self.calendar_enabled.setChecked(calendar["enabled"]);self.calendar_config.setText(calendar["settings"].get("client_config_path",""))
         self.calendar_details.setChecked(calendar["settings"].get("include_details","")=="1")
         self.calendar_id.setText(calendar["settings"].get("calendar_id","primary"))
@@ -125,6 +130,20 @@ class IntegrationsPage(QWidget):
             self.save_shomi();result=self.service.sync_shomi_mail();self.reload()
             QMessageBox.information(self,"Shomi verwerkt",f"{result['processed']} nieuwe gesprekken verwerkt\n{result['duplicates']} al aanwezig\n{result['errors']} fouten")
         except Exception as exc:QMessageBox.warning(self,"Shomi",str(exc))
+
+    def review_shomi(self):
+        rows=self.service.pending_shomi_reviews()
+        if not rows:QMessageBox.information(self,"Shomi","Er staan geen gesprekken klaar om te beoordelen.");return
+        labels=[f"{row['received_at']} · {row['customer_name']} · {row['subject']}" for row in rows]
+        label,ok=QInputDialog.getItem(self,"Shomi beoordelen","Kies een gesprek",labels,0,False)
+        if not ok:return
+        row=rows[labels.index(label)]
+        try:points=json.loads(row["action_points_json"] or "[]")
+        except (TypeError,json.JSONDecodeError):points=[]
+        actions="\n".join(f"• {point.get('title','')}" for point in points) or "Geen vervolgacties herkend."
+        answer=QMessageBox.question(self,"Shomi-beoordeling",
+            f"{row['customer_name']} · {row['subject']}\n\n{row['summary']}\n\nVervolgacties:\n{actions}\n\nMarkeren als behandeld?")
+        if answer==QMessageBox.StandardButton.Yes:self.service.complete_shomi_review(row["id"]);self.reload()
 
     def choose_calendar_config(self):
         path,_=QFileDialog.getOpenFileName(self,"Google OAuth-clientbestand kiezen",self.calendar_config.text(),"JSON-bestanden (*.json)")

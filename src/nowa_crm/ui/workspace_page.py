@@ -27,7 +27,7 @@ class WorkspacePage(QWidget):
         split=QSplitter(); notes=QWidget(); nl=QVBoxLayout(notes); nl.addWidget(QLabel("Klantnotities")); self.notes=QTableWidget(0,3); self.notes.setHorizontalHeaderLabels(["Onderwerp","Notitie","Datum"]); self.notes.horizontalHeader().setStretchLastSection(True); nl.addWidget(self.notes,1)
         add_note=QPushButton("Notitie toevoegen"); add_note.clicked.connect(self.add_note); nl.addWidget(add_note)
         actions=QWidget(); al=QVBoxLayout(actions); al.addWidget(QLabel("Mijn werkvoorraad")); filters=QHBoxLayout(); self.period=QComboBox(); self.period.addItems(["Alles","Te laat","Vandaag","Komende 7 dagen","Zonder deadline"]); self.period.currentTextChanged.connect(self.refresh_actions); self.owner_filter=QLineEdit(); self.owner_filter.setPlaceholderText("Filter op eigenaar…"); self.owner_filter.textChanged.connect(self.refresh_actions); filters.addWidget(self.period); filters.addWidget(self.owner_filter,1); al.addLayout(filters)
-        self.actions=QTableWidget(0,9); self.actions.setHorizontalHeaderLabels(["Soort","Actie","Klant","Eigenaar","Deadline","Prioriteit","Status","Herinnering","ID"]); self.actions.setColumnHidden(8,True); self.actions.horizontalHeader().setStretchLastSection(True); al.addWidget(self.actions,1)
+        self.actions=QTableWidget(0,10); self.actions.setHorizontalHeaderLabels(["Soort","Actie","Klant","Eigenaar","Deadline","Prioriteit","Status","Herinnering","Tijd","ID"]); self.actions.setColumnHidden(9,True); self.actions.horizontalHeader().setStretchLastSection(True); al.addWidget(self.actions,1)
         action_bar=QHBoxLayout(); add_action=QPushButton("Nieuwe opvolging"); add_action.setObjectName("Primary"); add_action.clicked.connect(self.add_action); status=QPushButton("Status wijzigen"); status.clicked.connect(self.change_status); reschedule=QPushButton("Deadline verplaatsen"); reschedule.clicked.connect(self.reschedule_action); complete=QPushButton("Markeer gereed"); complete.clicked.connect(self.complete_action); action_bar.addWidget(add_action); action_bar.addWidget(status); action_bar.addWidget(reschedule); action_bar.addWidget(complete); action_bar.addStretch(); al.addLayout(action_bar)
         split.addWidget(notes); split.addWidget(actions); root.addWidget(split,1); self.reload_customers()
 
@@ -64,7 +64,7 @@ class WorkspacePage(QWidget):
     def refresh_actions(self,*_):
         actions=self.service.actions(owner=self.owner_filter.text(),period=self.period.currentText()); self.actions.setRowCount(len(actions))
         for r,row in enumerate(actions):
-            values=(row["action_type"],row["title"],row["customer_name"],row["owner"],row["due_date"],row["priority"],row["status"],row["reminder_at"],row["id"])
+            values=(row["action_type"],row["title"],row["customer_name"],row["owner"],row["due_date"],row["priority"],row["status"],row["reminder_at"],f"{row['duration_minutes']} min",row["id"])
             for c,value in enumerate(values):self.actions.setItem(r,c,QTableWidgetItem(str(value or "")))
         stats=self.service.action_summary(self.owner_filter.text())
         for label,key in zip(self.action_kpis,("open","overdue","today","upcoming")):label.setText(str(stats[key]))
@@ -92,25 +92,27 @@ class WorkspacePage(QWidget):
         if not ok:return
         action_type,ok=QInputDialog.getItem(self,"Opvolging","Soort",["Taak","Terugbellen","Offerte opvolgen","Afspraak","Contractverlenging"],0,False)
         if not ok:return
+        duration,ok=QInputDialog.getInt(self,"Benodigde tijd","Hoeveel minuten zijn nodig?",60,5,1440,5)
+        if not ok:return
         reminder,ok=QInputDialog.getText(self,"Opvolging","Herinnering (optioneel: jjjj-mm-dd uu:mm)")
         if not ok:return
         notes,ok=QInputDialog.getMultiLineText(self,"Opvolging","Notities")
         if not ok:return
-        try:self.service.add_action(customer_id,title,owner,due,priority,notes,action_type,reminder); self.refresh_actions()
+        try:self.service.add_action(customer_id,title,owner,due,priority,notes,action_type,reminder,duration_minutes=duration); self.refresh_actions()
         except Exception as exc:QMessageBox.warning(self,"Actiepunt",str(exc))
 
     def complete_action(self):
-        row=self.actions.currentRow(); item=self.actions.item(row,8) if row>=0 else None
+        row=self.actions.currentRow(); item=self.actions.item(row,9) if row>=0 else None
         if item:self.service.complete_action(int(item.text())); self.refresh_actions()
 
     def change_status(self):
-        row=self.actions.currentRow(); item=self.actions.item(row,8) if row>=0 else None
+        row=self.actions.currentRow(); item=self.actions.item(row,9) if row>=0 else None
         if not item:return
         value,ok=QInputDialog.getItem(self,"Status wijzigen","Nieuwe status",["Open","Bezig","Wacht op klant","Gereed","Geannuleerd"],0,False)
         if ok:self.service.set_action_status(int(item.text()),value);self.refresh_actions()
 
     def reschedule_action(self):
-        row=self.actions.currentRow(); item=self.actions.item(row,8) if row>=0 else None
+        row=self.actions.currentRow(); item=self.actions.item(row,9) if row>=0 else None
         if not item:return
         current=self.actions.item(row,4).text(); value,ok=QInputDialog.getText(self,"Deadline verplaatsen","Nieuwe deadline (jjjj-mm-dd)",text=current)
         if not ok:return

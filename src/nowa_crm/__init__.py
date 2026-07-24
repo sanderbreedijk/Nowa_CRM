@@ -1,3 +1,3 @@
 """NOWA CRM platform."""
 
-__version__ = "3.32.0"
+__version__ = "3.33.0"
