@@ -1,5 +1,5 @@
 from nowa_crm.core.database import PROPOSALS_230_SCHEMA
-from nowa_crm.core.postgres_database import split_script, translate_schema, translate_sql
+from nowa_crm.core.postgres_database import PostgresDatabase,split_script, translate_schema, translate_sql
 
 
 def test_sqlite_queries_are_translated_for_postgres():
@@ -28,3 +28,10 @@ def test_catalog_is_created_before_foreign_key_is_added():
     create_index=next(i for i,value in enumerate(statements) if "CREATE TABLE IF NOT EXISTS product_catalog" in value)
     foreign_key_index=next(i for i,value in enumerate(statements) if "ADD COLUMN catalog_item_id" in value)
     assert create_index < foreign_key_index
+
+
+def test_postgres_migration_contains_catalog_recovery():
+    import inspect
+    source=inspect.getsource(PostgresDatabase.migrate)
+    assert "if 15 not in current" in source
+    assert "CREATE TABLE IF NOT EXISTS product_catalog" in source
