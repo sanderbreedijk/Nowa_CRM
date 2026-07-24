@@ -106,6 +106,27 @@ class MultiUserService:
         if getattr(self.db,"is_remote",False):raise ValueError("Start de migratie vanuit de lokale SQLite-database.")
         return PostgresMigrator(self.db,self.postgres_database(),self.root).run()
 
+    def import_sqlite_to_postgres(self, source_path: str | Path) -> dict:
+        source=Path(source_path)
+        if not source.is_file():raise ValueError("Selecteer een bestaand SQLite-databasebestand.")
+        if source.suffix.lower() not in (".sqlite3",".sqlite",".db"):
+            raise ValueError("Selecteer een SQLite-databasebestand (*.sqlite3, *.sqlite of *.db).")
+        try:
+            import sqlite3
+            with sqlite3.connect(f"file:{source.as_posix()}?mode=ro",uri=True) as conn:
+                tables={row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")}
+                required={"customers","proposals","app_users","vault_entries"}
+                missing=sorted(required-tables)
+                if missing:raise ValueError("Dit is geen volledige NOWA CRM-database; ontbrekend: "+", ".join(missing))
+                integrity=conn.execute("PRAGMA integrity_check").fetchone()[0]
+                if integrity!="ok":raise ValueError(f"SQLite-controle mislukt: {integrity}")
+                customers=int(conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0])
+        except sqlite3.DatabaseError as exc:
+            raise ValueError(f"Het gekozen bestand is geen geldige SQLite-database: {exc}") from exc
+        result=PostgresMigrator(Database(source),self.postgres_database(),self.root).run()
+        return {**result,"source":str(source.resolve()),"source_customers":customers}
+
     def activate_postgres(self) -> None:
         self.postgres_database().health()
         settings=self.settings();settings["mode"]="postgres"
