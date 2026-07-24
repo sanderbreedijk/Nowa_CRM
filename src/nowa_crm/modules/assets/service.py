@@ -55,4 +55,3 @@ class CustomerAssetsService:
         table=self.TABLES[kind]; path=self.document_path(row_id) if kind=="documents" else None
         with self.db.transaction() as conn:conn.execute(f"DELETE FROM {table} WHERE id=?",(row_id,))
         if path:path.unlink(missing_ok=True)
-
