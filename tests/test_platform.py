@@ -569,7 +569,7 @@ def test_multiuser_readiness_and_safe_migration_snapshot(tmp_path: Path):
     assert service.readiness()["ready"] is True
     snapshot=service.migration_snapshot()
     assert snapshot["backup"].exists() and snapshot["manifest"].exists()
-    assert "nooit naar GitHub" in snapshot["manifest"].read_text(encoding="utf-8")
+    assert "nooit uploaden naar GitHub" in snapshot["manifest"].read_text(encoding="utf-8")
 
 
 def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
