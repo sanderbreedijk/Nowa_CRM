@@ -152,21 +152,30 @@ class PostgresDatabase:
             conn.execute("""CREATE TABLE IF NOT EXISTS nowa_system_secrets (
                 name TEXT PRIMARY KEY, value BYTEA NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
             current = {int(row["version"]) for row in conn.execute("SELECT version FROM schema_versions")}
-        # Herstel een database waarop v3.37.0 tijdens migratie 15 is gestopt.
-        # PostgreSQL vereist dat de doeltabel al bestaat voordat een FK wordt toegevoegd.
-        if 15 not in current:
-            with self.transaction() as conn:
-                conn.execute("""CREATE TABLE IF NOT EXISTS product_catalog (
-                    id BIGSERIAL PRIMARY KEY,
-                    code TEXT NOT NULL UNIQUE,
-                    name TEXT NOT NULL,
-                    category TEXT NOT NULL DEFAULT 'Dienst',
-                    unit TEXT NOT NULL DEFAULT 'stuk',
-                    unit_price_cents INTEGER NOT NULL DEFAULT 0,
-                    active INTEGER NOT NULL DEFAULT 1,
-                    notes TEXT NOT NULL DEFAULT '',
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )""")
+        # Controleer de tabel zelf: oudere pogingen kunnen migratie 15 ten onrechte
+        # als uitgevoerd bevatten terwijl de tabel ontbreekt.
+        with self.transaction() as conn:
+            conn.execute("""CREATE TABLE IF NOT EXISTS product_catalog (
+                id BIGSERIAL PRIMARY KEY,
+                code TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'Dienst',
+                unit TEXT NOT NULL DEFAULT 'stuk',
+                unit_price_cents INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
+                notes TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""")
+            base_ready=conn.execute("""SELECT COUNT(*) count FROM information_schema.tables
+                WHERE table_schema='public' AND table_name IN
+                ('proposals','proposal_templates','proposal_lines')""").fetchone()["count"]==3
+            if base_ready:
+                conn.execute("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS introduction TEXT NOT NULL DEFAULT ''")
+                conn.execute("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS terms TEXT NOT NULL DEFAULT ''")
+                conn.execute("ALTER TABLE proposal_templates ADD COLUMN IF NOT EXISTS introduction TEXT NOT NULL DEFAULT ''")
+                conn.execute("ALTER TABLE proposal_templates ADD COLUMN IF NOT EXISTS terms TEXT NOT NULL DEFAULT ''")
+                conn.execute("""ALTER TABLE proposal_lines ADD COLUMN IF NOT EXISTS catalog_item_id
+                    BIGINT REFERENCES product_catalog(id) ON DELETE SET NULL""")
         for version, script in MIGRATIONS:
             if version in current:
                 continue
