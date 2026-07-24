@@ -24,7 +24,7 @@ class ShomiWorkbenchPage(QWidget):
         queue_card=QFrame();queue_card.setObjectName("Card");queue_box=QVBoxLayout(queue_card)
         queue_head=QHBoxLayout();queue_title=QLabel("Binnengekomen gesprekken");queue_title.setObjectName("SectionTitle")
         self.count=QLabel("0");queue_head.addWidget(queue_title);queue_head.addStretch();queue_head.addWidget(self.count);queue_box.addLayout(queue_head)
-        self.search=QLineEdit();self.search.setPlaceholderText("Zoek klant, onderwerp of telefoonnummerâ€¦");self.search.textChanged.connect(self._filter);queue_box.addWidget(self.search)
+        self.search=QLineEdit();self.search.setPlaceholderText("Zoek klant, onderwerp of telefoonnummer…");self.search.textChanged.connect(self._filter);queue_box.addWidget(self.search)
         self.queue=QTableWidget(0,4);self.queue.setHorizontalHeaderLabels(["Ontvangen","Klant","Onderwerp","ID"]);self.queue.setColumnHidden(3,True)
         self.queue.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.queue.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.queue.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.queue.horizontalHeader().setSectionResizeMode(2,QHeaderView.ResizeMode.Stretch)
@@ -70,9 +70,9 @@ class ShomiWorkbenchPage(QWidget):
         item=next((x for x in self.rows if x["id"]==int(self.queue.item(row,3).text())),None)
         if not item:return
         self.current_id=item["id"];self.current=item;self.detail_title.setText(item["subject"])
-        self.meta.setText(f"{item['received_at'][:16]}  Â·  {item['direction']}  Â·  {item['phone_number']}  Â·  {item['review_status']}")
+        self.meta.setText(f"{item['received_at'][:16]}  ·  {item['direction']}  ·  {item['phone_number']}  ·  {item['review_status']}")
         self.customer.blockSignals(True);self.customer.clear();self.customer.addItem("Nog niet gekoppeld",None)
-        for customer in self.customers.search():self.customer.addItem(f"{customer.customer_number} Â· {customer.name}",customer.id)
+        for customer in self.customers.search():self.customer.addItem(f"{customer.customer_number} · {customer.name}",customer.id)
         index=self.customer.findData(item["customer_id"]);self.customer.setCurrentIndex(max(0,index));self.customer.blockSignals(False)
         self._load_contacts();index=self.contact.findData(item.get("contact_id"));self.contact.setCurrentIndex(max(0,index))
         self.summary.setPlainText(item["summary"]);self.notes.setText(item.get("reviewer_notes",""));self.actions.setRowCount(0)
@@ -83,7 +83,7 @@ class ShomiWorkbenchPage(QWidget):
     def _load_contacts(self,*_):
         selected=self.contact.currentData() if self.contact.count() else None;self.contact.clear();self.contact.addItem("Geen contactpersoon",None)
         if self.customer.currentData():
-            for contact in self.customers.contacts(self.customer.currentData()):self.contact.addItem(f"{contact.name} Â· {contact.role}",contact.id)
+            for contact in self.customers.contacts(self.customer.currentData()):self.contact.addItem(f"{contact.name} · {contact.role}",contact.id)
         self.contact.setCurrentIndex(max(0,self.contact.findData(selected)))
 
     def _add_action(self,point=None):
@@ -128,4 +128,3 @@ class ShomiWorkbenchPage(QWidget):
 
     def _open_call(self):
         if self.current_id:self.open_call(self.current["call_id"])
-
