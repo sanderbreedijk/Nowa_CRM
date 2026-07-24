@@ -89,23 +89,29 @@ class WorkspaceService:
         with self.db.transaction() as conn:
             return [dict(row) for row in conn.execute(
                 "SELECT a.id,a.customer_id,COALESCE(c.name,'Algemeen') customer_name,a.title,a.owner,a.due_date,a.priority,a.status,a.notes,"
-                "a.action_type,a.source_type,a.source_id,a.reminder_at,"
+                "a.action_type,a.source_type,a.source_id,a.reminder_at,a.duration_minutes,"
                 "CASE WHEN a.status NOT IN ('Gereed','Geannuleerd') AND a.due_date<>'' AND a.due_date<? THEN 1 ELSE 0 END overdue "
                 "FROM action_items a LEFT JOIN customers c ON c.id=a.customer_id" + where +
                 " ORDER BY overdue DESC,CASE a.priority WHEN 'Hoog' THEN 0 WHEN 'Normaal' THEN 1 ELSE 2 END,CASE WHEN a.due_date='' THEN 1 ELSE 0 END,a.due_date,a.id", [today,*values])]
 
     def add_action(self, customer_id: int | None, title: str, owner: str = "NOWA", due_date: str = "",
                    priority: str = "Normaal", notes: str = "", action_type: str = "Taak",
-                   reminder_at: str = "", source_type: str = "", source_id: int | None = None) -> int:
+                   reminder_at: str = "", source_type: str = "", source_id: int | None = None,
+                   duration_minutes: int = 60) -> int:
         if not title.strip():
             raise ValueError("Titel van het actiepunt is verplicht")
         for label,value in (("Deadline",due_date),("Herinnering",reminder_at)):
             if value.strip():
                 try: datetime.fromisoformat(value.strip())
                 except ValueError: raise ValueError(f"{label} moet jjjj-mm-dd of jjjj-mm-dd uu:mm zijn")
+        if not 5 <= int(duration_minutes) <= 1440:
+            raise ValueError("Benodigde tijd moet tussen 5 minuten en 24 uur liggen")
         with self.db.transaction() as conn:
-            cur = conn.execute("INSERT INTO action_items(customer_id,title,owner,due_date,priority,notes,action_type,reminder_at,source_type,source_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                               (customer_id,title.strip(),owner.strip() or "NOWA",due_date.strip(),priority,notes.strip(),action_type,reminder_at.strip(),source_type,source_id))
+            cur = conn.execute("""INSERT INTO action_items
+                (customer_id,title,owner,due_date,priority,notes,action_type,reminder_at,source_type,source_id,duration_minutes)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (customer_id,title.strip(),owner.strip() or "NOWA",due_date.strip(),priority,notes.strip(),action_type,
+                 reminder_at.strip(),source_type,source_id,int(duration_minutes)))
             return int(cur.lastrowid)
 
     def complete_action(self, action_id: int) -> None:
