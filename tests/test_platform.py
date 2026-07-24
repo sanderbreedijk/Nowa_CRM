@@ -354,7 +354,21 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert "lokaal-geheim" not in str(integrations.settings("sip"))
     sip_call=integrations.ingest_sip_event({"phone_number":"0612345678","external_id":"sip-call-1","display_name":"Sander"})
     assert sip_call["customer_id"]==customer_id
-    assert {item["provider"] for item in integrations.events()} == {"outlook","coligo","sip"}
+    integrations.save("shomi",True,{"mode":"email","own_numbers":"+31182388817"})
+    shomi=integrations.ingest_shomi_event({"event_id":"shomi-workbench-1","phone_number":"0612345678",
+        "subject":"Werkbaktest","summary":"Klant wil een vervolgafspraak.",
+        "action_points":[{"title":"Bel klant terug","due_date":"2026-08-04","duration_minutes":30}]})
+    assert shomi["actions_created"]==0
+    review=integrations.pending_shomi_reviews()[0]
+    result=integrations.save_shomi_review(review["id"],customer_id,contact_id,review["summary"],
+        [{"title":"Bel klant terug","due_date":"2026-08-04","duration_minutes":30,"selected":True}],
+        "Gecontroleerd door test",True)
+    assert result["actions_created"]==1
+    assert integrations.shomi_reviews("Behandeld")[0]["contact_id"]==contact_id
+    assert integrations.save_shomi_review(review["id"],customer_id,contact_id,review["summary"],
+        [{"title":"Bel klant terug","due_date":"2026-08-04","duration_minutes":30,"selected":True}],
+        "",True)["actions_created"]==0
+    assert {item["provider"] for item in integrations.events()} == {"outlook","coligo","sip","shomi"}
     documents=DocumentCenterService(db,assets,mail)
     documents.save_profile("NOWA Test","Teststraat 1","1000 AA Test","010-1234567","info@nowa.test",
                            "https://nowa.test","#123456","Lokale testvoettekst")

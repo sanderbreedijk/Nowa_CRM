@@ -13,6 +13,7 @@ from nowa_crm.integrations.sip_monitor import SipMonitor
 
 class IntegrationsPage(QWidget):
     sip_status_changed=Signal(str,str)
+    open_shomi_workbench=Signal()
     def __init__(self, service: IntegrationService, incoming_call, parent=None):
         super().__init__(parent); self.service, self.incoming_call = service, incoming_call
         self.service.cleanup_sip_connection_noise()
@@ -66,7 +67,7 @@ class IntegrationsPage(QWidget):
         form.addRow(self.shomi_enabled);form.addRow("Eigen nummers",self.shomi_numbers);form.addRow("Wachtrij",self.shomi_pending)
         row=QHBoxLayout();save=QPushButton("Shomi opslaan");save.setObjectName("Primary");save.clicked.connect(self.save_shomi)
         process=QPushButton("Shomi-mail nu verwerken");process.clicked.connect(self.sync_shomi)
-        review=QPushButton("Te beoordelen openen");review.clicked.connect(self.review_shomi)
+        review=QPushButton("Open Shomi-werkbak");review.clicked.connect(self.open_shomi_workbench.emit)
         row.addWidget(save);row.addWidget(process);row.addWidget(review);form.addRow(row)
         return card
 

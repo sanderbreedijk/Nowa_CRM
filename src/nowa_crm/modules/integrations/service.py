@@ -141,22 +141,9 @@ class IntegrationService:
                 conn.execute("""UPDATE call_events SET notes=CASE WHEN notes='' THEN ? ELSE notes||char(10)||char(10)||? END,
                     subject=CASE WHEN subject='' THEN ? ELSE subject END,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                     (summary,"Shomi: "+summary,shomi_subject,call_id))
-        created=0;appointments=0
-        if call_data.get("customer_id"):
-            for point in points[:10]:
-                if not point.get("is_concrete"):
-                    continue
-                self.telephony.workspace.add_action(call_data["customer_id"],point["title"],point.get("owner") or self.actor,
-                    point["due_date"],point["priority"],point.get("detail",""),"Afspraak",
-                    reminder_at=point.get("reminder_at",""),source_type="Shomi",source_id=analysis_id,
-                    duration_minutes=60);created+=1;appointments+=1
-        calendar_result=None
-        calendar=self.settings("google_calendar")
-        if appointments and calendar["enabled"] and self.google_calendar.connected():
-            try:calendar_result=self.sync_google_calendar()
-            except Exception as exc:self.log("google_calendar","automatische_planning_mislukt",str(exc),False,"call",call_id)
+        created=0;appointments=0;calendar_result=None
         self.log("shomi","gespreksanalyse",
-            f"{call_data['customer_name']} · te beoordelen · {appointments} concrete afspraken van 60 minuten ingepland",
+            f"{call_data['customer_name']} · te beoordelen in de Shomi-werkbak",
             True,"call",call_id)
         return {"analysis_id":analysis_id,"call":self.telephony.get(call_id),"actions_created":created,
                 "appointments_created":appointments,"calendar":calendar_result,"duplicate":False}
@@ -315,22 +302,99 @@ class IntegrationService:
             row=conn.execute("SELECT * FROM call_analyses WHERE call_id=? ORDER BY received_at DESC,id DESC LIMIT 1",(call_id,)).fetchone()
         return dict(row) if row else None
 
-    def pending_shomi_reviews(self) -> list[dict]:
+    def shomi_reviews(self, status: str = "Te beoordelen") -> list[dict]:
+        allowed={"Te beoordelen","Concept","Behandeld","Gearchiveerd","Alle"}
+        if status not in allowed:raise ValueError("Onbekende Shomi-status.")
+        where="" if status=="Alle" else "AND a.review_status=?"
+        values=() if status=="Alle" else (status,)
         with self.db.transaction() as conn:
             return [dict(row) for row in conn.execute("""SELECT a.id,a.call_id,a.customer_id,
                 COALESCE(c.name,'Ongekoppeld') customer_name,COALESCE(e.subject,'Shomi-gesprek') subject,
-                a.summary,a.action_points_json,a.received_at
+                a.summary,a.transcript,a.action_points_json,a.received_at,a.review_status,a.reviewed_at,
+                a.contact_id,a.reviewer_notes,e.phone_number,e.direction,COALESCE(ct.name,'') contact_name
                 FROM call_analyses a
                 LEFT JOIN customers c ON c.id=a.customer_id
                 LEFT JOIN call_events e ON e.id=a.call_id
-                WHERE a.provider='shomi' AND a.review_status='Te beoordelen'
-                ORDER BY a.received_at,a.id""")]
+                LEFT JOIN contacts ct ON ct.id=a.contact_id
+                WHERE a.provider='shomi' """+where+"""
+                ORDER BY CASE a.review_status WHEN 'Te beoordelen' THEN 0 WHEN 'Concept' THEN 1 ELSE 2 END,
+                a.received_at DESC,a.id DESC""",values)]
+
+    def pending_shomi_reviews(self) -> list[dict]:
+        return self.shomi_reviews("Te beoordelen")
+
+    def save_shomi_review(self, analysis_id: int, customer_id: int | None, contact_id: int | None,
+                          summary: str, points: list[dict], reviewer_notes: str = "",
+                          complete: bool = False) -> dict:
+        if not summary.strip():raise ValueError("Een gesprekssamenvatting is verplicht.")
+        clean_points=[]
+        for point in points[:25]:
+            title=str(point.get("title","")).strip()
+            if not title:continue
+            duration=int(point.get("duration_minutes",60) or 60)
+            if not 5<=duration<=1440:raise ValueError("De benodigde tijd moet tussen 5 minuten en 24 uur liggen.")
+            reminder=str(point.get("reminder_at","")).strip()
+            due=str(point.get("due_date","")).strip() or (reminder[:10] if reminder else "")
+            if due:
+                try:date.fromisoformat(due)
+                except ValueError:raise ValueError(f"Ongeldige datum bij '{title}'.")
+            if reminder:
+                try:datetime.fromisoformat(reminder)
+                except ValueError:raise ValueError(f"Ongeldige datum/tijd bij '{title}'.")
+            clean_points.append({"title":title[:180],"detail":str(point.get("detail","")).strip(),
+                "owner":str(point.get("owner","")).strip() or self.actor,"due_date":due,
+                "reminder_at":reminder,"duration_minutes":duration,
+                "priority":str(point.get("priority","Normaal")).title(),
+                "selected":bool(point.get("selected",True)),
+                "is_concrete":bool(reminder or point.get("is_concrete"))})
+        with self.db.transaction() as conn:
+            row=conn.execute("SELECT call_id FROM call_analyses WHERE id=? AND provider='shomi'",(analysis_id,)).fetchone()
+            if not row:raise KeyError(analysis_id)
+            if contact_id and not customer_id:raise ValueError("Kies bij de contactpersoon ook een klant.")
+            if contact_id and not conn.execute("SELECT 1 FROM contacts WHERE id=? AND customer_id=?",(contact_id,customer_id)).fetchone():
+                raise ValueError("De contactpersoon hoort niet bij de gekozen klant.")
+            status="Behandeld" if complete else "Concept"
+            conn.execute("""UPDATE call_analyses SET customer_id=?,contact_id=?,summary=?,action_points_json=?,
+                reviewer_notes=?,review_status=?,reviewed_at=CASE WHEN ?='Behandeld' THEN CURRENT_TIMESTAMP ELSE reviewed_at END,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (customer_id,contact_id,summary.strip(),json.dumps(clean_points,ensure_ascii=False),
+                 reviewer_notes.strip(),status,status,analysis_id))
+            conn.execute("""UPDATE call_events SET customer_id=?,contact_id=?,notes=?,updated_at=CURRENT_TIMESTAMP
+                WHERE id=?""",(customer_id,contact_id,summary.strip(),int(row["call_id"])))
+        created=0;appointments=0
+        if complete and customer_id:
+            with self.db.transaction() as conn:
+                existing={r["title"] for r in conn.execute(
+                    "SELECT title FROM action_items WHERE source_type='Shomi' AND source_id=?",(analysis_id,))}
+            for point in clean_points:
+                if not point["selected"] or point["title"] in existing:continue
+                self.telephony.workspace.add_action(customer_id,point["title"],point["owner"],point["due_date"],
+                    point["priority"],point["detail"],"Afspraak" if point["reminder_at"] else "Taak",
+                    reminder_at=point["reminder_at"],source_type="Shomi",source_id=analysis_id,
+                    duration_minutes=point["duration_minutes"])
+                created+=1;appointments+=int(bool(point["reminder_at"]))
+        calendar_result=None;calendar=self.settings("google_calendar")
+        if complete and appointments and calendar["enabled"] and self.google_calendar.connected():
+            try:calendar_result=self.sync_google_calendar()
+            except Exception as exc:self.log("google_calendar","automatische_planning_mislukt",str(exc),False,"call_analysis",analysis_id)
+        action="beoordeling_afgerond" if complete else "concept_opgeslagen"
+        self.log("shomi",action,f"Shomi-analyse {analysis_id} · {created} acties aangemaakt",True,"call_analysis",analysis_id)
+        return {"actions_created":created,"appointments_created":appointments,"calendar":calendar_result}
+
+    def archive_shomi_review(self, analysis_id: int) -> None:
+        with self.db.transaction() as conn:
+            conn.execute("""UPDATE call_analyses SET review_status='Gearchiveerd',
+                reviewed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                WHERE id=? AND provider='shomi'""",(analysis_id,))
+        self.log("shomi","gearchiveerd",f"Shomi-analyse {analysis_id} gearchiveerd",True,"call_analysis",analysis_id)
 
     def complete_shomi_review(self, analysis_id: int) -> None:
-        with self.db.transaction() as conn:
-            conn.execute("""UPDATE call_analyses SET review_status='Behandeld',
-                reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND provider='shomi'""",(analysis_id,))
-        self.log("shomi","beoordeling_afgerond",f"Shomi-analyse {analysis_id} behandeld",True,"call_analysis",analysis_id)
+        row=next((item for item in self.shomi_reviews("Alle") if item["id"]==analysis_id),None)
+        if not row:raise KeyError(analysis_id)
+        try:points=json.loads(row["action_points_json"] or "[]")
+        except (TypeError,json.JSONDecodeError):points=[]
+        self.save_shomi_review(analysis_id,row["customer_id"],row.get("contact_id"),row["summary"],points,
+                               row.get("reviewer_notes",""),True)
 
     def _shomi_points(self, analysis: dict, transcript: str) -> list[dict]:
         raw=analysis.get("action_points",analysis.get("actionPoints",analysis.get("actions",analysis.get("follow_up",[]))))

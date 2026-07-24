@@ -50,6 +50,7 @@ from nowa_crm.ui.documents_page import DocumentsPage
 from nowa_crm.ui.integrations_page import IntegrationsPage
 from nowa_crm.ui.incoming_call_popup import IncomingCallPopup
 from nowa_crm.ui.missed_calls_page import MissedCallsPage
+from nowa_crm.ui.shomi_workbench_page import ShomiWorkbenchPage
 from nowa_crm.core.updater import RELEASES_URL, UpdateService
 from nowa_crm.core.backup import BackupService
 from nowa_crm.core.paths import data_dir
@@ -103,7 +104,8 @@ class MainWindow(QMainWindow):
         self.security_page=SecurityPage(customers,self.security_service,self)
         self.migration_page=MigrationPage(LegacyImportService(customers.db,customers,proposals,vault,operations,workspace,self.assets_service),self.refresh_all,self)
         self.missed_calls_page=MissedCallsPage(telephony,self.open_call,self.open_customer,self)
-        pages=[("Dagstart",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° klantbeeld",self.customer360),("Beheer & projecten",self.operations_page),("Offertes",self._proposal_page()),("IT-kluis",self._vault_page()),("E-mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Import & migratie",self.migration_page),("Updates & herstel",self._update_page()),("Communicatie",self.communications_page),("Documenten",self.documents_page),("Koppelingen",self.integrations_page),("Gemiste oproepen",self.missed_calls_page)]
+        self.shomi_page=ShomiWorkbenchPage(self.integration_service,customers,self.open_call,self)
+        pages=[("Dagstart",self._dashboard()),("Werkruimte",self.workspace_page),("Klanten",self._customer_page()),("360° klantbeeld",self.customer360),("Beheer & projecten",self.operations_page),("Offertes",self._proposal_page()),("IT-kluis",self._vault_page()),("E-mail",self.mail_page),("Telefonie",self.telephony_page),("Servicedesk",self.servicedesk_page),("Rapportages",self.reporting_page),("Projectplanning",self.planning_page),("Beveiliging",self.security_page),("Klantassets",self.assets_page),("Import & migratie",self.migration_page),("Updates & herstel",self._update_page()),("Communicatie",self.communications_page),("Documenten",self.documents_page),("Koppelingen",self.integrations_page),("Gemiste oproepen",self.missed_calls_page),("Shomi-werkbak",self.shomi_page)]
         self.nav_group=QButtonGroup(self); self.nav_group.setExclusive(True)
         for _,page in pages:self.stack.addWidget(page)
         self._build_navigation(nav,pages)
@@ -115,6 +117,7 @@ class MainWindow(QMainWindow):
         call_row.addWidget(self.call_duration);call_row.addStretch();call_row.addWidget(open_workspace);call_row.addWidget(end_call);call_box.addWidget(self.call_caption);call_box.addWidget(self.call_name);call_box.addLayout(call_row);self.call_panel.hide();nav.addWidget(self.call_panel)
         self.sip_nav_status=QLabel("SIP  •  niet actief");self.sip_nav_status.setObjectName("SipSidebarStatus");self.sip_nav_status.setProperty("sipState","idle");nav.addWidget(self.sip_nav_status)
         self.integrations_page.sip_status_changed.connect(self.update_sip_sidebar_status)
+        self.integrations_page.open_shomi_workbench.connect(lambda:self._show(20))
         version=QLabel(f"Versie {__version__}  •  lokaal"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
         self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
         self.refresh_all()
@@ -136,8 +139,8 @@ class MainWindow(QMainWindow):
 
     def _build_navigation(self,nav,pages):
         groups=(("Start",(0,1)),("Klanten",(2,3,16,7)),("Verkoop",(5,10)),
-                ("Service",(9,8,19,6)),("Projecten",(4,11,13,17,12)),("Systeem",(18,14,15)))
-        symbols=("OV","WK","KL","360","BP","OF","KV","ML","TEL","SD","RP","PL","BV","AS","IM","UP","CM","DC","IN","GO")
+                ("Service",(20,9,8,19,6)),("Projecten",(4,11,13,17,12)),("Systeem",(18,14,15)))
+        symbols=("OV","WK","KL","360","BP","OF","KV","ML","TEL","SD","RP","PL","BV","AS","IM","UP","CM","DC","IN","GO","SH")
         self.nav_sections={};self.page_sections={};self.nav_buttons={}
         for section,indices in groups:
             header=QPushButton(section.upper());header.setObjectName("NavSection");nav.addWidget(header)
@@ -806,6 +809,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,"communications_page"):self.communications_page.reload_customers()
         if hasattr(self,"documents_page"):self.documents_page.reload_customers()
         if hasattr(self,"integrations_page"):self.integrations_page.reload()
+        if hasattr(self,"shomi_page") and self.stack.currentWidget() is self.shomi_page:self.shomi_page.reload()
         if hasattr(self,"missed_calls_page"):
             self.missed_calls_page.reload()
             missed=self.telephony.missed_stats()["open"]
