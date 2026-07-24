@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from nowa_crm.core.database import Database
-from nowa_crm.core.paths import data_dir
+from nowa_crm.core.paths import content_dir
 
 
 class MailService:
@@ -24,7 +24,7 @@ class MailService:
 
     def __init__(self, db: Database, actor: str, root: Path | None = None):
         self.db, self.actor = db, actor
-        self.root = root or data_dir()
+        self.root = root or content_dir()
         self.attachments_root = self.root / "mail-bijlagen"
         self.exports_root = self.root / "exports" / "mail"
 
@@ -268,3 +268,4 @@ class _Safe(dict):
 def _safe_filename(value: str) -> str:
     cleaned="".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in value).strip("-")
     return cleaned[:60] or "concept"
+
