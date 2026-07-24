@@ -72,13 +72,13 @@ class IntegrationService:
             raise ValueError("Schakel de Coligo-koppeling eerst in.")
         call_id = self.telephony.register_call(phone_number, "inkomend", external_id)
         call = self.telephony.get(call_id)
-        detail = f"{phone_number} Â· {call['customer_name']}"
-        if display_name: detail += f" Â· {display_name}"
+        detail = f"{phone_number} · {call['customer_name']}"
+        if display_name: detail += f" · {display_name}"
         self.log("coligo", "inkomend_gesprek", detail, True, "call", call_id)
         return call
 
     def ingest_coligo_event(self, payload: dict) -> dict:
-        """Vertaal gangbare Coligo/webhook-velden naar Ã©Ã©n lokaal gesprek."""
+        """Vertaal gangbare Coligo/webhook-velden naar één lokaal gesprek."""
         phone = self._first(payload, "phone_number", "phone", "caller", "from", "remoteNumber", "remote_number")
         if not phone:
             raise ValueError("Het Coligo-event bevat geen telefoonnummer.")
@@ -92,9 +92,9 @@ class IntegrationService:
             call_id = self.telephony.register_call(phone, "inkomend", external_id)
             action = "inkomend_gesprek"
         call = self.telephony.get(call_id)
-        detail = f"{call['phone_number']} Â· {call['customer_name']}"
+        detail = f"{call['phone_number']} · {call['customer_name']}"
         if display_name:
-            detail += f" Â· {display_name}"
+            detail += f" · {display_name}"
         self.log("coligo", action, detail, True, "call", call_id)
         return call
 
@@ -103,7 +103,7 @@ class IntegrationService:
         if not phone:raise ValueError("Het SIP-event bevat geen telefoonnummer.")
         call_id=self.telephony.register_call(phone,"inkomend",self._first(payload,"external_id","call_id"))
         call=self.telephony.get(call_id);name=self._first(payload,"display_name","name")
-        self.log("sip","inkomend_gesprek",f"{call['phone_number']} Â· {call['customer_name']}"+(f" Â· {name}" if name else ""),True,"call",call_id)
+        self.log("sip","inkomend_gesprek",f"{call['phone_number']} · {call['customer_name']}"+(f" · {name}" if name else ""),True,"call",call_id)
         return call
 
     def ingest_shomi_event(self, payload: dict) -> dict:
@@ -143,7 +143,7 @@ class IntegrationService:
                     (summary,"Shomi: "+summary,shomi_subject,call_id))
         created=0;appointments=0;calendar_result=None
         self.log("shomi","gespreksanalyse",
-            f"{call_data['customer_name']} Â· te beoordelen in de Shomi-werkbak",
+            f"{call_data['customer_name']} · te beoordelen in de Shomi-werkbak",
             True,"call",call_id)
         return {"analysis_id":analysis_id,"call":self.telephony.get(call_id),"actions_created":created,
                 "appointments_created":appointments,"calendar":calendar_result,"duplicate":False}
@@ -192,7 +192,7 @@ class IntegrationService:
         event_id=(message_id or "sha256:"+hashlib.sha256((subject+"\n"+text).encode("utf-8")).hexdigest()).strip()
         return {"event_id":event_id,"phone_number":remote,"direction":direction,
                 "started_at":started.isoformat(timespec="seconds") if started else "",
-                "subject":topic,"summary":"\n".join(f"â€¢ {line}" for line in report),
+                "subject":topic,"summary":"\n".join(f"• {line}" for line in report),
                 "action_points":points,"provider":"shomi"}
 
     @staticmethod
@@ -221,8 +221,8 @@ class IntegrationService:
         lines=[];current=""
         for raw in value.splitlines():
             clean=raw.strip()
-            is_bullet=bool(re.match(r"^[*â€¢\-]\s+",clean))
-            clean=re.sub(r"^[*â€¢\-]\s*","",clean).strip(" \\")
+            is_bullet=bool(re.match(r"^[*•\-]\s+",clean))
+            clean=re.sub(r"^[*•\-]\s*","",clean).strip(" \\")
             if not clean:continue
             if is_bullet:
                 if current:lines.append(re.sub(r"\s+"," ",current).strip())
@@ -378,7 +378,7 @@ class IntegrationService:
             try:calendar_result=self.sync_google_calendar()
             except Exception as exc:self.log("google_calendar","automatische_planning_mislukt",str(exc),False,"call_analysis",analysis_id)
         action="beoordeling_afgerond" if complete else "concept_opgeslagen"
-        self.log("shomi",action,f"Shomi-analyse {analysis_id} Â· {created} acties aangemaakt",True,"call_analysis",analysis_id)
+        self.log("shomi",action,f"Shomi-analyse {analysis_id} · {created} acties aangemaakt",True,"call_analysis",analysis_id)
         return {"actions_created":created,"appointments_created":appointments,"calendar":calendar_result}
 
     def archive_shomi_review(self, analysis_id: int) -> None:
@@ -399,13 +399,13 @@ class IntegrationService:
     def _shomi_points(self, analysis: dict, transcript: str) -> list[dict]:
         raw=analysis.get("action_points",analysis.get("actionPoints",analysis.get("actions",analysis.get("follow_up",[]))))
         questions=analysis.get("questions",analysis.get("open_questions",[]))
-        if isinstance(raw,str):raw=[line.strip(" -â€¢\t") for line in raw.splitlines() if line.strip()]
-        if isinstance(questions,str):questions=[line.strip(" -â€¢\t") for line in questions.splitlines() if line.strip()]
+        if isinstance(raw,str):raw=[line.strip(" -•\t") for line in raw.splitlines() if line.strip()]
+        if isinstance(questions,str):questions=[line.strip(" -•\t") for line in questions.splitlines() if line.strip()]
         items=list(raw) if isinstance(raw,list) else []
         items += [{"title":f"Beantwoorden: {item}","priority":"Normaal"} for item in questions if isinstance(item,str)]
         if not items:
             for line in transcript.splitlines():
-                clean=line.strip(" -â€¢\t")
+                clean=line.strip(" -•\t")
                 if re.match(r"(?i)^(actie|todo|afspraak|vervolg|vraag)\s*:",clean) or clean.endswith("?"):items.append(clean)
         result=[]
         for item in items:
@@ -444,7 +444,7 @@ class IntegrationService:
         if not folder:raise ValueError("Kies eerst een lokale Outlook-importmap.")
         result=self.mail.import_folder(Path(folder))
         result["shomi"]=self.sync_shomi_mail()
-        self.log("outlook","map_ingelezen",f"{result['imported']} nieuw Â· {result['linked']} gekoppeld Â· {result['unlinked']} ongekoppeld Â· {result['duplicates']} dubbel",result["errors"]==0)
+        self.log("outlook","map_ingelezen",f"{result['imported']} nieuw · {result['linked']} gekoppeld · {result['unlinked']} ongekoppeld · {result['duplicates']} dubbel",result["errors"]==0)
         return result
 
     def latest_draft(self) -> dict | None:
@@ -459,7 +459,7 @@ class IntegrationService:
         path=settings.get("client_config_path","")
         if not path:raise ValueError("Kies eerst het Google OAuth-clientbestand.")
         expiry=self.google_calendar.connect(Path(path))
-        self.log("google_calendar","verbonden",f"Google Agenda verbonden Â· token lokaal geldig tot {expiry}",True)
+        self.log("google_calendar","verbonden",f"Google Agenda verbonden · token lokaal geldig tot {expiry}",True)
         return expiry
 
     def sync_google_calendar(self) -> dict:
@@ -470,7 +470,7 @@ class IntegrationService:
         result=self.google_calendar.sync_actions(actions,item["settings"].get("calendar_id","primary") or "primary",
             item["settings"].get("include_details","")=="1")
         self.log("google_calendar","acties_gesynchroniseerd",
-            f"{result['created']} nieuw Â· {result['updated']} bijgewerkt Â· {result['skipped']} zonder datum Â· {result['errors']} fouten",
+            f"{result['created']} nieuw · {result['updated']} bijgewerkt · {result['skipped']} zonder datum · {result['errors']} fouten",
             result["errors"]==0)
         return result
 
@@ -516,4 +516,3 @@ class IntegrationService:
     @classmethod
     def _validate(cls, provider: str):
         if provider not in cls.PROVIDERS: raise ValueError("Onbekende koppeling")
-
