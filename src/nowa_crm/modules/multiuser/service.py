@@ -9,6 +9,9 @@ from nowa_crm.core.database import Database
 from nowa_crm.core.paths import data_dir
 from nowa_crm.core.central_server import CentralDatabaseServer, generate_access_key
 from nowa_crm.core.remote_database import RemoteDatabase
+from nowa_crm.core.postgres_database import PostgresDatabase
+from nowa_crm.core.secret_store import LocalSecretStore
+from nowa_crm.modules.multiuser.postgres_migration import PostgresMigrator
 
 _SERVER: CentralDatabaseServer | None = None
 
@@ -20,13 +23,16 @@ class MultiUserService:
         self.db=db;self.root=root or data_dir();self.config_path=self.root/"multiuser.json";self.auth=AuthService(db)
 
     def settings(self) -> dict:
-        defaults={"mode":"local","host":"","port":5088,"database":"nowa_crm","tls":True,"shared_documents":"","access_key":"","server_enabled":False}
+        defaults={"mode":"local","host":"","port":5088,"database":"nowa_crm","tls":True,"shared_documents":"",
+                  "access_key":"","server_enabled":False,"postgres_user":"nowa_crm","postgres_password":"",
+                  "sslmode":"prefer"}
         if not self.config_path.exists():return defaults
         try:defaults.update(json.loads(self.config_path.read_text(encoding="utf-8")))
         except (OSError,ValueError,TypeError):pass
         return defaults
 
-    def save(self, host: str, port: int, database: str, tls: bool, shared_documents: str = "", access_key: str = "", server_enabled: bool = False, mode: str = "server-ready") -> None:
+    def save(self, host: str, port: int, database: str, tls: bool, shared_documents: str = "",
+             access_key: str = "", server_enabled: bool = False, mode: str = "server-ready") -> None:
         if not host.strip():raise ValueError("Vul de naam of het IP-adres van de CRM-server in.")
         if not 1<=int(port)<=65535:raise ValueError("De serverpoort is ongeldig.")
         if not database.strip():raise ValueError("Vul de naam van de centrale database in.")
@@ -34,7 +40,7 @@ class MultiUserService:
         if folder and not folder.exists():raise ValueError("De gedeelde documentenmap bestaat niet.")
         current=self.settings();key=access_key.strip() or current.get("access_key") or generate_access_key()
         value={"mode":mode,"host":host.strip(),"port":int(port),"database":database.strip(),
-               "tls":True,"shared_documents":str(folder) if folder else "","access_key":key,
+               "tls":bool(tls),"shared_documents":str(folder) if folder else "","access_key":key,
                "server_enabled":bool(server_enabled),"updated_at":datetime.now().isoformat(timespec="seconds")}
         self.root.mkdir(parents=True,exist_ok=True);self.config_path.write_text(json.dumps(value,indent=2,ensure_ascii=False),encoding="utf-8")
 
@@ -51,7 +57,7 @@ class MultiUserService:
 
     def start_server(self, host: str, port: int, access_key: str) -> dict:
         global _SERVER
-        if getattr(self.db,"is_remote",False):raise ValueError("Een centrale werkplek kan niet zelf als server optreden.")
+        if getattr(self.db,"is_remote",False):raise ValueError("Een werkplek in centrale modus kan niet zelf als server optreden.")
         if _SERVER:_SERVER.stop()
         _SERVER=CentralDatabaseServer(self.db,host,int(port),access_key);_SERVER.start()
         return {"running":True,"host":host,"port":int(port)}
@@ -66,6 +72,46 @@ class MultiUserService:
         self.root.mkdir(parents=True,exist_ok=True)
         self.config_path.write_text(json.dumps(settings,indent=2,ensure_ascii=False),encoding="utf-8")
 
+    def save_postgres(self, host: str, port: int, database: str, user: str, password: str,
+                      sslmode: str = "prefer") -> None:
+        if not host.strip() or not database.strip() or not user.strip():
+            raise ValueError("Vul server, database en gebruikersnaam in.")
+        if not 1<=int(port)<=65535:raise ValueError("De PostgreSQL-poort is ongeldig.")
+        settings=self.settings()
+        settings.update({"host":host.strip(),"port":int(port),"database":database.strip(),
+                         "postgres_user":user.strip(),"sslmode":sslmode,
+                         "updated_at":datetime.now().isoformat(timespec="seconds")})
+        if password:settings["postgres_password"]=LocalSecretStore(self.root).protect(password)
+        if not settings.get("postgres_password"):raise ValueError("Vul het PostgreSQL-wachtwoord in.")
+        self.root.mkdir(parents=True,exist_ok=True)
+        self.config_path.write_text(json.dumps(settings,indent=2,ensure_ascii=False),encoding="utf-8")
+
+    def postgres_database(self, host=None, port=None, database=None, user=None, password="", sslmode=None):
+        settings=self.settings()
+        secret=password or LocalSecretStore(self.root).unprotect(settings.get("postgres_password",""))
+        return PostgresDatabase(host or settings["host"],port or settings["port"],database or settings["database"],
+                                user or settings["postgres_user"],secret,sslmode or settings.get("sslmode","prefer"))
+
+    def test_postgres(self, host: str, port: int, database: str, user: str, password: str,
+                      sslmode: str = "prefer") -> dict:
+        started=datetime.now()
+        try:
+            result=self.postgres_database(host,port,database,user,password,sslmode).health()
+            return {"reachable":True,"milliseconds":int((datetime.now()-started).total_seconds()*1000),
+                    "detail":f"Synology PostgreSQL verbonden · database {result['database']}"}
+        except Exception as exc:
+            return {"reachable":False,"milliseconds":0,"detail":f"PostgreSQL niet bereikbaar: {exc}"}
+
+    def migrate_to_postgres(self) -> dict:
+        if getattr(self.db,"is_remote",False):raise ValueError("Start de migratie vanuit de lokale SQLite-database.")
+        return PostgresMigrator(self.db,self.postgres_database(),self.root).run()
+
+    def activate_postgres(self) -> None:
+        self.postgres_database().health()
+        settings=self.settings();settings["mode"]="postgres"
+        settings["updated_at"]=datetime.now().isoformat(timespec="seconds")
+        self.config_path.write_text(json.dumps(settings,indent=2,ensure_ascii=False),encoding="utf-8")
+
     def migrate_to_server(self) -> dict:
         if getattr(self.db,"is_remote",False):raise ValueError("Deze werkplek gebruikt de centrale database al.")
         settings=self.settings()
@@ -75,9 +121,12 @@ class MultiUserService:
         return {**result,"snapshot":snapshot["backup"]}
 
     def readiness(self) -> dict:
-        settings=self.settings();remote=bool(getattr(self.db,"is_remote",False));path=self.db.path if remote else self.db.path.resolve();network=False if remote else self._network_path(path)
+        settings=self.settings();remote=bool(getattr(self.db,"is_remote",False));path=self.db.path if remote else self.db.path.resolve()
+        network=False if remote else self._network_path(path)
         with self.db.transaction() as conn:
-            tables=int(conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0])
+            if getattr(self.db,"is_postgres",False):
+                tables=int(conn.execute("SELECT COUNT(*) count FROM information_schema.tables WHERE table_schema='public'").fetchone()["count"])
+            else:tables=int(conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0])
             users=int(conn.execute("SELECT COUNT(*) FROM app_users WHERE active=1").fetchone()[0])
             customers=int(conn.execute("SELECT COUNT(*) FROM customers WHERE active=1").fetchone()[0])
         issues=[]
