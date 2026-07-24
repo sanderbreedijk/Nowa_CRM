@@ -32,14 +32,14 @@ class IntegrationsPage(QWidget):
 
     def _outlook_card(self):
         card=QFrame();card.setObjectName("Card");form=QFormLayout(card);heading=QLabel("Outlook");heading.setObjectName("Kpi");form.addRow(heading)
-        self.outlook_enabled=QCheckBox("Lokale Outlook-overdracht actief");self.sender=QLineEdit();self.sender.setPlaceholderText("Bijvoorbeeld service@jouwdomein.nl");self.outlook_folder=QLineEdit();self.outlook_folder.setPlaceholderText("Lokale map met geÃ«xporteerde .eml-bestanden")
+        self.outlook_enabled=QCheckBox("Lokale Outlook-overdracht actief");self.sender=QLineEdit();self.sender.setPlaceholderText("Bijvoorbeeld service@jouwdomein.nl");self.outlook_folder=QLineEdit();self.outlook_folder.setPlaceholderText("Lokale map met geëxporteerde .eml-bestanden")
         choose=QPushButton("Map kiezen");choose.clicked.connect(self.choose_outlook_folder);folderrow=QHBoxLayout();folderrow.addWidget(self.outlook_folder,1);folderrow.addWidget(choose)
         form.addRow(self.outlook_enabled);form.addRow("CRM-mailbox",self.sender);form.addRow("Importmap",folderrow)
         row=QHBoxLayout();save=QPushButton("Opslaan");save.setObjectName("Primary");save.clicked.connect(self.save_outlook)
         sync=QPushButton("Mailmap nu inlezen");sync.clicked.connect(self.sync_outlook);test=QPushButton("Open laatste concept");test.clicked.connect(self.open_latest);row.addWidget(save);row.addWidget(sync);row.addWidget(test);form.addRow(row);return card
 
     def _sip_card(self):
-        card=QFrame();card.setObjectName("Card");form=QFormLayout(card);heading=QLabel("SIP-monitor Â· alleen inkomende signalering");heading.setObjectName("Kpi");form.addRow(heading)
+        card=QFrame();card.setObjectName("Card");form=QFormLayout(card);heading=QLabel("SIP-monitor · alleen inkomende signalering");heading.setObjectName("Kpi");form.addRow(heading)
         self.sip_enabled=QCheckBox("SIP-monitor actief");self.sip_auto=QCheckBox("Automatisch verbinden bij opstarten")
         self.sip_server=QLineEdit();self.sip_server.setPlaceholderText("SIP-server of IP-adres")
         self.sip_server_port=QLineEdit("5080");self.sip_local_port=QLineEdit("5080")
@@ -58,7 +58,7 @@ class IntegrationsPage(QWidget):
 
     def _shomi_card(self):
         card=QFrame();card.setObjectName("Card");form=QFormLayout(card)
-        heading=QLabel("Shomi Â· gesprekssamenvattingen");heading.setObjectName("Kpi");form.addRow(heading)
+        heading=QLabel("Shomi · gesprekssamenvattingen");heading.setObjectName("Kpi");form.addRow(heading)
         info=QLabel("Leest Shomi-mails uit de lokale Outlook-import en koppelt verslag en vervolgacties aan het gesprek.")
         info.setWordWrap(True);info.setObjectName("Subtitle");form.addRow(info)
         self.shomi_enabled=QCheckBox("Shomi-verwerking actief")
@@ -73,7 +73,7 @@ class IntegrationsPage(QWidget):
 
     def _calendar_card(self):
         card=QFrame();card.setObjectName("Card");form=QFormLayout(card)
-        heading=QLabel("Google Agenda Â· actieplanning");heading.setObjectName("Kpi");form.addRow(heading)
+        heading=QLabel("Google Agenda · actieplanning");heading.setObjectName("Kpi");form.addRow(heading)
         self.calendar_enabled=QCheckBox("Google Agenda-synchronisatie actief")
         self.calendar_details=QCheckBox("Klantnaam en actie-inhoud met Google delen")
         self.calendar_config=QLineEdit();self.calendar_config.setPlaceholderText("Google OAuth-clientbestand (.json)")
@@ -135,15 +135,15 @@ class IntegrationsPage(QWidget):
     def review_shomi(self):
         rows=self.service.pending_shomi_reviews()
         if not rows:QMessageBox.information(self,"Shomi","Er staan geen gesprekken klaar om te beoordelen.");return
-        labels=[f"{row['received_at']} Â· {row['customer_name']} Â· {row['subject']}" for row in rows]
+        labels=[f"{row['received_at']} · {row['customer_name']} · {row['subject']}" for row in rows]
         label,ok=QInputDialog.getItem(self,"Shomi beoordelen","Kies een gesprek",labels,0,False)
         if not ok:return
         row=rows[labels.index(label)]
         try:points=json.loads(row["action_points_json"] or "[]")
         except (TypeError,json.JSONDecodeError):points=[]
-        actions="\n".join(f"â€¢ {point.get('title','')}" for point in points) or "Geen vervolgacties herkend."
+        actions="\n".join(f"• {point.get('title','')}" for point in points) or "Geen vervolgacties herkend."
         answer=QMessageBox.question(self,"Shomi-beoordeling",
-            f"{row['customer_name']} Â· {row['subject']}\n\n{row['summary']}\n\nVervolgacties:\n{actions}\n\nMarkeren als behandeld?")
+            f"{row['customer_name']} · {row['subject']}\n\n{row['summary']}\n\nVervolgacties:\n{actions}\n\nMarkeren als behandeld?")
         if answer==QMessageBox.StandardButton.Yes:self.service.complete_shomi_review(row["id"]);self.reload()
 
     def choose_calendar_config(self):
@@ -185,11 +185,11 @@ class IntegrationsPage(QWidget):
         self.sip.start(config)
 
     def sip_state(self,state,detail):
-        labels={"luistert":"Luistert","verbinden":"Verbindenâ€¦","verbonden":"Verbonden","fout":"Fout"}
-        self.sip_status.setText(f"{labels.get(state,state)} Â· {detail}")
+        labels={"luistert":"Luistert","verbinden":"Verbinden…","verbonden":"Verbonden","fout":"Fout"}
+        self.sip_status.setText(f"{labels.get(state,state)} · {detail}")
         self.sip_status_changed.emit(state,detail)
         if state in ("verbonden","fout"):
-            self.service.log("sip","verbinding",f"{state} Â· {detail}",state!="fout")
+            self.service.log("sip","verbinding",f"{state} · {detail}",state!="fout")
             self.reload()
 
     def receive_sip_event(self,payload):
@@ -213,4 +213,3 @@ class IntegrationsPage(QWidget):
             if not draft:QMessageBox.information(self,"Outlook","Er staat geen uitgaand concept klaar.");return
             path=self.service.prepare_outlook(draft["id"]);QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)));self.reload()
         except Exception as exc:QMessageBox.warning(self,"Outlook",str(exc))
-
