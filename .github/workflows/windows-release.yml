@@ -47,6 +47,8 @@ jobs:
             --icon build/nowa_crm_app.ico `
             --add-data "src/nowa_crm/assets;nowa_crm/assets" `
             src/nowa_crm/app.py
+          Get-ChildItem -Recurse dist/NOWA_CRM -File -Filter cacert.pem |
+            Rename-Item -NewName 'cacert.crt'
           $forbidden = Get-ChildItem -Recurse dist/NOWA_CRM -File |
             Where-Object { $_.Name -match '\.(sqlite3|db|token|key)$' -or $_.Name -match '^(client_secret|credentials).*\.json$' }
           if ($forbidden) { throw 'Release bevat gebruikersdata of een kluissleutel.' }
