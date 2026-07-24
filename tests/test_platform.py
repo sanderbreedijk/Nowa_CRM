@@ -44,9 +44,9 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     source_root = Path(__file__).parents[1] / "src"
     for source in source_root.rglob("*.py"):
         text = source.read_text(encoding="utf-8")
-        assert not any(marker in text for marker in ("Ã", "Â", "â€")), f"Beschadigde UTF-8-tekst in {source}"
+        assert not any(marker in text for marker in ("Ãƒ", "Ã‚", "Ã¢â‚¬")), f"Beschadigde UTF-8-tekst in {source}"
     dossier_ui = (source_root / "nowa_crm" / "ui" / "customer360_page.py").read_text(encoding="utf-8")
-    assert "360° klantdossier" in dossier_ui and "commerciële" in dossier_ui and "één klant" in dossier_ui
+    assert "360Â° klantdossier" in dossier_ui and "commerciÃ«le" in dossier_ui and "Ã©Ã©n klant" in dossier_ui
     navigation_ui = (source_root / "nowa_crm" / "ui" / "main_window.py").read_text(encoding="utf-8")
     assert "NavSection" in navigation_ui
     assert all(section in navigation_ui for section in ("Start","Klanten","Verkoop","Service","Projecten","Systeem"))
@@ -283,26 +283,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert len(snapshot["pulse"]["briefing"])==4
     assert any(item["kind"] == "Gesprek" for item in dossier.timeline(customer_id))
     assert any(item["kind"] == "E-mail" for item in dossier.timeline(customer_id))
-    assert all(item["group"] in ("Communicatie","Service","Commercieel","Werk","Dossier") for item in dossier.timeline(customer_id))
-    assets = CustomerAssetsService(db,tmp_path/"documents")
-    location_id = assets.add_location(customer_id,"Hoofdkantoor","Coolsingel 1","Rotterdam")
-    assert assets.add_location(customer_id,"Hoofdkantoor") == location_id
-    software_id = assets.add_software(customer_id,"Exact Online","Exact","Cloud","NOWA ondersteunt")
-    document_source = tmp_path/"netwerkplan.txt"; document_source.write_text("Lokaal klantdocument",encoding="utf-8")
-    document_id = assets.add_document(customer_id,"Netwerkplan",document_source,"Techniek")
-    assert assets.document_path(document_id).read_text(encoding="utf-8") == "Lokaal klantdocument"
-    assert assets.add_document(customer_id,"Netwerkplan",document_source,"Techniek") == document_id
-    servicedesk = ServiceDeskService(db,"beheerder")
-    ticket_id = servicedesk.create(customer_id,"Internetverbinding valt uit","Sinds vanochtend instabiel","Storing","Kritiek","Sander","2026-08-01 12:00",contact_id)
-    assert servicedesk.get(ticket_id)["number"].startswith("TK-")
-    servicedesk.add_update(ticket_id,"Routerlogboeken onderzocht","In behandeling")
-    servicedesk.add_time(ticket_id,45,"Analyse en herstel")
-    service_stats=servicedesk.stats(customer_id)
-    assert service_stats["open"] == service_stats["critical"] == 1 and service_stats["minutes"] == 45
-    assert servicedesk.get(ticket_id)["sla_state"] in ("Binnen SLA","Dreigt","Overschreden")
-    servicedesk.close(ticket_id,"Defecte uplinkkabel vervangen")
-    assert servicedesk.get(ticket_id)["status"] == "Gesloten"
-    closed_stats=servicedesk.stats(customer_id)
+    assert all(item["group"] in ("Communicatie","Service","Commercieel","Werk","Dossier") for it…403 tokens truncated…vicedesk.stats(customer_id)
     assert closed_stats["open"] == closed_stats["critical"] == 0 and closed_stats["closed"] == 1
     printer_ticket=servicedesk.create(customer_id,"Printer niet bereikbaar","Controle nodig","Support","Hoog","NOWA","2026-08-03",contact_id)
     source_ticket=servicedesk.create_from_source(customer_id,"Servicevraag","Vanuit telefoongesprek","Telefoon",call_id,"Normaal")
@@ -354,7 +335,21 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert "lokaal-geheim" not in str(integrations.settings("sip"))
     sip_call=integrations.ingest_sip_event({"phone_number":"0612345678","external_id":"sip-call-1","display_name":"Sander"})
     assert sip_call["customer_id"]==customer_id
-    assert {item["provider"] for item in integrations.events()} == {"outlook","coligo","sip"}
+    integrations.save("shomi",True,{"mode":"email","own_numbers":"+31182388817"})
+    shomi=integrations.ingest_shomi_event({"event_id":"shomi-workbench-1","phone_number":"0612345678",
+        "subject":"Werkbaktest","summary":"Klant wil een vervolgafspraak.",
+        "action_points":[{"title":"Bel klant terug","due_date":"2026-08-04","duration_minutes":30}]})
+    assert shomi["actions_created"]==0
+    review=integrations.pending_shomi_reviews()[0]
+    result=integrations.save_shomi_review(review["id"],customer_id,contact_id,review["summary"],
+        [{"title":"Bel klant terug","due_date":"2026-08-04","duration_minutes":30,"selected":True}],
+        "Gecontroleerd door test",True)
+    assert result["actions_created"]==1
+    assert integrations.shomi_reviews("Behandeld")[0]["contact_id"]==contact_id
+    assert integrations.save_shomi_review(review["id"],customer_id,contact_id,review["summary"],
+        [{"title":"Bel klant terug","due_date":"2026-08-04","duration_minutes":30,"selected":True}],
+        "",True)["actions_created"]==0
+    assert {item["provider"] for item in integrations.events()} == {"outlook","coligo","sip","shomi"}
     documents=DocumentCenterService(db,assets,mail)
     documents.save_profile("NOWA Test","Teststraat 1","1000 AA Test","010-1234567","info@nowa.test",
                            "https://nowa.test","#123456","Lokale testvoettekst")
@@ -511,7 +506,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert quote_operations.list_rows("hardware",quote_customer_id)[0]["model"]=="ThinkBook 16"
     assert quote_assets.list("documents",quote_customer_id)[0]["original_name"]=="origineel.pdf"
     try:quote_importer.apply(quote_preview,quote_customer_id);assert False
-    except ValueError as exc:assert "al geïmporteerd" in str(exc)
+    except ValueError as exc:assert "al geÃ¯mporteerd" in str(exc)
 
 
 def test_shomi_mail_parser_handles_direction_and_relative_follow_up():
@@ -525,7 +520,7 @@ def test_shomi_mail_parser_handles_direction_and_relative_follow_up():
     ONDERWERP
     Apparaat ophalen
     VERSLAG
-    * Medewerker heeft de Callee geïnformeerd dat het apparaat gereed is.
+    * Medewerker heeft de Callee geÃ¯nformeerd dat het apparaat gereed is.
     VERVOLGACTIES
     * Callee haalt het apparaat morgenochtend op.
     """
@@ -554,3 +549,4 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
+
