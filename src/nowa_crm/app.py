@@ -9,10 +9,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog
 
-from nowa_crm.core.database import Database
+from nowa_crm.core.database_factory import active_database
 from nowa_crm.core.auth import AuthService
 from nowa_crm.core.events import EventBus
-from nowa_crm.core.paths import data_dir, database_path
+from nowa_crm.core.paths import data_dir
 from nowa_crm.modules.customers.service import CustomerService
 from nowa_crm.modules.proposals.service import ProposalService
 from nowa_crm.modules.vault.service import VaultService
@@ -24,6 +24,7 @@ from nowa_crm.ui.main_window import MainWindow
 from nowa_crm.ui.login import LoginDialog, SetupDialog
 from nowa_crm.ui.theme import THEME
 from nowa_crm.ui.icons import app_icon
+from nowa_crm.modules.multiuser.service import MultiUserService
 
 
 def _configure_packaged_certificates() -> None:
@@ -46,11 +47,15 @@ def _configure_packaged_certificates() -> None:
 
 
 def build_services(session=None):
-    db = Database(database_path()); db.migrate(); events = EventBus()
+    db = active_database(); db.migrate(); events = EventBus()
     actor = session.username if session else getpass.getuser()
+    vault_key=data_dir() / ("central-vault.key" if getattr(db,"is_remote",False) else "vault.key")
+    if getattr(db,"is_remote",False):
+        key=db.vault_key()
+        if not vault_key.exists() or vault_key.read_bytes()!=key:vault_key.write_bytes(key)
     customers=CustomerService(db,events); proposals=ProposalService(db)
     workspace=WorkspaceService(db,proposals,actor)
-    return db, customers, proposals, VaultService(db, data_dir() / "vault.key", actor, session), OperationsService(db), workspace, MailService(db,actor), TelephonyService(db,workspace,actor)
+    return db, customers, proposals, VaultService(db, vault_key, actor, session), OperationsService(db), workspace, MailService(db,actor), TelephonyService(db,workspace,actor)
 
 
 def _startup_phone(arguments: list[str]) -> str:
@@ -67,7 +72,19 @@ def main() -> int:
     _configure_packaged_certificates()
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv); app.setApplicationName("NOWA CRM"); app.setWindowIcon(app_icon()); app.setStyleSheet(THEME)
-    db, _, _, _, _, _, _, _ = build_services(); auth=AuthService(db)
+    try:db, _, _, _, _, _, _, _ = build_services()
+    except ConnectionError as exc:
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(None,"Centrale server niet bereikbaar",
+            f"{exc}\n\nStart de servercomputer of herstel in multiuser.json tijdelijk mode naar local.")
+        return 1
+    multiuser=MultiUserService(db);server_settings=multiuser.settings()
+    if not getattr(db,"is_remote",False) and server_settings.get("server_enabled"):
+        try:multiuser.start_server("0.0.0.0",server_settings["port"],server_settings["access_key"])
+        except OSError as exc:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(None,"Centrale server",f"De centrale databaseservice kon niet starten:\n{exc}")
+    auth=AuthService(db)
     if not auth.has_users() and SetupDialog(auth).exec()!=QDialog.Accepted: return 0
     login=LoginDialog(auth)
     if login.exec()!=QDialog.Accepted or not login.session: return 0
@@ -79,3 +96,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
