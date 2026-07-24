@@ -38,6 +38,8 @@ def translate_schema(script: str) -> str:
     result = re.sub(r"\bAUTOINCREMENT\b", "", result, flags=re.I)
     result = re.sub(r"\bBLOB\b", "BYTEA", result, flags=re.I)
     result = re.sub(r"\bREAL\b", "DOUBLE PRECISION", result, flags=re.I)
+    result = re.sub(r"(\bALTER\s+TABLE\s+[A-Za-z_][\w]*\s+ADD\s+COLUMN)\s+(?!IF\s+NOT\s+EXISTS)",
+                    r"\1 IF NOT EXISTS ", result, flags=re.I)
     return translate_sql(result)
 
 
@@ -169,7 +171,7 @@ class PostgresDatabase:
             base_ready=conn.execute("""SELECT COUNT(*) count FROM information_schema.tables
                 WHERE table_schema='public' AND table_name IN
                 ('proposals','proposal_templates','proposal_lines')""").fetchone()["count"]==3
-            if base_ready:
+            if base_ready and 15 in current:
                 conn.execute("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS introduction TEXT NOT NULL DEFAULT ''")
                 conn.execute("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS terms TEXT NOT NULL DEFAULT ''")
                 conn.execute("ALTER TABLE proposal_templates ADD COLUMN IF NOT EXISTS introduction TEXT NOT NULL DEFAULT ''")
