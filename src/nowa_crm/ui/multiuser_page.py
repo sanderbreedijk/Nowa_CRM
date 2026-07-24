@@ -67,6 +67,14 @@ class MultiUserPage(QWidget):
         pg_migrate=QPushButton("Gegevens veilig overzetten");pg_migrate.setObjectName("Primary");pg_migrate.clicked.connect(self.migrate_postgres)
         pg_activate=QPushButton("PostgreSQL activeren");pg_activate.clicked.connect(self.activate_postgres)
         pg_buttons.addWidget(pg_save);pg_buttons.addWidget(pg_migrate);pg_buttons.addWidget(pg_activate);pg.addRow(pg_buttons)
+        self.sqlite_source=QLineEdit();self.sqlite_source.setReadOnly(True)
+        self.sqlite_source.setPlaceholderText("Kies de oude nowa.sqlite3")
+        choose_sqlite=QPushButton("Database kiezen");choose_sqlite.clicked.connect(self.choose_sqlite)
+        source_row=QHBoxLayout();source_row.addWidget(self.sqlite_source,1);source_row.addWidget(choose_sqlite)
+        pg.addRow("Handmatige import",source_row)
+        import_sqlite=QPushButton("Gekozen SQLite-database importeren")
+        import_sqlite.setObjectName("Primary");import_sqlite.clicked.connect(self.import_sqlite)
+        pg.addRow(import_sqlite)
         root.insertWidget(root.count()-1,postgres)
         root.addWidget(users,1);self.reload()
 
@@ -180,6 +188,35 @@ class MultiUserPage(QWidget):
                 f"Lokale herstelkopie:\n{result['backup']}\n\nKlik nu op PostgreSQL activeren.")
         except Exception as exc:QMessageBox.critical(self,"Migratie niet geactiveerd",
             f"{exc}\n\nDe lokale database is actief gebleven.")
+
+    def choose_sqlite(self):
+        default=str(self.service.root/"nowa.sqlite3")
+        filename,_=QFileDialog.getOpenFileName(self,"Oude NOWA CRM-database kiezen",default,
+                                                "SQLite-databases (*.sqlite3 *.sqlite *.db)")
+        if filename:self.sqlite_source.setText(filename)
+
+    def import_sqlite(self):
+        source=self.sqlite_source.text().strip()
+        if not source:QMessageBox.information(self,"Handmatige import","Kies eerst de oude SQLite-database.");return
+        if not self.save_postgres():return
+        if QMessageBox.question(self,"Handmatige database-import",
+            "De gekozen oude database wordt als bron gebruikt.\n\n"
+            "Bestaande centrale gebruikers en hun wachtwoorden blijven behouden. "
+            "De PostgreSQL-gegevens worden gecontroleerd opnieuw gevuld en de bron wordt niet verwijderd.\n\n"
+            "Doorgaan?")!=QMessageBox.StandardButton.Yes:return
+        try:
+            result=self.service.import_sqlite_to_postgres(source)
+            self.pg_status.setText(f"Handmatige import gecontroleerd · {result['tables']} tabellen · {result['rows']} rijen")
+            QMessageBox.information(self,"Handmatige import voltooid",
+                f"De oude database is volledig gecontroleerd overgezet.\n\n"
+                f"Bron: {result['source']}\nKlanten: {result['source_customers']}\n"
+                f"Tabellen: {result['tables']}\nRijen: {result['rows']}\n"
+                f"Centrale gebruikers behouden: {result['central_users_preserved']}\n\n"
+                f"Lokale herstelkopie:\n{result['backup']}\n\n"
+                "Klik nu op PostgreSQL activeren.")
+        except Exception as exc:
+            QMessageBox.critical(self,"Handmatige import niet uitgevoerd",
+                f"{exc}\n\nDe gekozen SQLite-database is niet verwijderd en PostgreSQL is niet geactiveerd.")
 
     def activate_postgres(self):
         try:
