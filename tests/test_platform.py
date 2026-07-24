@@ -419,6 +419,11 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
         package.writestr("NOWA_CRM/_internal/runtime.dll",b"runtime")
     prepared=UpdateService().prepare_local_package(update_zip)
     assert (prepared/"NOWA_CRM.exe").read_bytes()==b"test-app"
+    certificate_zip=tmp_path/"certificaat-runtime.zip"
+    with zipfile.ZipFile(certificate_zip,"w") as package:
+        package.writestr("NOWA_CRM/NOWA_CRM.exe",b"test-app")
+        package.writestr("NOWA_CRM/_internal/certifi/cacert.pem",b"openbare-ca-bundel")
+    assert UpdateService().prepare_local_package(certificate_zip).name=="NOWA_CRM"
     unsafe_zip=tmp_path/"onveilig.zip"
     with zipfile.ZipFile(unsafe_zip,"w") as package:
         package.writestr("NOWA_CRM/data/klanten.sqlite3",b"verboden")
