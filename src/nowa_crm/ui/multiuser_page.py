@@ -3,14 +3,17 @@ from __future__ import annotations
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox,QComboBox,QFileDialog,QFormLayout,QFrame,QHBoxLayout,QInputDialog,
-                               QLabel,QLineEdit,QMessageBox,QPushButton,QSpinBox,QTableWidget,QTableWidgetItem,
+                               QLabel,QLineEdit,QMessageBox,QPushButton,QScrollArea,QSpinBox,QTableWidget,QTableWidgetItem,
                                QVBoxLayout,QWidget)
 
 
 class MultiUserPage(QWidget):
     def __init__(self, service, parent=None):
         super().__init__(parent);self.service=service
-        root=QVBoxLayout(self);root.setContentsMargins(28,24,28,24);root.setSpacing(14)
+        outer=QVBoxLayout(self);outer.setContentsMargins(0,0,0,0)
+        scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content=QWidget();root=QVBoxLayout(content);root.setContentsMargins(28,24,28,24);root.setSpacing(14)
+        scroll.setWidget(content);outer.addWidget(scroll)
         title=QLabel("Multi-user en centrale server");title.setObjectName("Title");root.addWidget(title)
         sub=QLabel("Laat één vaste computer de centrale database beheren en verbind andere werkplekken veilig met persoonlijke aanmeldingen.")
         sub.setObjectName("Subtitle");sub.setWordWrap(True);root.addWidget(sub)
