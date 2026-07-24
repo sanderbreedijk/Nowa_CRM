@@ -20,15 +20,13 @@ class MultiUserService:
         self.db=db;self.root=root or data_dir();self.config_path=self.root/"multiuser.json";self.auth=AuthService(db)
 
     def settings(self) -> dict:
-        defaults={"mode":"local","host":"","port":5088,"database":"nowa_crm","tls":True,"shared_documents":"",
-                  "access_key":"","server_enabled":False}
+        defaults={"mode":"local","host":"","port":5088,"database":"nowa_crm","tls":True,"shared_documents":"","access_key":"","server_enabled":False}
         if not self.config_path.exists():return defaults
         try:defaults.update(json.loads(self.config_path.read_text(encoding="utf-8")))
         except (OSError,ValueError,TypeError):pass
         return defaults
 
-    def save(self, host: str, port: int, database: str, tls: bool, shared_documents: str = "",
-             access_key: str = "", server_enabled: bool = False, mode: str = "server-ready") -> None:
+    def save(self, host: str, port: int, database: str, tls: bool, shared_documents: str = "", access_key: str = "", server_enabled: bool = False, mode: str = "server-ready") -> None:
         if not host.strip():raise ValueError("Vul de naam of het IP-adres van de CRM-server in.")
         if not 1<=int(port)<=65535:raise ValueError("De serverpoort is ongeldig.")
         if not database.strip():raise ValueError("Vul de naam van de centrale database in.")
@@ -36,7 +34,7 @@ class MultiUserService:
         if folder and not folder.exists():raise ValueError("De gedeelde documentenmap bestaat niet.")
         current=self.settings();key=access_key.strip() or current.get("access_key") or generate_access_key()
         value={"mode":mode,"host":host.strip(),"port":int(port),"database":database.strip(),
-               "tls":bool(tls),"shared_documents":str(folder) if folder else "","access_key":key,
+               "tls":True,"shared_documents":str(folder) if folder else "","access_key":key,
                "server_enabled":bool(server_enabled),"updated_at":datetime.now().isoformat(timespec="seconds")}
         self.root.mkdir(parents=True,exist_ok=True);self.config_path.write_text(json.dumps(value,indent=2,ensure_ascii=False),encoding="utf-8")
 
@@ -53,7 +51,7 @@ class MultiUserService:
 
     def start_server(self, host: str, port: int, access_key: str) -> dict:
         global _SERVER
-        if getattr(self.db,"is_remote",False):raise ValueError("Een werkplek in centrale modus kan niet zelf als server optreden.")
+        if getattr(self.db,"is_remote",False):raise ValueError("Een centrale werkplek kan niet zelf als server optreden.")
         if _SERVER:_SERVER.stop()
         _SERVER=CentralDatabaseServer(self.db,host,int(port),access_key);_SERVER.start()
         return {"running":True,"host":host,"port":int(port)}
@@ -77,8 +75,7 @@ class MultiUserService:
         return {**result,"snapshot":snapshot["backup"]}
 
     def readiness(self) -> dict:
-        settings=self.settings();remote=bool(getattr(self.db,"is_remote",False));path=self.db.path if remote else self.db.path.resolve()
-        network=False if remote else self._network_path(path)
+        settings=self.settings();remote=bool(getattr(self.db,"is_remote",False));path=self.db.path if remote else self.db.path.resolve();network=False if remote else self._network_path(path)
         with self.db.transaction() as conn:
             tables=int(conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0])
             users=int(conn.execute("SELECT COUNT(*) FROM app_users WHERE active=1").fetchone()[0])
@@ -126,4 +123,3 @@ class MultiUserService:
             root=path.drive+"\\"
             return bool(root and ctypes.windll.kernel32.GetDriveTypeW(root)==4)
         except (AttributeError,OSError):return False
-
