@@ -18,6 +18,7 @@ API_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 FORBIDDEN_NAMES = {"vault.key", ".env"}
 FORBIDDEN_SUFFIXES = {".sqlite3", ".db", ".pem", ".pfx"}
+ALLOWED_RUNTIME_CERTIFICATES = {"cacert.pem"}
 MAX_ARCHIVE_BYTES = 500 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_ARCHIVE_FILES = 10_000
@@ -102,7 +103,12 @@ class UpdateService:
                 if path.is_absolute() or ".." in path.parts:
                     raise RuntimeError("Update bevat een ongeldig bestandspad")
                 name = path.name.lower()
-                if name in FORBIDDEN_NAMES or any(name.endswith(suffix) for suffix in FORBIDDEN_SUFFIXES):
+                trusted_runtime_certificate = (
+                    name in ALLOWED_RUNTIME_CERTIFICATES
+                    and "_internal" in {part.lower() for part in path.parts}
+                    and path.parent.name.lower() == "certifi"
+                )
+                if (name in FORBIDDEN_NAMES or any(name.endswith(suffix) for suffix in FORBIDDEN_SUFFIXES)) and not trusted_runtime_certificate:
                     raise RuntimeError(f"Update bevat verboden gegevensbestand: {path.name}")
             package.extractall(destination)
         candidates = list(destination.rglob("NOWA_CRM.exe"))
