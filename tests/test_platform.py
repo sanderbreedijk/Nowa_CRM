@@ -38,6 +38,7 @@ from nowa_crm.integrations.coligo import ColigoAdapter
 from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, UpdateService, _version_tuple
 from nowa_crm.core.backup import BackupService
+from nowa_crm.modules.multiuser.service import MultiUserService
 
 
 def test_customer_and_vault_roundtrip(tmp_path: Path):
@@ -553,6 +554,22 @@ def test_shomi_mail_parser_handles_direction_and_relative_follow_up():
     assert parsed["action_points"][0]["reminder_at"]=="2026-03-07T09:00"
     assert parsed["action_points"][0]["duration_minutes"]==60
     assert parsed["action_points"][0]["is_concrete"] is True
+
+
+def test_multiuser_readiness_and_safe_migration_snapshot(tmp_path: Path):
+    db=Database(tmp_path/"nowa.sqlite3");db.migrate();auth=AuthService(db)
+    auth.create_user("beheerder","Beheerder","veilig-wachtwoord","administrator")
+    service=MultiUserService(db,tmp_path)
+    status=service.readiness()
+    assert status["network_path"] is False
+    assert "minimaal een tweede" in " ".join(status["issues"])
+    service.create_user("servicedesk","Servicedesk","tijdelijk-wachtwoord","service")
+    service.save("crm-server",5432,"nowa_crm",True)
+    assert service.settings()["mode"]=="server-ready"
+    assert service.readiness()["ready"] is True
+    snapshot=service.migration_snapshot()
+    assert snapshot["backup"].exists() and snapshot["manifest"].exists()
+    assert "nooit uploaden naar GitHub" in snapshot["manifest"].read_text(encoding="utf-8")
 
 
 def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
