@@ -16,8 +16,9 @@ def database_path() -> Path:
     return data_dir() / "nowa.sqlite3"
 
 
+
 def content_dir() -> Path:
-    """Gedeelde documentopslag, zonder database of instellingen naar het netwerk te verplaatsen."""
+    """Gedeelde documentopslag zonder database of instellingen op het netwerk."""
     local=data_dir();config=local/"multiuser.json"
     if config.exists():
         try:
@@ -27,4 +28,3 @@ def content_dir() -> Path:
         except (OSError,ValueError,TypeError):
             pass
     return local
-
