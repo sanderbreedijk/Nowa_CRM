@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import getpass
+import os
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
@@ -24,6 +26,25 @@ from nowa_crm.ui.theme import THEME
 from nowa_crm.ui.icons import app_icon
 
 
+def _configure_packaged_certificates() -> None:
+    """Gebruik de hernoemde openbare CA-bundel zonder privé-certificaten toe te staan."""
+    if not getattr(sys,"frozen",False):
+        return
+    root=Path(getattr(sys,"_MEIPASS",Path(sys.executable).resolve().parent))
+    certificate=root/"certifi"/"cacert.crt"
+    if not certificate.is_file():
+        return
+    os.environ["SSL_CERT_FILE"]=str(certificate)
+    os.environ["REQUESTS_CA_BUNDLE"]=str(certificate)
+    try:
+        import certifi
+        import certifi.core
+        certifi.where=lambda: str(certificate)
+        certifi.core.where=lambda: str(certificate)
+    except ImportError:
+        pass
+
+
 def build_services(session=None):
     db = Database(database_path()); db.migrate(); events = EventBus()
     actor = session.username if session else getpass.getuser()
@@ -43,6 +64,7 @@ def _startup_phone(arguments: list[str]) -> str:
 
 
 def main() -> int:
+    _configure_packaged_certificates()
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv); app.setApplicationName("NOWA CRM"); app.setWindowIcon(app_icon()); app.setStyleSheet(THEME)
     db, _, _, _, _, _, _, _ = build_services(); auth=AuthService(db)

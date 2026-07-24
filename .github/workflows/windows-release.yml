@@ -1,3 +1,4 @@
+
 name: Test en bouw NOWA CRM
 
 on:
@@ -47,6 +48,14 @@ jobs:
             --icon build/nowa_crm_app.ico `
             --add-data "src/nowa_crm/assets;nowa_crm/assets" `
             src/nowa_crm/app.py
+          Get-ChildItem -Recurse dist/NOWA_CRM -File -Filter cacert.pem |
+            Rename-Item -NewName 'cacert.crt'
+          if (Get-ChildItem -Recurse dist/NOWA_CRM -File -Filter cacert.pem) {
+            throw 'Oude updater blokkeert cacert.pem; hernoemen is mislukt.'
+          }
+          if (-not (Get-ChildItem -Recurse dist/NOWA_CRM -File -Filter cacert.crt)) {
+            throw 'Openbare CA-bundel ontbreekt na het bouwen.'
+          }
           $forbidden = Get-ChildItem -Recurse dist/NOWA_CRM -File |
             Where-Object { $_.Name -match '\.(sqlite3|db|token|key)$' -or $_.Name -match '^(client_secret|credentials).*\.json$' }
           if ($forbidden) { throw 'Release bevat gebruikersdata of een kluissleutel.' }
@@ -78,3 +87,4 @@ jobs:
             gh release create $tag --target "${{ github.sha }}" --generate-notes --title "NOWA CRM $tag"
           }
           gh release upload $tag NOWA_CRM-Windows.zip --clobber
+
