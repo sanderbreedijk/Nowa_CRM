@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS mail_attachments (
 );
 INSERT OR IGNORE INTO mail_templates(name,subject_template,body_template,category) VALUES
 ('Algemene klantmail','Betreft: {klantnaam}','Beste {contactnaam},\n\n\n\nMet vriendelijke groet,\nNOWA Solutions','Algemeen'),
-('Offerte verzenden','Offerte {offertenummer} â€“ {offertetitel}','Beste {contactnaam},\n\nIn de bijlage ontvangt u onze offerte {offertenummer} voor {offertetitel}.\n\nHeeft u vragen, dan lichten wij de offerte graag toe.\n\nMet vriendelijke groet,\nNOWA Solutions','Offerte'),
+('Offerte verzenden','Offerte {offertenummer} – {offertetitel}','Beste {contactnaam},\n\nIn de bijlage ontvangt u onze offerte {offertenummer} voor {offertetitel}.\n\nHeeft u vragen, dan lichten wij de offerte graag toe.\n\nMet vriendelijke groet,\nNOWA Solutions','Offerte'),
 ('Voortgang project','Voortgang IT-project {klantnaam}','Beste {contactnaam},\n\nHierbij ontvangt u de actuele voortgang van het IT-project.\n\n{voortgang}\n\nMet vriendelijke groet,\nNOWA Solutions','Project');
 """
 
@@ -447,7 +447,50 @@ CREATE TABLE IF NOT EXISTS ticket_time_entries (
     ticket_id INTEGER NOT NULL REFERENCES service_tickets(id) ON DELETE CASCADE,
     minutes INTEGER NOT NULL CHECK(minutes>0),
     description TEXT NOT NULL DEFAULT '',
-    created_by …418 tokens truncated…ion_hours INTEGER NOT NULL
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+REPORTING_140_SCHEMA = """
+CREATE TABLE IF NOT EXISTS project_reports (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    report_type TEXT NOT NULL DEFAULT 'Voortgang',
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    progress_percent INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_project_reports_customer ON project_reports(customer_id,created_at DESC);
+"""
+
+DOCUMENTS_180_SCHEMA = """
+CREATE TABLE IF NOT EXISTS organization_profile (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    company_name TEXT NOT NULL DEFAULT 'NOWA Solutions',
+    address TEXT NOT NULL DEFAULT '',
+    postal_city TEXT NOT NULL DEFAULT '',
+    phone TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    website TEXT NOT NULL DEFAULT '',
+    primary_color TEXT NOT NULL DEFAULT '#0B2342',
+    footer_text TEXT NOT NULL DEFAULT 'NOWA Solutions',
+    logo_path TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO organization_profile(id,company_name,primary_color,footer_text)
+VALUES(1,'NOWA Solutions','#0B2342','NOWA Solutions');
+"""
+
+SERVICEDESK_190_SCHEMA = """
+ALTER TABLE service_tickets ADD COLUMN source_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE service_tickets ADD COLUMN source_id INTEGER;
+CREATE TABLE IF NOT EXISTS sla_policies (
+    priority TEXT PRIMARY KEY,
+    response_hours INTEGER NOT NULL,
+    resolution_hours INTEGER NOT NULL
 );
 INSERT OR IGNORE INTO sla_policies(priority,response_hours,resolution_hours) VALUES
 ('Laag',8,72),('Normaal',4,24),('Hoog',2,8),('Kritiek',1,4);
@@ -828,4 +871,3 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (33, GOOGLE_CALENDAR_332_SCHEMA), (34, SHOMI_PLANNING_333_SCHEMA),
     (35, SHOMI_WORKBENCH_334_SCHEMA)
 )
-
