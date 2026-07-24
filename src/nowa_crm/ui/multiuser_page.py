@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox,QComboBox,QFileDialog,QFormLayout,QFrame,QHBoxLayout,QInputDialog,
+from PySide6.QtWidgets import (QCheckBox,QFileDialog,QFormLayout,QFrame,QHBoxLayout,QInputDialog,
                                QLabel,QLineEdit,QMessageBox,QPushButton,QSpinBox,QTableWidget,QTableWidgetItem,
                                QVBoxLayout,QWidget)
 
@@ -12,34 +12,53 @@ class MultiUserPage(QWidget):
         super().__init__(parent);self.service=service
         root=QVBoxLayout(self);root.setContentsMargins(28,24,28,24);root.setSpacing(14)
         title=QLabel("Multi-user en centrale server");title.setObjectName("Title");root.addWidget(title)
-        sub=QLabel("Bereid NOWA CRM veilig voor op meerdere computers. De huidige SQLite-database blijft lokaal totdat de centrale servermigratie wordt uitgevoerd.")
+        sub=QLabel("Laat één vaste computer de centrale database beheren en verbind andere werkplekken veilig met persoonlijke aanmeldingen.")
         sub.setObjectName("Subtitle");sub.setWordWrap(True);root.addWidget(sub)
+
         server=QFrame();server.setObjectName("Card");form=QFormLayout(server)
         heading=QLabel("Centrale CRM-server");heading.setObjectName("SectionTitle");form.addRow(heading)
-        self.host=QLineEdit();self.host.setPlaceholderText("Bijvoorbeeld crm-server of 192.168.1.20")
-        self.port=QSpinBox();self.port.setRange(1,65535);self.port.setValue(5432);self.database=QLineEdit("nowa_crm")
-        self.tls=QCheckBox("Versleutelde TLS-verbinding verplicht");self.tls.setChecked(True)
+        self.host=QLineEdit();self.host.setPlaceholderText("Naam of IP-adres van de vaste servercomputer")
+        self.port=QSpinBox();self.port.setRange(1,65535);self.port.setValue(5088)
+        self.database=QLineEdit("nowa_crm")
+        self.access_key=QLineEdit();self.access_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.access_key.setPlaceholderText("Dezelfde sleutel op server en alle werkplekken")
+        self.encryption=QCheckBox("Applicatieverkeer volledig versleutelen");self.encryption.setChecked(True);self.encryption.setEnabled(False)
+        self.server_enabled=QCheckBox("Deze computer is de centrale server")
         self.documents=QLineEdit();choose=QPushButton("Map kiezen");choose.clicked.connect(self.choose_documents)
         docs=QHBoxLayout();docs.addWidget(self.documents,1);docs.addWidget(choose)
         self.server_status=QLabel();self.server_status.setWordWrap(True)
-        form.addRow("Server",self.host);form.addRow("Poort",self.port);form.addRow("Database",self.database);form.addRow(self.tls)
+        form.addRow("Servernaam / IP",self.host);form.addRow("Poort",self.port);form.addRow("Database",self.database)
+        form.addRow("Toegangssleutel",self.access_key);form.addRow(self.encryption);form.addRow(self.server_enabled)
         form.addRow("Gedeelde documenten",docs);form.addRow("Status",self.server_status)
-        row=QHBoxLayout();save=QPushButton("Profiel opslaan");save.setObjectName("Primary");save.clicked.connect(self.save)
-        test=QPushButton("Verbinding testen");test.clicked.connect(self.test);snapshot=QPushButton("Migratiekopie maken");snapshot.clicked.connect(self.snapshot)
-        row.addWidget(save);row.addWidget(test);row.addWidget(snapshot);form.addRow(row);root.addWidget(server)
+
+        row=QHBoxLayout();save=QPushButton("Instellingen opslaan");save.setObjectName("Primary");save.clicked.connect(self.save)
+        start=QPushButton("Server starten");start.clicked.connect(self.start_server)
+        test=QPushButton("Verbinding testen");test.clicked.connect(self.test)
+        row.addWidget(save);row.addWidget(start);row.addWidget(test);form.addRow(row)
+        migration=QHBoxLayout();copy=QPushButton("Veilige migratiekopie");copy.clicked.connect(self.snapshot)
+        transfer=QPushButton("Lokale gegevens naar server");transfer.clicked.connect(self.migrate)
+        activate=QPushButton("Deze werkplek centraal zetten");activate.setObjectName("Primary");activate.clicked.connect(self.activate)
+        local=QPushButton("Lokale modus herstellen");local.clicked.connect(self.restore_local)
+        migration.addWidget(copy);migration.addWidget(transfer);migration.addWidget(activate);migration.addWidget(local)
+        form.addRow(migration);root.addWidget(server)
+
         users=QFrame();users.setObjectName("Card");box=QVBoxLayout(users);head=QHBoxLayout()
         label=QLabel("Persoonlijke gebruikers en rollen");label.setObjectName("SectionTitle");head.addWidget(label);head.addStretch()
-        add=QPushButton("+ Gebruiker");add.clicked.connect(self.add_user);toggle=QPushButton("In-/uitschakelen");toggle.clicked.connect(self.toggle_user)
+        add=QPushButton("+ Gebruiker");add.clicked.connect(self.add_user)
+        toggle=QPushButton("In-/uitschakelen");toggle.clicked.connect(self.toggle_user)
         head.addWidget(add);head.addWidget(toggle);box.addLayout(head)
-        self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(["Gebruikersnaam","Naam","Rol","Actief","Laatst aangemeld","ID"]);self.table.setColumnHidden(5,True)
-        self.table.horizontalHeader().setStretchLastSection(True);box.addWidget(self.table);root.addWidget(users,1);self.reload()
+        self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(["Gebruikersnaam","Naam","Rol","Actief","Laatst aangemeld","ID"])
+        self.table.setColumnHidden(5,True);self.table.horizontalHeader().setStretchLastSection(True);box.addWidget(self.table)
+        root.addWidget(users,1);self.reload()
 
     def reload(self):
         settings=self.service.settings();self.host.setText(settings["host"]);self.port.setValue(int(settings["port"]))
-        self.database.setText(settings["database"]);self.tls.setChecked(bool(settings["tls"]));self.documents.setText(settings["shared_documents"])
-        status=self.service.readiness();state="Gereed voor servermigratie" if status["ready"] else "Nog niet gereed"
-        details="\n".join("• "+item for item in status["issues"]) or "• Lokale broncontrole geslaagd"
-        self.server_status.setText(f"{state} · {status['customers']} klanten · {status['users']} gebruikers\n{details}")
+        self.database.setText(settings["database"]);self.documents.setText(settings["shared_documents"])
+        self.access_key.setText(settings.get("access_key",""));self.server_enabled.setChecked(bool(settings.get("server_enabled",False)))
+        status=self.service.readiness();state="Gereed" if status["ready"] else "Aandacht nodig"
+        details="\n".join("• "+item for item in status["issues"]) or "• Databasecontrole geslaagd"
+        mode="Centrale database actief" if status.get("remote") else ("Servercomputer" if settings.get("server_enabled") else "Lokale werkplek")
+        self.server_status.setText(f"{mode} · {state} · {status['customers']} klanten · {status['users']} gebruikers\n{details}")
         rows=self.service.users();self.table.setRowCount(len(rows))
         for r,item in enumerate(rows):
             values=(item["username"],item["display_name"],self.service.ROLES.get(item["role"],item["role"]),
@@ -51,12 +70,45 @@ class MultiUserPage(QWidget):
         if folder:self.documents.setText(folder)
 
     def save(self):
-        try:self.service.save(self.host.text(),self.port.value(),self.database.text(),self.tls.isChecked(),self.documents.text());self.reload()
-        except Exception as exc:QMessageBox.warning(self,"Serverprofiel",str(exc))
+        try:
+            mode=self.service.settings().get("mode","local")
+            self.service.save(self.host.text(),self.port.value(),self.database.text(),True,self.documents.text(),
+                              self.access_key.text(),self.server_enabled.isChecked(),mode);self.reload()
+            return True
+        except Exception as exc:QMessageBox.warning(self,"Serverinstellingen",str(exc));return False
 
     def test(self):
-        result=self.service.test_server(self.host.text(),self.port.value())
+        result=self.service.test_server(self.host.text(),self.port.value(),access_key=self.access_key.text())
         self.server_status.setText(result["detail"]);QMessageBox.information(self,"Verbindingstest",result["detail"])
+
+    def start_server(self):
+        if not self.save():return
+        try:
+            self.service.start_server("0.0.0.0",self.port.value(),self.access_key.text())
+            QMessageBox.information(self,"Centrale server",
+                f"De centrale database is actief op poort {self.port.value()}.\n\nLaat NOWA CRM op deze computer geopend.")
+        except Exception as exc:QMessageBox.warning(self,"Centrale server",str(exc))
+
+    def migrate(self):
+        if QMessageBox.question(self,"Gegevens overzetten",
+            "De huidige lokale database wordt veilig naar de centrale server gekopieerd.\n\n"
+            "Zorg dat andere gebruikers NOWA CRM hebben gesloten. Doorgaan?")!=QMessageBox.StandardButton.Yes:return
+        try:
+            result=self.service.migrate_to_server()
+            QMessageBox.information(self,"Migratie voltooid",
+                f"Alle lokale gegevens staan nu op de centrale server.\n\nLokale herstelkopie:\n{result['snapshot']}")
+        except Exception as exc:QMessageBox.warning(self,"Gegevens overzetten",str(exc))
+
+    def activate(self):
+        result=self.service.test_server(self.host.text(),self.port.value(),access_key=self.access_key.text())
+        if not result["reachable"]:QMessageBox.warning(self,"Centrale werkplek",result["detail"]);return
+        if not self.save():return
+        self.service.activate_client(True)
+        QMessageBox.information(self,"Centrale werkplek","Centrale modus is ingesteld. Sluit NOWA CRM en start het opnieuw.")
+
+    def restore_local(self):
+        self.service.activate_client(False)
+        QMessageBox.information(self,"Lokale werkplek","Lokale modus is hersteld. Start NOWA CRM opnieuw.")
 
     def snapshot(self):
         try:
@@ -82,3 +134,4 @@ class MultiUserPage(QWidget):
         if row<0:QMessageBox.information(self,"Gebruikers","Selecteer eerst een gebruiker.");return
         try:self.service.set_user_active(int(self.table.item(row,5).text()),self.table.item(row,3).text()!="Ja");self.reload()
         except Exception as exc:QMessageBox.warning(self,"Gebruikers",str(exc))
+
