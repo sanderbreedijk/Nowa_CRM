@@ -141,14 +141,25 @@ class IntegrationService:
                 conn.execute("""UPDATE call_events SET notes=CASE WHEN notes='' THEN ? ELSE notes||char(10)||char(10)||? END,
                     subject=CASE WHEN subject='' THEN ? ELSE subject END,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                     (summary,"Shomi: "+summary,shomi_subject,call_id))
-        created=0
+        created=0;appointments=0
         if call_data.get("customer_id"):
             for point in points[:10]:
+                if not point.get("is_concrete"):
+                    continue
                 self.telephony.workspace.add_action(call_data["customer_id"],point["title"],point.get("owner") or self.actor,
-                    point["due_date"],point["priority"],point.get("detail",""),"Opvolging",
-                    reminder_at=point.get("reminder_at",""),source_type="Shomi",source_id=analysis_id);created+=1
-        self.log("shomi","gespreksanalyse",f"{call_data['customer_name']} · {len(points)} actiepunten · {created} ingepland",True,"call",call_id)
-        return {"analysis_id":analysis_id,"call":self.telephony.get(call_id),"actions_created":created,"duplicate":False}
+                    point["due_date"],point["priority"],point.get("detail",""),"Afspraak",
+                    reminder_at=point.get("reminder_at",""),source_type="Shomi",source_id=analysis_id,
+                    duration_minutes=60);created+=1;appointments+=1
+        calendar_result=None
+        calendar=self.settings("google_calendar")
+        if appointments and calendar["enabled"] and self.google_calendar.connected():
+            try:calendar_result=self.sync_google_calendar()
+            except Exception as exc:self.log("google_calendar","automatische_planning_mislukt",str(exc),False,"call",call_id)
+        self.log("shomi","gespreksanalyse",
+            f"{call_data['customer_name']} · te beoordelen · {appointments} concrete afspraken van 60 minuten ingepland",
+            True,"call",call_id)
+        return {"analysis_id":analysis_id,"call":self.telephony.get(call_id),"actions_created":created,
+                "appointments_created":appointments,"calendar":calendar_result,"duplicate":False}
 
     def ingest_shomi_email(self, subject: str, body: str, message_id: str = "") -> dict:
         """Verwerk het vaste Shomi-mailbericht zonder het originele bericht buiten de lokale database te bewaren."""
@@ -264,29 +275,62 @@ class IntegrationService:
 
     @staticmethod
     def _shomi_email_point(line: str, started: datetime | None) -> dict:
-        base=started or datetime.now();lower=line.lower();reminder="";due=""
+        base=started or datetime.now();lower=line.lower();reminder="";due="";concrete=False
         match=re.search(r"binnen\s+(?:een\s+)?(half\s+uur|uur|\d+\s+minuten?)",lower)
         if match:
             token=match.group(1);minutes=30 if token=="half uur" else 60 if token=="uur" else int(re.search(r"\d+",token).group())
-            moment=base+timedelta(minutes=minutes);due=moment.date().isoformat();reminder=moment.isoformat(timespec="minutes")
+            moment=base+timedelta(minutes=minutes);due=moment.date().isoformat();reminder=moment.isoformat(timespec="minutes");concrete=True
         elif "morgenochtend" in lower or re.search(r"\bmorgen\b",lower):
-            moment=(base+timedelta(days=1)).replace(hour=9,minute=0);due=moment.date().isoformat();reminder=moment.isoformat(timespec="minutes")
+            clock=re.search(r"\b(?:om\s*)?(\d{1,2})[:.](\d{2})\b",lower)
+            hour,minute=(int(clock.group(1)),int(clock.group(2))) if clock else (9,0)
+            moment=(base+timedelta(days=1)).replace(hour=hour,minute=minute);due=moment.date().isoformat();reminder=moment.isoformat(timespec="minutes");concrete=True
         else:
             explicit=re.search(r"(?:per|op)\s+(\d{1,2})-(\d{1,2})(?:-(\d{2,4}))?",lower)
             if explicit:
                 day,month,year=explicit.groups();year=int(year) if year else base.year
                 if year<100:year+=2000
-                try:due=date(year,int(month),int(day)).isoformat()
+                try:
+                    target=date(year,int(month),int(day));due=target.isoformat();concrete=True
+                    clock=re.search(r"\b(?:om\s*)?(\d{1,2})[:.](\d{2})\b",lower[explicit.end():])
+                    if clock:
+                        moment=datetime.combine(target,datetime.min.time()).replace(hour=int(clock.group(1)),minute=int(clock.group(2)))
+                        reminder=moment.isoformat(timespec="minutes");concrete=True
                 except ValueError:pass
+            if not concrete:
+                weekdays={"maandag":0,"dinsdag":1,"woensdag":2,"donderdag":3,"vrijdag":4,"zaterdag":5,"zondag":6}
+                weekday=next((number for name,number in weekdays.items() if re.search(rf"\b{name}\b",lower)),None)
+                clock=re.search(r"\b(?:om\s*)?(\d{1,2})[:.](\d{2})\b",lower)
+                if weekday is not None and clock:
+                    days=(weekday-base.weekday())%7 or 7;target=(base+timedelta(days=days)).date()
+                    moment=datetime.combine(target,datetime.min.time()).replace(hour=int(clock.group(1)),minute=int(clock.group(2)))
+                    due=target.isoformat();reminder=moment.isoformat(timespec="minutes");concrete=True
         owner_match=re.match(r"(?:de\s+)?(.+?)(?:\s+\([^)]*\))?\s+(?:zal|gaat|haalt)\b",line,re.I)
         return {"title":line[:180],"detail":"Automatisch uit Shomi-vervolgactie",
                 "owner":owner_match.group(1).strip() if owner_match else "NOWA",
-                "due_date":due,"reminder_at":reminder,"priority":"Normaal"}
+                "due_date":due,"reminder_at":reminder,"duration_minutes":60,
+                "is_concrete":concrete,"priority":"Normaal"}
 
     def call_analysis(self, call_id: int) -> dict | None:
         with self.db.transaction() as conn:
             row=conn.execute("SELECT * FROM call_analyses WHERE call_id=? ORDER BY received_at DESC,id DESC LIMIT 1",(call_id,)).fetchone()
         return dict(row) if row else None
+
+    def pending_shomi_reviews(self) -> list[dict]:
+        with self.db.transaction() as conn:
+            return [dict(row) for row in conn.execute("""SELECT a.id,a.call_id,a.customer_id,
+                COALESCE(c.name,'Ongekoppeld') customer_name,COALESCE(e.subject,'Shomi-gesprek') subject,
+                a.summary,a.action_points_json,a.received_at
+                FROM call_analyses a
+                LEFT JOIN customers c ON c.id=a.customer_id
+                LEFT JOIN call_events e ON e.id=a.call_id
+                WHERE a.provider='shomi' AND a.review_status='Te beoordelen'
+                ORDER BY a.received_at,a.id""")]
+
+    def complete_shomi_review(self, analysis_id: int) -> None:
+        with self.db.transaction() as conn:
+            conn.execute("""UPDATE call_analyses SET review_status='Behandeld',
+                reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND provider='shomi'""",(analysis_id,))
+        self.log("shomi","beoordeling_afgerond",f"Shomi-analyse {analysis_id} behandeld",True,"call_analysis",analysis_id)
 
     def _shomi_points(self, analysis: dict, transcript: str) -> list[dict]:
         raw=analysis.get("action_points",analysis.get("actionPoints",analysis.get("actions",analysis.get("follow_up",[]))))
@@ -308,6 +352,8 @@ class IntegrationService:
             result.append({"title":title[:180],"detail":self._first(data,"detail","context","notes"),
                            "due_date":self._action_due(due),"reminder_at":self._first(data,"reminder_at","reminderAt"),
                            "owner":self._first(data,"owner","assignee"),
+                           "duration_minutes":int(data.get("duration_minutes",60) or 60),
+                           "is_concrete":bool(data.get("is_concrete") or self._first(data,"reminder_at","reminderAt")),
                            "priority":self._first(data,"priority","urgency").title() or "Normaal"})
         return result
 
