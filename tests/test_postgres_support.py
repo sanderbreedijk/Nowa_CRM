@@ -1,5 +1,7 @@
 from nowa_crm.core.database import PROPOSALS_230_SCHEMA
+from nowa_crm.core.database import Database
 from nowa_crm.core.postgres_database import PostgresDatabase,split_script, translate_schema, translate_sql
+from nowa_crm.modules.multiuser.service import MultiUserService
 
 
 def test_sqlite_queries_are_translated_for_postgres():
@@ -34,3 +36,13 @@ def test_postgres_migration_contains_catalog_recovery():
     import inspect
     source=inspect.getsource(PostgresDatabase.migrate)
     assert "CREATE TABLE IF NOT EXISTS product_catalog" in source
+
+
+def test_manual_import_rejects_unrelated_sqlite(tmp_path):
+    import sqlite3
+    source=tmp_path/"verkeerd.sqlite3"
+    with sqlite3.connect(source) as conn:conn.execute("CREATE TABLE anders(id INTEGER)")
+    service=MultiUserService(Database(tmp_path/"local.sqlite3"),tmp_path)
+    try:service.import_sqlite_to_postgres(source)
+    except ValueError as exc:assert "geen volledige NOWA CRM-database" in str(exc)
+    else:raise AssertionError("Ongeldige database werd geaccepteerd")
