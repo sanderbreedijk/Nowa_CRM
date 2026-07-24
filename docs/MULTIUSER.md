@@ -14,7 +14,8 @@ zelf in een gedeelde map en open het bestand nooit vanaf meerdere computers.
 7. Sta poort 5088 uitsluitend toe binnen het vertrouwde bedrijfsnetwerk.
 
 Laat NOWA CRM op deze computer actief. Bij volgende starts wordt de centrale
-databaseservice automatisch gestart.
+databaseservice automatisch gestart. Maak de serverpoort nooit rechtstreeks vanaf
+het internet bereikbaar; gebruik voor externe locaties eerst een beveiligde VPN.
 
 ## Extra werkplek
 
