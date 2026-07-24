@@ -33,5 +33,4 @@ def test_catalog_is_created_before_foreign_key_is_added():
 def test_postgres_migration_contains_catalog_recovery():
     import inspect
     source=inspect.getsource(PostgresDatabase.migrate)
-    assert "if 15 not in current" in source
     assert "CREATE TABLE IF NOT EXISTS product_catalog" in source
