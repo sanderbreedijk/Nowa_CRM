@@ -841,6 +841,13 @@ CREATE TABLE IF NOT EXISTS calendar_event_links (
 CREATE INDEX IF NOT EXISTS idx_calendar_event_links_external ON calendar_event_links(provider,external_event_id);
 """
 
+SHOMI_PLANNING_333_SCHEMA = """
+ALTER TABLE action_items ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 60;
+ALTER TABLE call_analyses ADD COLUMN review_status TEXT NOT NULL DEFAULT 'Te beoordelen';
+ALTER TABLE call_analyses ADD COLUMN reviewed_at TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_call_analyses_review ON call_analyses(provider,review_status,received_at);
+"""
+
 MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, SCHEMA), (2, AUTH_SCHEMA), (3, CRM_050_SCHEMA), (4, OPERATIONS_060_SCHEMA),
     (5, WORKSPACE_070_SCHEMA), (6, MAIL_080_SCHEMA), (7, TELEPHONY_090_SCHEMA),
@@ -854,5 +861,5 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
     (27, PROPOSAL_OPTIONS_318_SCHEMA), (28, PROPOSAL_APPROVAL_319_SCHEMA),
     (29, PROPOSAL_APPROVAL_320_SCHEMA), (30, PROPOSAL_APPROVAL_321_SCHEMA),
     (31, TELEPHONY_MULTI_LINK_326_SCHEMA), (32, SHOMI_ANALYSIS_332_SCHEMA),
-    (33, GOOGLE_CALENDAR_332_SCHEMA)
+    (33, GOOGLE_CALENDAR_332_SCHEMA), (34, SHOMI_PLANNING_333_SCHEMA)
 )
