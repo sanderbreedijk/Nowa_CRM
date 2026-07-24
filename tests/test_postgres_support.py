@@ -18,6 +18,8 @@ def test_schema_types_are_postgres_compatible():
     assert "BIGSERIAL PRIMARY KEY" in translated
     assert "BYTEA" in translated
     assert "DOUBLE PRECISION" in translated
+    assert "ADD COLUMN IF NOT EXISTS introduction" in translate_schema(
+        "ALTER TABLE proposals ADD COLUMN introduction TEXT NOT NULL DEFAULT '';")
 
 
 def test_migration_script_splitter_keeps_statements():
@@ -36,6 +38,7 @@ def test_postgres_migration_contains_catalog_recovery():
     import inspect
     source=inspect.getsource(PostgresDatabase.migrate)
     assert "CREATE TABLE IF NOT EXISTS product_catalog" in source
+    assert "if base_ready and 15 in current" in source
 
 
 def test_manual_import_rejects_unrelated_sqlite(tmp_path):
