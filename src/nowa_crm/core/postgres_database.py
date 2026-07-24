@@ -152,12 +152,32 @@ class PostgresDatabase:
             conn.execute("""CREATE TABLE IF NOT EXISTS nowa_system_secrets (
                 name TEXT PRIMARY KEY, value BYTEA NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
             current = {int(row["version"]) for row in conn.execute("SELECT version FROM schema_versions")}
+        # Herstel een database waarop v3.37.0 tijdens migratie 15 is gestopt.
+        # PostgreSQL vereist dat de doeltabel al bestaat voordat een FK wordt toegevoegd.
+        if 15 not in current:
+            with self.transaction() as conn:
+                conn.execute("""CREATE TABLE IF NOT EXISTS product_catalog (
+                    id BIGSERIAL PRIMARY KEY,
+                    code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Dienst',
+                    unit TEXT NOT NULL DEFAULT 'stuk',
+                    unit_price_cents INTEGER NOT NULL DEFAULT 0,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    notes TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )""")
         for version, script in MIGRATIONS:
             if version in current:
                 continue
             with self.transaction() as conn:
                 conn.executescript(script)
                 conn.execute("INSERT INTO schema_versions(version) VALUES(?)", (version,))
+        with self.transaction() as conn:
+            missing=[name for name in ("customers","proposals","proposal_lines","product_catalog","vault_entries")
+                     if not conn.execute("""SELECT 1 FROM information_schema.tables
+                         WHERE table_schema='public' AND table_name=?""",(name,)).fetchone()]
+        if missing:raise RuntimeError("PostgreSQL-schema onvolledig; ontbrekend: "+", ".join(missing))
 
     def health(self) -> dict:
         with self.transaction() as conn:
