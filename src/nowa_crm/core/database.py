@@ -539,7 +539,6 @@ ALTER TABLE proposals ADD COLUMN introduction TEXT NOT NULL DEFAULT '';
 ALTER TABLE proposals ADD COLUMN terms TEXT NOT NULL DEFAULT '';
 ALTER TABLE proposal_templates ADD COLUMN introduction TEXT NOT NULL DEFAULT '';
 ALTER TABLE proposal_templates ADD COLUMN terms TEXT NOT NULL DEFAULT '';
-ALTER TABLE proposal_lines ADD COLUMN catalog_item_id INTEGER REFERENCES product_catalog(id) ON DELETE SET NULL;
 CREATE TABLE IF NOT EXISTS product_catalog (
     id INTEGER PRIMARY KEY,
     code TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -551,6 +550,7 @@ CREATE TABLE IF NOT EXISTS product_catalog (
     notes TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE proposal_lines ADD COLUMN catalog_item_id INTEGER REFERENCES product_catalog(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_product_catalog_name ON product_catalog(active,category,name COLLATE NOCASE);
 INSERT OR IGNORE INTO product_catalog(code,name,category,unit,unit_price_cents) VALUES
 ('UUR-IT','IT-werkzaamheden','Uren','uur',9400),

@@ -1,3 +1,4 @@
+from nowa_crm.core.database import PROPOSALS_230_SCHEMA
 from nowa_crm.core.postgres_database import split_script, translate_schema, translate_sql
 
 
@@ -20,3 +21,10 @@ def test_schema_types_are_postgres_compatible():
 def test_migration_script_splitter_keeps_statements():
     result=split_script("CREATE TABLE x(id INTEGER);\nINSERT INTO x VALUES(1);")
     assert len(result)==2
+
+
+def test_catalog_is_created_before_foreign_key_is_added():
+    statements=split_script(PROPOSALS_230_SCHEMA)
+    create_index=next(i for i,value in enumerate(statements) if "CREATE TABLE IF NOT EXISTS product_catalog" in value)
+    foreign_key_index=next(i for i,value in enumerate(statements) if "ADD COLUMN catalog_item_id" in value)
+    assert create_index < foreign_key_index
