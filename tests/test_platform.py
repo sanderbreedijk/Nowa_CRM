@@ -2,7 +2,9 @@ from pathlib import Path
 import json
 import shutil
 import sqlite3
+import socket
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from email.message import EmailMessage
 
@@ -39,6 +41,8 @@ from nowa_crm.app import _startup_phone
 from nowa_crm.core.updater import ReleaseInfo, UpdateService, _version_tuple
 from nowa_crm.core.backup import BackupService
 from nowa_crm.modules.multiuser.service import MultiUserService
+from nowa_crm.core.central_server import CentralDatabaseServer
+from nowa_crm.core.remote_database import RemoteDatabase
 
 
 def test_customer_and_vault_roundtrip(tmp_path: Path):
@@ -282,58 +286,7 @@ def test_customer_and_vault_roundtrip(tmp_path: Path):
     assert 0<=snapshot["pulse"]["score"]<=100
     assert snapshot["pulse"]["label"] in ("Sterk","Aandacht","Kritiek")
     assert len(snapshot["pulse"]["briefing"])==4
-    assert any(item["kind"] == "Gesprek" for item in dossier.timeline(customer_id))
-    assert any(item["kind"] == "E-mail" for item in dossier.timeline(customer_id))
-    assert all(item["group"] in ("Communicatie","Service","Commercieel","Werk","Dossier") for item in dossier.timeline(customer_id))
-    assets = CustomerAssetsService(db,tmp_path/"documents")
-    location_id = assets.add_location(customer_id,"Hoofdkantoor","Coolsingel 1","Rotterdam")
-    assert assets.add_location(customer_id,"Hoofdkantoor") == location_id
-    software_id = assets.add_software(customer_id,"Exact Online","Exact","Cloud","NOWA ondersteunt")
-    document_source = tmp_path/"netwerkplan.txt"; document_source.write_text("Lokaal klantdocument",encoding="utf-8")
-    document_id = assets.add_document(customer_id,"Netwerkplan",document_source,"Techniek")
-    assert assets.document_path(document_id).read_text(encoding="utf-8") == "Lokaal klantdocument"
-    assert assets.add_document(customer_id,"Netwerkplan",document_source,"Techniek") == document_id
-    servicedesk = ServiceDeskService(db,"beheerder")
-    ticket_id = servicedesk.create(customer_id,"Internetverbinding valt uit","Sinds vanochtend instabiel","Storing","Kritiek","Sander","2026-08-01 12:00",contact_id)
-    assert servicedesk.get(ticket_id)["number"].startswith("TK-")
-    servicedesk.add_update(ticket_id,"Routerlogboeken onderzocht","In behandeling")
-    servicedesk.add_time(ticket_id,45,"Analyse en herstel")
-    service_stats=servicedesk.stats(customer_id)
-    assert service_stats["open"] == service_stats["critical"] == 1 and service_stats["minutes"] == 45
-    assert servicedesk.get(ticket_id)["sla_state"] in ("Binnen SLA","Dreigt","Overschreden")
-    servicedesk.close(ticket_id,"Defecte uplinkkabel vervangen")
-    assert servicedesk.get(ticket_id)["status"] == "Gesloten"
-    closed_stats=servicedesk.stats(customer_id)
-    assert closed_stats["open"] == closed_stats["critical"] == 0 and closed_stats["closed"] == 1
-    printer_ticket=servicedesk.create(customer_id,"Printer niet bereikbaar","Controle nodig","Support","Hoog","NOWA","2026-08-03",contact_id)
-    source_ticket=servicedesk.create_from_source(customer_id,"Servicevraag","Vanuit telefoongesprek","Telefoon",call_id,"Normaal")
-    assert servicedesk.get(source_ticket)["source_type"] == "Telefoon"
-    assert servicedesk.get(source_ticket)["sla_due_at"]
-    assert len(servicedesk.list(customer_id,priority="Normaal")) == 1
-    maintenance_id=servicedesk.add_maintenance(customer_id,"Firewallcontrole","Maandelijks","2026-08-15")
-    assert servicedesk.maintenance(customer_id)[0]["id"] == maintenance_id
-    reporting=ReportingService(db,"beheerder",mail,tmp_path/"rapportages")
-    report=reporting.compose(customer_id,"Sander")
-    assert "Voortgangsupdate IT-project" in report["subject"]
-    assert "Printer niet bereikbaar" in report["body"]
-    assert report["progress"] == 100
-    report_id=reporting.save(customer_id,"Sander")
-    assert reporting.get(report_id)["progress_percent"] == 100
-    report_path=reporting.export_text(customer_id,"Sander")
-    assert report_path.exists() and "Acties en aandachtspunten" in report_path.read_text(encoding="utf-8")
-    report_mail=reporting.create_mail_draft(customer_id,contact_id,"Sander")
-    assert mail.get(report_mail)["status"] == "concept"
-    integrations=IntegrationService(db,mail,telephony,"beheerder")
-    outlook_import=tmp_path/"outlook-import";outlook_import.mkdir()
-    imported_message=EmailMessage();imported_message["From"]="Sander <sander@example.nl>";imported_message["To"]="info@nowa.nl"
-    imported_message["Subject"]="Nieuwe Outlook servicevraag";imported_message["Message-ID"]="<nowa-test-240@example.nl>"
-    imported_message.set_content("Graag ondersteuning bij de printer.");imported_message.add_attachment(b"voorbeeld",maintype="text",subtype="plain",filename="vraag.txt")
-    (outlook_import/"servicevraag.eml").write_bytes(imported_message.as_bytes())
-    integrations.save("outlook",True,{"mode":"eml_folder","mailbox_address":"service@nowa.nl","folder_path":str(outlook_import),"token":"nooit-opslaan"})
-    integrations.save("coligo",True,{"mode":"local_ingest","line_name":"Hoofdlijn","password":"nooit-opslaan"})
-    assert integrations.settings("outlook")["settings"]["mailbox_address"] == "service@nowa.nl"
-    assert "token" not in integrations.settings("outlook")["settings"]
-    first_sync=integrations.sync_outlook_folder();second_sync=integrations.sync_outlook_folder()
+    assert any(item["kind"] == "Ge…1116 tokens truncated…nc=integrations.sync_outlook_folder()
     assert first_sync["imported"]==first_sync["linked"]==1 and second_sync["duplicates"]==1
     imported_mail=next(item for item in mail.list_messages(customer_id) if item["subject"]=="Nieuwe Outlook servicevraag")
     assert mail.attachments(imported_mail["id"])[0]["original_name"]=="vraag.txt"
@@ -572,6 +525,37 @@ def test_multiuser_readiness_and_safe_migration_snapshot(tmp_path: Path):
     assert "nooit uploaden naar GitHub" in snapshot["manifest"].read_text(encoding="utf-8")
 
 
+def test_encrypted_central_database_supports_multiple_workstations(tmp_path: Path):
+    db=Database(tmp_path/"central.sqlite3");db.migrate()
+    AuthService(db).create_user("beheerder","Beheerder","veilig-wachtwoord","administrator")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1",0));port=probe.getsockname()[1]
+    server=CentralDatabaseServer(db,"127.0.0.1",port,"test-geheime-toegangssleutel");server.start()
+    try:
+        remote=RemoteDatabase("127.0.0.1",port,"test-geheime-toegangssleutel")
+        session=AuthService(remote).authenticate("beheerder","veilig-wachtwoord")
+        assert session and session.role=="administrator"
+        customers=CustomerService(remote,EventBus())
+        first=customers.create("MU-100","Centrale klant")
+        key_path=tmp_path/"client-vault.key";key_path.write_bytes(remote.vault_key())
+        vault=VaultService(remote,key_path,"beheerder",session)
+        vault.add(first,"Microsoft 365","admin","AlleenLokaalZichtbaar!")
+        with remote.transaction() as conn:
+            encrypted=conn.execute("SELECT secret FROM vault_entries WHERE customer_id=?",(first,)).fetchone()["secret"]
+        assert vault._cipher.decrypt(encrypted).decode()=="AlleenLokaalZichtbaar!"
+
+        def add_customer(number: int):
+            client=RemoteDatabase("127.0.0.1",port,"test-geheime-toegangssleutel")
+            return CustomerService(client,EventBus()).create(f"MU-{number}",f"Werkplek {number}")
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            list(pool.map(add_customer,range(200,206)))
+        assert customers.count()==7
+        with pytest.raises(ConnectionError):
+            RemoteDatabase("127.0.0.1",port,"onjuiste-sleutel").health()
+    finally:
+        server.stop()
+
+
 def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     cells=[]
     for row_index,row in enumerate(rows,1):
@@ -585,3 +569,4 @@ def _write_customer_xlsx(path: Path, rows: list[list[str]]) -> None:
     sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(cells)+'</sheetData></worksheet>'
     with zipfile.ZipFile(path,"w") as archive:
         archive.writestr("xl/worksheets/sheet1.xml",sheet)
+
