@@ -36,7 +36,7 @@ class DocumentCenterService:
     def search(self, query: str = "", customer_id: int | None = None, kind: str = "Alles") -> list[dict]:
         term = f"%{query.strip()}%"
         clauses = ["(?='' OR title LIKE ? OR customer_name LIKE ? OR reference LIKE ?)"]
-        values: list = [query.strip(), term, term, term]
+        values: list = ["%",query.strip(), term, term, term]
         if customer_id is not None:
             clauses.append("customer_id=?"); values.append(customer_id)
         if kind != "Alles":
@@ -50,7 +50,7 @@ class DocumentCenterService:
             FROM proposals p JOIN customers c ON c.id=p.customer_id
             UNION ALL
             SELECT r.id,r.customer_id,c.name,'Rapportage',r.subject,
-                   CAST(r.progress_percent AS TEXT)||'%','Rapport '||r.id,r.created_at
+                   CAST(r.progress_percent AS TEXT)||?,'Rapport '||r.id,r.created_at
             FROM project_reports r JOIN customers c ON c.id=r.customer_id
         ) WHERE """ + " AND ".join(clauses) + " ORDER BY date DESC,id DESC LIMIT 750"
         with self.db.transaction() as conn:
@@ -76,3 +76,4 @@ class DocumentCenterService:
         with self.db.transaction() as conn:
             row = conn.execute("SELECT subject,body FROM project_reports WHERE id=?", (report_id,)).fetchone()
         return f"{row['subject']}\n\n{row['body']}" if row else ""
+
