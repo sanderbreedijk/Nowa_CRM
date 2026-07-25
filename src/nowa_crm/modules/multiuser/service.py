@@ -104,11 +104,25 @@ class MultiUserService:
                       sslmode: str = "prefer") -> dict:
         started=datetime.now()
         try:
-            result=self.postgres_database(host,port,database,user,password,sslmode).health()
+            target=self.postgres_database(host,port,database,user,password,sslmode)
+            result=target.health()
+            counts=self.database_contents(target)
             return {"reachable":True,"milliseconds":int((datetime.now()-started).total_seconds()*1000),
-                    "detail":f"Synology PostgreSQL verbonden · database {result['database']}"}
+                    "detail":(f"Synology PostgreSQL verbonden · database {result['database']} · "
+                              f"{counts['customers']} klanten · {counts['proposals']} offertes"),
+                    "counts":counts}
         except Exception as exc:
             return {"reachable":False,"milliseconds":0,"detail":f"PostgreSQL niet bereikbaar: {exc}"}
+
+    @staticmethod
+    def database_contents(database) -> dict:
+        with database.transaction() as conn:
+            return {
+                "customers":int(conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]),
+                "active_customers":int(conn.execute("SELECT COUNT(*) FROM customers WHERE active=1").fetchone()[0]),
+                "proposals":int(conn.execute("SELECT COUNT(*) FROM proposals").fetchone()[0]),
+                "proposal_lines":int(conn.execute("SELECT COUNT(*) FROM proposal_lines").fetchone()[0]),
+            }
 
     def migrate_to_postgres(self) -> dict:
         if getattr(self.db,"is_remote",False):raise ValueError("Start de migratie vanuit de lokale SQLite-database.")
@@ -133,11 +147,20 @@ class MultiUserService:
         except sqlite3.DatabaseError as exc:
             raise ValueError(f"Het gekozen bestand is geen geldige SQLite-database: {exc}") from exc
         result=PostgresMigrator(Database(source),self.postgres_database(),self.root).run()
-        return {**result,"source":str(source.resolve()),"source_customers":customers}
+        counts=self.database_contents(self.postgres_database())
+        if counts["customers"]!=customers:
+            raise RuntimeError(
+                f"Importcontrole mislukt: bron bevat {customers} klanten, PostgreSQL bevat {counts['customers']} klanten.")
+        return {**result,"source":str(source.resolve()),"source_customers":customers,
+                "target_customers":counts["customers"],"target_active_customers":counts["active_customers"],
+                "target_proposals":counts["proposals"],"target_proposal_lines":counts["proposal_lines"]}
 
     def activate_postgres(self) -> None:
-        self.postgres_database().health()
+        target=self.postgres_database()
+        target.health()
+        counts=self.database_contents(target)
         settings=self.settings();settings["mode"]="postgres"
+        settings["last_activation_counts"]=counts
         settings["updated_at"]=datetime.now().isoformat(timespec="seconds")
         self.config_path.write_text(json.dumps(settings,indent=2,ensure_ascii=False),encoding="utf-8")
 
@@ -201,3 +224,4 @@ class MultiUserService:
             root=path.drive+"\\"
             return bool(root and ctypes.windll.kernel32.GetDriveTypeW(root)==4)
         except (AttributeError,OSError):return False
+
