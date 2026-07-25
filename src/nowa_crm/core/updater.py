@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from nowa_crm import __version__
+from nowa_crm.core.paths import data_dir
 
 REPOSITORY = "sanderbreedijk/Nowa_CRM"
 API_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
@@ -46,6 +47,8 @@ class ReleaseInfo:
 
 
 class UpdateService:
+    RESULT_FILE = "update-result.json"
+
     def latest(self) -> ReleaseInfo | None:
         request = urllib.request.Request(API_URL, headers={"Accept": "application/vnd.github+json", "User-Agent": f"NOWA-CRM/{__version__}"})
         try:
@@ -116,20 +119,68 @@ class UpdateService:
             raise RuntimeError("Update bevat geen NOWA_CRM.exe")
         return candidates[0].parent
 
-    def install_after_exit(self, package_dir: Path) -> None:
+    def install_after_exit(self, package_dir: Path, expected_version: str = "") -> None:
         if not getattr(sys, "frozen", False):
             raise RuntimeError("Installeren kan alleen vanuit de gebouwde Windows-app")
         install_dir = Path(sys.executable).resolve().parent
         helper = package_dir.parent / "install-update.ps1"
+        state_dir=data_dir()
+        result_file=state_dir/self.RESULT_FILE
+        log_file=state_dir/"update-install.log"
+        version_file=package_dir/"update-version.txt"
+        packaged_version=version_file.read_text(encoding="utf-8").strip() if version_file.is_file() else ""
+        expected=(expected_version or packaged_version).strip().removeprefix("v")
+        if expected and packaged_version and _version_tuple(expected)!=_version_tuple(packaged_version):
+            raise RuntimeError("Het versienummer van het updatepakket komt niet overeen met de release")
+        result_file.write_text(json.dumps({
+            "status":"prepared","from_version":__version__,"expected_version":expected,
+            "target":str(install_dir),"log":str(log_file)
+        },ensure_ascii=False,indent=2),encoding="utf-8")
         script = f"""$ErrorActionPreference='Stop'
 $pidToWait={os.getpid()}
 $source='{str(package_dir).replace("'", "''")}'
 $target='{str(install_dir).replace("'", "''")}'
+$result='{str(result_file).replace("'", "''")}'
+$log='{str(log_file).replace("'", "''")}'
+$expected='{expected.replace("'", "''")}'
 Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
-Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
-Start-Process -FilePath (Join-Path $target 'NOWA_CRM.exe')
+try {{
+  "Start installatie $expected naar $target" | Set-Content -LiteralPath $log -Encoding UTF8
+  $arguments=@($source,$target,'/E','/R:3','/W:1','/COPY:DAT','/DCOPY:DAT','/NFL','/NDL','/NP')
+  & robocopy @arguments | Add-Content -LiteralPath $log -Encoding UTF8
+  if ($LASTEXITCODE -ge 8) {{ throw "Kopiëren mislukt; robocopy-code $LASTEXITCODE" }}
+  $installed=Join-Path $target 'update-version.txt'
+  if (-not (Test-Path -LiteralPath $installed)) {{ throw 'Versiecontrolebestand ontbreekt na installatie' }}
+  $actual=(Get-Content -LiteralPath $installed -Raw).Trim()
+  if ($expected -and $actual -ne $expected) {{ throw "Versiecontrole mislukt: verwacht $expected, gevonden $actual" }}
+  @{{status='installed';expected_version=$expected;installed_version=$actual;target=$target;log=$log}} |
+    ConvertTo-Json | Set-Content -LiteralPath $result -Encoding UTF8
+  Start-Process -FilePath (Join-Path $target 'NOWA_CRM.exe')
+}} catch {{
+  $_ | Out-String | Add-Content -LiteralPath $log -Encoding UTF8
+  @{{status='failed';expected_version=$expected;error=$_.Exception.Message;target=$target;log=$log}} |
+    ConvertTo-Json | Set-Content -LiteralPath $result -Encoding UTF8
+  Start-Process -FilePath (Join-Path $target 'NOWA_CRM.exe')
+}}
 Remove-Item -LiteralPath $PSCommandPath -Force
 """
         helper.write_text(script, encoding="utf-8-sig")
         subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper)], creationflags=subprocess.CREATE_NO_WINDOW)
+
+    @classmethod
+    def installation_result(cls) -> dict | None:
+        path=data_dir()/cls.RESULT_FILE
+        if not path.is_file():
+            return None
+        try:
+            result=json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError,ValueError,TypeError):
+            return None
+        if result.get("status")=="installed" and _version_tuple(str(result.get("expected_version","")))==_version_tuple(__version__):
+            path.unlink(missing_ok=True)
+            return {**result,"verified":True}
+        if result.get("status")=="failed":
+            path.unlink(missing_ok=True)
+            return {**result,"verified":False}
+        return None
