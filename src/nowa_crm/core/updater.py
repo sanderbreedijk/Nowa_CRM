@@ -178,10 +178,16 @@ Remove-Item -LiteralPath $PSCommandPath -Force
         except (OSError,ValueError,TypeError):
             return None
         if result.get("status")=="installed" and _version_tuple(str(result.get("expected_version","")))==_version_tuple(__version__):
-            path.unlink(missing_ok=True)
+            cls._remove_result_file(path)
             return {**result,"verified":True}
         if result.get("status")=="failed":
-            path.unlink(missing_ok=True)
+            cls._remove_result_file(path)
             return {**result,"verified":False}
         return None
+
+    @staticmethod
+    def _remove_result_file(path: Path) -> None:
+        """Een vergrendeld statusbestand mag het starten van NOWA CRM nooit blokkeren."""
+        try:path.unlink(missing_ok=True)
+        except OSError:pass
 
