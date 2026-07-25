@@ -11,6 +11,17 @@ def test_sqlite_queries_are_translated_for_postgres():
     assert "ILIKE" in translate_sql("SELECT * FROM x WHERE name LIKE ?")
     assert "CURRENT_DATE" in translate_sql("UPDATE x SET due=date('now')")
     assert "INTERVAL '-30 days'" in translate_sql("SELECT datetime('now','-30 days')")
+    for expression in (
+        "datetime('now','localtime')",
+        "datetime('now','localtime','+2 hours')",
+        "datetime('now','localtime','+8 hours')",
+        "datetime('now','localtime','-7 day')",
+        "datetime('now','-30 days')",
+        "datetime('now',?)",
+        "datetime(started_at)",
+    ):
+        translated=translate_sql(f"SELECT {expression}")
+        assert "datetime(" not in translated.lower(),(expression,translated)
 
 
 def test_schema_types_are_postgres_compatible():
@@ -124,4 +135,24 @@ def test_daystart_callback_grouping_is_postgres_complete():
     from nowa_crm.modules.daystart.service import DaystartService
     source=inspect.getsource(DaystartService.items)
     assert "GROUP BY ce.customer_id,c.name,ce.normalized_number,ce.phone_number,date(ce.callback_due)" in source
+
+
+def test_all_static_queries_remove_sqlite_datetime_functions():
+    import ast
+    from pathlib import Path
+    root=Path(__file__).resolve().parents[1]/"src"/"nowa_crm"
+    leftovers=[]
+    for path in root.rglob("*.py"):
+        tree=ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not (isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute)
+                    and node.func.attr=="execute" and node.args):
+                continue
+            try:sql=ast.literal_eval(node.args[0])
+            except Exception:continue
+            if not isinstance(sql,str):continue
+            translated=translate_sql(sql).lower()
+            if "datetime(" in translated or "julianday(" in translated or "date('now'" in translated:
+                leftovers.append((str(path),node.lineno,translated))
+    assert not leftovers
 
