@@ -226,14 +226,21 @@ class MailService:
 
     def queue_stats(self) -> dict:
         with self.db.transaction() as conn:
-            row=conn.execute("""SELECT COUNT(*) total,SUM(direction='inkomend' AND triage_state<>'afgerond') open,
-                SUM(customer_id IS NULL) unlinked,SUM(priority IN ('Hoog','Kritiek') AND triage_state<>'afgerond') urgent,
-                SUM(follow_up_at<>'' AND triage_state<>'afgerond') followups FROM mail_messages""").fetchone()
+            row=conn.execute("""SELECT COUNT(*) total,
+                SUM(CASE WHEN direction='inkomend' AND triage_state<>'afgerond' THEN 1 ELSE 0 END) open,
+                SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) unlinked,
+                SUM(CASE WHEN priority IN ('Hoog','Kritiek') AND triage_state<>'afgerond' THEN 1 ELSE 0 END) urgent,
+                SUM(CASE WHEN follow_up_at<>'' AND triage_state<>'afgerond' THEN 1 ELSE 0 END) followups
+                FROM mail_messages""").fetchone()
         return {key:int(row[key] or 0) for key in ("total","open","unlinked","urgent","followups")}
 
     def dossier_stats(self) -> dict:
         with self.db.transaction() as conn:
-            row=conn.execute("SELECT COUNT(*) total,SUM(customer_id IS NOT NULL) linked,SUM(customer_id IS NULL) unlinked,SUM(direction='inkomend') incoming FROM mail_messages").fetchone()
+            row=conn.execute("""SELECT COUNT(*) total,
+                SUM(CASE WHEN customer_id IS NOT NULL THEN 1 ELSE 0 END) linked,
+                SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) unlinked,
+                SUM(CASE WHEN direction='inkomend' THEN 1 ELSE 0 END) incoming
+                FROM mail_messages""").fetchone()
         return {key:int(row[key] or 0) for key in ("total","linked","unlinked","incoming")}
 
     def attachments(self, message_id: int) -> list[dict]:
