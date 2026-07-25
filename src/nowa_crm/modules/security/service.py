@@ -26,7 +26,7 @@ class SecurityService:
             critical=int(conn.execute("""SELECT COUNT(*) FROM service_tickets WHERE customer_id=? AND priority='Kritiek'
                 AND status NOT IN ('Opgelost','Gesloten')""",(customer_id,)).fetchone()[0])
             overdue=int(conn.execute("""SELECT COUNT(*) FROM action_items WHERE customer_id=? AND due_date!=''
-                AND due_date<date('now') AND status NOT IN ('Gereed','Geannuleerd')""",(customer_id,)).fetchone()[0])
+                AND date(due_date)<date('now') AND status NOT IN ('Gereed','Geannuleerd')""",(customer_id,)).fetchone()[0])
         findings=[]
         missing_mfa=[u for u in users if not u["mfa_enabled"]]
         if missing_mfa:self._add(findings,"Hoog","MFA",f"{len(missing_mfa)} actieve gebruiker(s) hebben geen MFA-registratie.","Registreer en controleer MFA.")
@@ -84,3 +84,4 @@ class SecurityService:
     @staticmethod
     def _add(target,severity,category,finding,advice):
         target.append({"severity":severity,"category":category,"finding":finding,"advice":advice})
+
