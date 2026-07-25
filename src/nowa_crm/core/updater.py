@@ -184,3 +184,4 @@ Remove-Item -LiteralPath $PSCommandPath -Force
             path.unlink(missing_ok=True)
             return {**result,"verified":False}
         return None
+
