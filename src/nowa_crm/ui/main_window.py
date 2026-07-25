@@ -752,7 +752,7 @@ class MainWindow(QMainWindow):
             )
             if answer!=QMessageBox.Yes:return
             UpdateService().install_after_exit(package)
-            QMessageBox.information(self,"Update gereed","NOWA CRM sluit nu af en start automatisch opnieuw met de nieuwe versie.")
+            QMessageBox.information(self,"Update voorbereid","NOWA CRM sluit nu af. Na het kopiëren start het programma opnieuw en wordt de geïnstalleerde versie gecontroleerd.")
             QApplication.quit()
         except Exception as exc:
             self.update_status.setText(f"Updatepakket geweigerd: {exc}")

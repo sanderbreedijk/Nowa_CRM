@@ -25,6 +25,7 @@ from nowa_crm.ui.login import LoginDialog, SetupDialog
 from nowa_crm.ui.theme import THEME
 from nowa_crm.ui.icons import app_icon
 from nowa_crm.modules.multiuser.service import MultiUserService
+from nowa_crm.core.updater import UpdateService
 
 
 def _configure_packaged_certificates() -> None:
@@ -72,10 +73,19 @@ def main() -> int:
     _configure_packaged_certificates()
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv); app.setApplicationName("NOWA CRM"); app.setWindowIcon(app_icon()); app.setStyleSheet(THEME)
+    update_result=UpdateService.installation_result()
+    if update_result:
+        from PySide6.QtWidgets import QMessageBox
+        if update_result["verified"]:
+            QMessageBox.information(None,"Update voltooid",f"NOWA CRM {update_result['installed_version']} is gecontroleerd geïnstalleerd.")
+        else:
+            QMessageBox.critical(None,"Update mislukt",
+                f"{update_result.get('error','De programmabestanden zijn niet vervangen.')}\n\nInstallatielog:\n{update_result.get('log','')}")
     try:db, _, _, _, _, _, _, _ = build_services()
     except ConnectionError as exc:
         from PySide6.QtWidgets import QMessageBox
-        QMessageBox.critical(None,"Centrale server niet bereikbaar",f"{exc}\n\nStart de servercomputer of herstel de lokale modus.")
+        QMessageBox.critical(None,"Centrale server niet bereikbaar",
+            f"{exc}\n\nStart de servercomputer of herstel in multiuser.json tijdelijk mode naar local.")
         return 1
     multiuser=MultiUserService(db);server_settings=multiuser.settings()
     if not getattr(db,"is_remote",False) and server_settings.get("server_enabled"):
@@ -95,3 +105,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -1,4 +1,3 @@
-
 name: Test en bouw NOWA CRM
 
 on:
@@ -43,11 +42,14 @@ jobs:
         shell: pwsh
         run: |
           python scripts/build_icon.py
+          $version = (Select-String -Path pyproject.toml -Pattern '^version = "([^"]+)"$').Matches.Groups[1].Value
+          if (-not $version) { throw 'Versienummer kon niet uit pyproject.toml worden gelezen.' }
           python -m PyInstaller --noconfirm --clean --windowed --onedir `
             --name NOWA_CRM --paths src `
             --icon build/nowa_crm_app.ico `
             --add-data "src/nowa_crm/assets;nowa_crm/assets" `
             src/nowa_crm/app.py
+          Set-Content -Path dist/NOWA_CRM/update-version.txt -Value $version -NoNewline -Encoding UTF8
           Get-ChildItem -Recurse dist/NOWA_CRM -File -Filter cacert.pem |
             Rename-Item -NewName 'cacert.crt'
           if (Get-ChildItem -Recurse dist/NOWA_CRM -File -Filter cacert.pem) {
