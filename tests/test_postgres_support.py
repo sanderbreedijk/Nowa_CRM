@@ -83,3 +83,18 @@ def test_postgres_datetime_comparisons_use_compatible_types():
     assert "COALESCE(ce.ended_at,CAST(CURRENT_TIMESTAMP AS TEXT))" in telephony_source
     assert "date(due_date)<date('now')" in security_source
 
+
+def test_postgres_mode_never_silently_falls_back_to_local():
+    import inspect
+    from nowa_crm.core import database_factory
+    source=inspect.getsource(database_factory.active_database)
+    assert "NOWA CRM schakelt niet over op een lege lokale database" in source
+    assert 'if mode=="postgres"' in source
+
+
+def test_manual_import_verifies_visible_business_counts():
+    import inspect
+    source=inspect.getsource(MultiUserService.import_sqlite_to_postgres)
+    assert 'counts["customers"]!=customers' in source
+    assert '"target_proposals":counts["proposals"]' in source
+
