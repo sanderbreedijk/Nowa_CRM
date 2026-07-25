@@ -76,12 +76,17 @@ def test_boolean_totals_use_portable_case_expressions():
 def test_postgres_datetime_comparisons_use_compatible_types():
     import inspect
     from nowa_crm.modules.security.service import SecurityService
-    from nowa_crm.modules.telephony.service import TelephonyService
-    telephony_source=inspect.getsource(TelephonyService)
     security_source=inspect.getsource(SecurityService)
-    assert "COALESCE(ended_at,CAST(CURRENT_TIMESTAMP AS TEXT))" in telephony_source
-    assert "COALESCE(ce.ended_at,CAST(CURRENT_TIMESTAMP AS TEXT))" in telephony_source
     assert "date(due_date)<date('now')" in security_source
+
+
+def test_telephony_duration_avoids_database_specific_julianday():
+    import inspect
+    from nowa_crm.modules.telephony import service
+    source=inspect.getsource(service.TelephonyService)
+    assert "julianday(" not in source
+    assert "_duration_seconds" in source
+    assert service._duration_seconds("2026-07-25 10:00:00","2026-07-25 10:01:30")==90
 
 
 def test_postgres_mode_never_silently_falls_back_to_local():
