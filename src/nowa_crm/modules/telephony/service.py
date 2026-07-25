@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from nowa_crm.core.database import Database
@@ -66,9 +67,8 @@ class TelephonyService:
 
     def elapsed_seconds(self, call_id: int) -> int:
         with self.db.transaction() as conn:
-            row=conn.execute("""SELECT MAX(0,CAST((julianday(COALESCE(ended_at,CAST(CURRENT_TIMESTAMP AS TEXT)))-
-                julianday(started_at))*86400 AS INTEGER)) seconds FROM call_events WHERE id=?""",(call_id,)).fetchone()
-        return int(row["seconds"] or 0) if row else 0
+            row=conn.execute("SELECT started_at,ended_at FROM call_events WHERE id=?",(call_id,)).fetchone()
+        return _duration_seconds(row["started_at"],row["ended_at"]) if row else 0
 
     def history(self, customer_id: int | None = None, query: str = "", queue: str = "alle") -> list[dict]:
         term=f"%{query.strip()}%"; values=[query.strip(),term,term,term,term]; customer_clause=""
@@ -78,12 +78,14 @@ class TelephonyService:
         elif queue=="gemist":queue_clause=" AND ce.status='gemist'"
         elif queue=="onbekend":queue_clause=" AND ce.customer_id IS NULL"
         with self.db.transaction() as conn:
-            return [dict(row) for row in conn.execute("""SELECT ce.id,ce.customer_id,ce.contact_id,ce.started_at,ce.direction,ce.phone_number,ce.status,ce.subject,ce.outcome,
-                MAX(0,CAST((julianday(COALESCE(ce.ended_at,CAST(CURRENT_TIMESTAMP AS TEXT)))-julianday(ce.started_at))*86400 AS INTEGER)) duration_seconds,
+            rows=[dict(row) for row in conn.execute("""SELECT ce.id,ce.customer_id,ce.contact_id,ce.started_at,ce.ended_at,ce.direction,ce.phone_number,ce.status,ce.subject,ce.outcome,
                 ce.priority,ce.assigned_to,ce.callback_due,ce.callback_status,COALESCE(c.name,'Onbekend') customer_name,COALESCE(ct.name,'') contact_name FROM call_events ce
                 LEFT JOIN customers c ON c.id=ce.customer_id LEFT JOIN contacts ct ON ct.id=ce.contact_id
                 WHERE (?='' OR ce.phone_number LIKE ? OR c.name LIKE ? OR ct.name LIKE ? OR ce.subject LIKE ?)"""+customer_clause+queue_clause+
                 " ORDER BY ce.started_at DESC,ce.id DESC LIMIT 500",values)]
+        for row in rows:
+            row["duration_seconds"]=_duration_seconds(row["started_at"],row["ended_at"])
+        return rows
 
     def finish_call(self, call_id: int, subject: str, notes: str, outcome: str, callback: bool = False,
                     callback_due: str = "", priority: str = "Normaal", assigned_to: str = "") -> None:
@@ -258,4 +260,22 @@ class TelephonyService:
 def _same_number(left: str, right: str) -> bool:
     if not left or not right:return False
     return left==right or (len(left)>=8 and len(right)>=8 and left[-8:]==right[-8:])
+
+
+def _duration_seconds(started_at, ended_at=None) -> int:
+    """Bereken gespreksduur zonder databasespecifieke datumfuncties."""
+    def parse(value):
+        if isinstance(value,datetime):return value
+        text=str(value or "").strip()
+        if not text:return None
+        try:return datetime.fromisoformat(text.replace("Z","+00:00"))
+        except ValueError:return None
+    started=parse(started_at)
+    if not started:return 0
+    ended=parse(ended_at)
+    if not ended:
+        ended=datetime.now(timezone.utc) if started.tzinfo else datetime.now()
+    if started.tzinfo and not ended.tzinfo:ended=ended.replace(tzinfo=started.tzinfo)
+    elif ended.tzinfo and not started.tzinfo:started=started.replace(tzinfo=ended.tzinfo)
+    return max(0,int((ended-started).total_seconds()))
 
