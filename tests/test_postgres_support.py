@@ -118,3 +118,10 @@ def test_document_search_parameterizes_percent_literal():
     assert "||'%'" not in source
     assert 'values: list = ["%"' in source
 
+
+def test_daystart_callback_grouping_is_postgres_complete():
+    import inspect
+    from nowa_crm.modules.daystart.service import DaystartService
+    source=inspect.getsource(DaystartService.items)
+    assert "GROUP BY ce.customer_id,c.name,ce.normalized_number,ce.phone_number,date(ce.callback_due)" in source
+
