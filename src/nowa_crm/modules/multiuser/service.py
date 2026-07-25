@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -52,7 +51,7 @@ class MultiUserService:
             if not key:raise ValueError("Vul eerst de toegangssleutel in.")
             result=RemoteDatabase(host.strip(),int(port),key).health()
             return {"reachable":True,"milliseconds":int((datetime.now()-started).total_seconds()*1000),
-                    "detail":f"Centrale database verbonden Â· {result['customers']} klanten Â· {result['users']} gebruikers"}
+                    "detail":f"Centrale database verbonden · {result['customers']} klanten · {result['users']} gebruikers"}
         except (OSError,ConnectionError,ValueError) as exc:
             return {"reachable":False,"milliseconds":0,"detail":f"Server niet bereikbaar: {exc}"}
 
@@ -107,7 +106,7 @@ class MultiUserService:
         try:
             result=self.postgres_database(host,port,database,user,password,sslmode).health()
             return {"reachable":True,"milliseconds":int((datetime.now()-started).total_seconds()*1000),
-                    "detail":f"Synology PostgreSQL verbonden Â· database {result['database']}"}
+                    "detail":f"Synology PostgreSQL verbonden · database {result['database']}"}
         except Exception as exc:
             return {"reachable":False,"milliseconds":0,"detail":f"PostgreSQL niet bereikbaar: {exc}"}
 
@@ -202,4 +201,3 @@ class MultiUserService:
             root=path.drive+"\\"
             return bool(root and ctypes.windll.kernel32.GetDriveTypeW(root)==4)
         except (AttributeError,OSError):return False
-
