@@ -103,3 +103,10 @@ def test_manual_import_verifies_visible_business_counts():
     assert 'counts["customers"]!=customers' in source
     assert '"target_proposals":counts["proposals"]' in source
 
+
+def test_locked_update_result_cannot_block_startup():
+    from nowa_crm.core.updater import UpdateService
+    class LockedResult:
+        def unlink(self,**_kwargs):raise PermissionError("locked")
+    UpdateService._remove_result_file(LockedResult())
+
