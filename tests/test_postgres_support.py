@@ -60,6 +60,7 @@ def test_postgres_bulk_import_uses_cursor():
     assert "SET LOCAL session_replication_role" in source
     assert "SET session_replication_role = DEFAULT" not in source
     assert "Import van tabel" in source
+    assert source.index("setval(pg_get_serial_sequence('app_users','id')") < source.index("Terugzetten van centrale gebruikers mislukt")
 
 
 def test_boolean_totals_use_portable_case_expressions():

@@ -44,6 +44,14 @@ class PostgresMigrator:
                             [tuple(row[name] for name in columns) for row in rows])
                     except Exception as exc:
                         raise RuntimeError(f"Import van tabel '{table}' mislukt: {exc}") from exc
+            serial_tables = {row["table_name"] for row in target.raw.execute(
+                """SELECT table_name FROM information_schema.columns
+                   WHERE table_schema='public' AND column_name='id' AND column_default LIKE 'nextval%'""")}
+            if "app_users" in serial_tables:
+                target.raw.execute(
+                    """SELECT setval(pg_get_serial_sequence('app_users','id'),
+                        COALESCE((SELECT MAX(id) FROM app_users),1),
+                        COALESCE((SELECT MAX(id) FROM app_users),0)>0)""")
             if central_users:
                 try:
                     target.raw.cursor().executemany("""INSERT INTO app_users(
@@ -57,9 +65,6 @@ class PostgresMigrator:
                             "role","active","created_at","last_login_at")) for row in central_users])
                 except Exception as exc:
                     raise RuntimeError(f"Terugzetten van centrale gebruikers mislukt: {exc}") from exc
-            serial_tables = {row["table_name"] for row in target.raw.execute(
-                """SELECT table_name FROM information_schema.columns
-                   WHERE table_schema='public' AND column_name='id' AND column_default LIKE 'nextval%'""")}
             for table in tables:
                 if table in serial_tables:
                     target.raw.execute(
