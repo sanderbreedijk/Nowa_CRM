@@ -15,7 +15,7 @@ class MultiUserPage(QWidget):
         content=QWidget();root=QVBoxLayout(content);root.setContentsMargins(28,24,28,24);root.setSpacing(14)
         scroll.setWidget(content);outer.addWidget(scroll)
         title=QLabel("Multi-user en Synology");title.setObjectName("Title");root.addWidget(title)
-        sub=QLabel("Laat één vaste computer de centrale database beheren en verbind andere werkplekken veilig met persoonlijke aanmeldingen.")
+        sub=QLabel("Verbind iedere werkplek rechtstreeks met PostgreSQL op de Synology NAS en gebruik persoonlijke aanmeldingen.")
         sub.setObjectName("Subtitle");sub.setWordWrap(True);root.addWidget(sub)
 
         users=QFrame();users.setObjectName("Card");box=QVBoxLayout(users);head=QHBoxLayout()
@@ -54,7 +54,7 @@ class MultiUserPage(QWidget):
         import_sqlite=QPushButton("Gekozen SQLite-database importeren")
         import_sqlite.setObjectName("Primary");import_sqlite.clicked.connect(self.import_sqlite)
         pg.addRow(import_sqlite)
-        root.insertWidget(0,postgres)
+        root.insertWidget(2,postgres)
         root.addWidget(users,1);self.reload()
 
     def reload(self):
@@ -157,3 +157,4 @@ class MultiUserPage(QWidget):
         if row<0:QMessageBox.information(self,"Gebruikers","Selecteer eerst een gebruiker.");return
         try:self.service.set_user_active(int(self.table.item(row,5).text()),self.table.item(row,3).text()!="Ja");self.reload()
         except Exception as exc:QMessageBox.warning(self,"Gebruikers",str(exc))
+
