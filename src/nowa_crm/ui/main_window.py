@@ -121,7 +121,9 @@ class MainWindow(QMainWindow):
         self.sip_nav_status=QLabel("SIP  •  niet actief");self.sip_nav_status.setObjectName("SipSidebarStatus");self.sip_nav_status.setProperty("sipState","idle");nav.addWidget(self.sip_nav_status)
         self.integrations_page.sip_status_changed.connect(self.update_sip_sidebar_status)
         self.integrations_page.open_shomi_workbench.connect(lambda:self._show(20))
-        version=QLabel(f"Versie {__version__}  •  lokaal"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
+        database_label=("Synology PostgreSQL" if getattr(self.customers.db,"is_postgres",False)
+                        else "centrale server" if getattr(self.customers.db,"is_remote",False) else "lokaal")
+        version=QLabel(f"Versie {__version__}  •  {database_label}"); version.setObjectName("SidebarFooter"); nav.addWidget(version); shell.addWidget(self.sidebar); shell.addWidget(self.stack,1); self.setCentralWidget(root);self._polish_ui()
         self.search_shortcut=QShortcut(QKeySequence("Ctrl+K"),self);self.search_shortcut.activated.connect(self.open_global_search)
         self.refresh_all()
         QTimer.singleShot(800,self.show_followup_reminder)
@@ -296,6 +298,7 @@ class MainWindow(QMainWindow):
     def _customer_page(self):
         page,box=self._page("Klanten","Eén betrouwbaar klantbeeld voor alle NOWA-modules.")
         toolbar=QFrame();toolbar.setObjectName("Toolbar");row=QHBoxLayout(toolbar);row.setContentsMargins(12,9,12,9);row.setSpacing(9); label=QLabel("Klantbestand");label.setObjectName("ToolbarTitle");row.addWidget(label)
+
         self.customer_search=QLineEdit(); self.customer_search.setPlaceholderText("Zoek naam, klantnummer, telefoon, e-mail of contactpersoon…"); self.customer_search.textChanged.connect(self.refresh_customers)
         add=QPushButton("Nieuwe klant"); add.setObjectName("Primary"); add.setIcon(nav_icon("+")); add.setIconSize(QSize(24,24)); add.clicked.connect(self.add_customer)
         dossier=QPushButton("Open dossier");dossier.setIcon(nav_icon("360"));dossier.setIconSize(QSize(24,24));dossier.clicked.connect(self.open_selected_customer)
@@ -596,6 +599,7 @@ class MainWindow(QMainWindow):
         self.show_incoming_call(self.active_call_id)
 
     def open_call_workspace_item(self,kind,entity_id,title):
+
         if kind=="Ticket":self.open_service_ticket(entity_id)
         else:
             self._show(1);self.workspace_page.search.setText(title)
@@ -735,8 +739,8 @@ class MainWindow(QMainWindow):
             answer=QMessageBox.question(self,"NOWA CRM bijwerken",f"Versie {release.version} is beschikbaar. Nu downloaden en installeren?\n\nKlantgegevens blijven lokaal behouden.")
             if answer!=QMessageBox.Yes:return
             self.update_status.setText(f"Versie {release.version} wordt gedownload…"); QApplication.processEvents()
-            package=UpdateService().download(release); UpdateService().install_after_exit(package)
-            QMessageBox.information(self,"Update gereed","NOWA CRM sluit nu af en start automatisch opnieuw met de nieuwe versie."); QApplication.quit()
+            package=UpdateService().download(release); UpdateService().install_after_exit(package,release.version)
+            QMessageBox.information(self,"Update voorbereid","NOWA CRM sluit nu af. Na het kopiëren start het programma opnieuw en wordt de geïnstalleerde versie gecontroleerd."); QApplication.quit()
         except Exception as exc:
             self.update_status.setText(f"Updatecontrole mislukt: {exc}")
     def install_local_update(self):
@@ -857,3 +861,4 @@ class MainWindow(QMainWindow):
         for r,x in enumerate(rows):
             vals=(x["customer_name"],x["customer_number"],x["category"],x["group_path"],x["label"],x["username"],x["host"],x["url"],str(x["customer_id"]),str(x["id"]))
             for c,v in enumerate(vals):self.vault_table.setItem(r,c,QTableWidgetItem(v or ""))
+
