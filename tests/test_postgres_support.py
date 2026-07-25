@@ -72,3 +72,14 @@ def test_boolean_totals_use_portable_case_expressions():
                        "SUM(follow_up_at","SUM(callback_status=","SUM(status="):
         assert expression not in source
 
+
+def test_postgres_datetime_comparisons_use_compatible_types():
+    import inspect
+    from nowa_crm.modules.security.service import SecurityService
+    from nowa_crm.modules.telephony.service import TelephonyService
+    telephony_source=inspect.getsource(TelephonyService)
+    security_source=inspect.getsource(SecurityService)
+    assert "COALESCE(ended_at,CAST(CURRENT_TIMESTAMP AS TEXT))" in telephony_source
+    assert "COALESCE(ce.ended_at,CAST(CURRENT_TIMESTAMP AS TEXT))" in telephony_source
+    assert "date(due_date)<date('now')" in security_source
+
