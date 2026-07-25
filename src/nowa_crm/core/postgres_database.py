@@ -15,8 +15,8 @@ def translate_sql(sql: str) -> str:
     result = re.sub(r"\bINSERT\s+OR\s+IGNORE\s+INTO\b", "INSERT INTO", result, flags=re.I)
     if re.search(r"\bINSERT\s+OR\s+IGNORE\b", sql, re.I) and "ON CONFLICT" not in result.upper():
         result = result.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
-    result = re.sub(r"datetime\('now','localtime','([+-]\d+)\s+hours?'\)",
-                    lambda m: f"(CURRENT_TIMESTAMP + INTERVAL '{m.group(1)} hours')", result, flags=re.I)
+    result = re.sub(r"datetime\('now','localtime','([+-]\d+)\s+(minutes?|hours?|days?)'\)",
+                    lambda m: f"(CURRENT_TIMESTAMP + INTERVAL '{m.group(1)} {m.group(2)}')", result, flags=re.I)
     result = re.sub(r"datetime\('now','([+-]\d+)\s+(minutes?|hours?|days?)'\)",
                     lambda m: f"(CURRENT_TIMESTAMP + INTERVAL '{m.group(1)} {m.group(2)}')", result, flags=re.I)
     result = re.sub(r"datetime\('now',\?\)", "(CURRENT_TIMESTAMP + CAST(? AS interval))", result, flags=re.I)
@@ -203,3 +203,4 @@ class PostgresDatabase:
 
     def backup(self, label: str = "handmatig"):
         raise RuntimeError("Maak een herstelset via Multi-user; PostgreSQL wordt logisch geëxporteerd.")
+
