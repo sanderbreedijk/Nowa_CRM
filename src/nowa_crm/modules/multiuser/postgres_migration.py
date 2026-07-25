@@ -27,22 +27,25 @@ class PostgresMigrator:
         with self.target.transaction() as target:
             central_users=list(target.raw.execute("""SELECT username,display_name,password_hash,password_salt,
                 role,active,created_at,last_login_at FROM app_users"""))
-            target.raw.execute("SET session_replication_role = replica")
-            try:
-                for table in reversed(tables):
-                    target.raw.execute(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE')
-                with self.source.transaction() as source:
-                    for table in tables:
-                        rows = source.execute(f'SELECT * FROM "{table}"').fetchall()
-                        if not rows:
-                            continue
-                        columns = list(rows[0].keys())
-                        marks = ",".join(["%s"] * len(columns))
-                        names = ",".join(f'"{name}"' for name in columns)
+            target.raw.execute("SET LOCAL session_replication_role = replica")
+            for table in reversed(tables):
+                target.raw.execute(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE')
+            with self.source.transaction() as source:
+                for table in tables:
+                    rows = source.execute(f'SELECT * FROM "{table}"').fetchall()
+                    if not rows:
+                        continue
+                    columns = list(rows[0].keys())
+                    marks = ",".join(["%s"] * len(columns))
+                    names = ",".join(f'"{name}"' for name in columns)
+                    try:
                         target.raw.cursor().executemany(
                             f'INSERT INTO "{table}" ({names}) VALUES ({marks})',
                             [tuple(row[name] for name in columns) for row in rows])
-                if central_users:
+                    except Exception as exc:
+                        raise RuntimeError(f"Import van tabel '{table}' mislukt: {exc}") from exc
+            if central_users:
+                try:
                     target.raw.cursor().executemany("""INSERT INTO app_users(
                         username,display_name,password_hash,password_salt,role,active,created_at,last_login_at
                     ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
@@ -52,8 +55,8 @@ class PostgresMigrator:
                         last_login_at=excluded.last_login_at""",
                         [tuple(row[name] for name in ("username","display_name","password_hash","password_salt",
                             "role","active","created_at","last_login_at")) for row in central_users])
-            finally:
-                target.raw.execute("SET session_replication_role = DEFAULT")
+                except Exception as exc:
+                    raise RuntimeError(f"Terugzetten van centrale gebruikers mislukt: {exc}") from exc
             serial_tables = {row["table_name"] for row in target.raw.execute(
                 """SELECT table_name FROM information_schema.columns
                    WHERE table_schema='public' AND column_name='id' AND column_default LIKE 'nextval%'""")}
@@ -93,3 +96,4 @@ class PostgresMigrator:
         with self.target.transaction() as conn:
             return {name: int(conn.raw.execute(f'SELECT COUNT(*) count FROM "{name}"').fetchone()["count"])
                     for name in tables}
+
