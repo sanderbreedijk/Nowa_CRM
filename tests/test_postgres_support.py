@@ -49,3 +49,11 @@ def test_manual_import_rejects_unrelated_sqlite(tmp_path):
     try:service.import_sqlite_to_postgres(source)
     except ValueError as exc:assert "geen volledige NOWA CRM-database" in str(exc)
     else:raise AssertionError("Ongeldige database werd geaccepteerd")
+
+
+def test_postgres_bulk_import_uses_cursor():
+    import inspect
+    from nowa_crm.modules.multiuser.postgres_migration import PostgresMigrator
+    source=inspect.getsource(PostgresMigrator.run)
+    assert ".raw.executemany" not in source
+    assert ".raw.cursor().executemany" in source

@@ -39,11 +39,11 @@ class PostgresMigrator:
                         columns = list(rows[0].keys())
                         marks = ",".join(["%s"] * len(columns))
                         names = ",".join(f'"{name}"' for name in columns)
-                        target.raw.executemany(
+                        target.raw.cursor().executemany(
                             f'INSERT INTO "{table}" ({names}) VALUES ({marks})',
                             [tuple(row[name] for name in columns) for row in rows])
                 if central_users:
-                    target.raw.executemany("""INSERT INTO app_users(
+                    target.raw.cursor().executemany("""INSERT INTO app_users(
                         username,display_name,password_hash,password_salt,role,active,created_at,last_login_at
                     ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT(username) DO UPDATE SET
