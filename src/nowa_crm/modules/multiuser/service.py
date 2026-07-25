@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,7 @@ class MultiUserService:
             if not key:raise ValueError("Vul eerst de toegangssleutel in.")
             result=RemoteDatabase(host.strip(),int(port),key).health()
             return {"reachable":True,"milliseconds":int((datetime.now()-started).total_seconds()*1000),
-                    "detail":f"Centrale database verbonden · {result['customers']} klanten · {result['users']} gebruikers"}
+                    "detail":f"Centrale database verbonden Â· {result['customers']} klanten Â· {result['users']} gebruikers"}
         except (OSError,ConnectionError,ValueError) as exc:
             return {"reachable":False,"milliseconds":0,"detail":f"Server niet bereikbaar: {exc}"}
 
@@ -86,6 +87,14 @@ class MultiUserService:
         self.root.mkdir(parents=True,exist_ok=True)
         self.config_path.write_text(json.dumps(settings,indent=2,ensure_ascii=False),encoding="utf-8")
 
+    def save_shared_documents(self, folder: str) -> None:
+        path=Path(folder) if folder.strip() else None
+        if path and not path.exists():raise ValueError("De gedeelde documentenmap bestaat niet.")
+        settings=self.settings();settings["shared_documents"]=str(path) if path else ""
+        settings["updated_at"]=datetime.now().isoformat(timespec="seconds")
+        self.root.mkdir(parents=True,exist_ok=True)
+        self.config_path.write_text(json.dumps(settings,indent=2,ensure_ascii=False),encoding="utf-8")
+
     def postgres_database(self, host=None, port=None, database=None, user=None, password="", sslmode=None):
         settings=self.settings()
         secret=password or LocalSecretStore(self.root).unprotect(settings.get("postgres_password",""))
@@ -98,7 +107,7 @@ class MultiUserService:
         try:
             result=self.postgres_database(host,port,database,user,password,sslmode).health()
             return {"reachable":True,"milliseconds":int((datetime.now()-started).total_seconds()*1000),
-                    "detail":f"Synology PostgreSQL verbonden · database {result['database']}"}
+                    "detail":f"Synology PostgreSQL verbonden Â· database {result['database']}"}
         except Exception as exc:
             return {"reachable":False,"milliseconds":0,"detail":f"PostgreSQL niet bereikbaar: {exc}"}
 
@@ -153,7 +162,7 @@ class MultiUserService:
         issues=[]
         if network:issues.append("De actieve SQLite-database staat op een netwerkpad. Verplaats deze terug naar lokale opslag.")
         if users<2:issues.append("Maak voor multi-usergebruik minimaal een tweede persoonlijk account aan.")
-        if not settings["host"]:issues.append("De centrale CRM-server is nog niet ingesteld.")
+        if not settings["host"]:issues.append("Synology PostgreSQL is nog niet ingesteld.")
         return {"ready":not issues,"issues":issues,"database_path":str(path),"network_path":network,"remote":remote,
                 "tables":tables,"users":users,"customers":customers,"settings":settings}
 
@@ -193,3 +202,4 @@ class MultiUserService:
             root=path.drive+"\\"
             return bool(root and ctypes.windll.kernel32.GetDriveTypeW(root)==4)
         except (AttributeError,OSError):return False
+
