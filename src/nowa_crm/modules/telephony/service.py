@@ -147,7 +147,8 @@ class TelephonyService:
 
     def missed_stats(self) -> dict:
         with self.db.transaction() as conn:
-            row=conn.execute("""SELECT COUNT(*) total,SUM(callback_status='open') open FROM call_events
+            row=conn.execute("""SELECT COUNT(*) total,
+                SUM(CASE WHEN callback_status='open' THEN 1 ELSE 0 END) open FROM call_events
                 WHERE status='gemist' AND datetime(started_at)>=datetime('now','-30 days')""").fetchone()
         return {"total":int(row["total"] or 0),"open":int(row["open"] or 0)}
 
@@ -164,8 +165,10 @@ class TelephonyService:
 
     def queue_stats(self) -> dict:
         with self.db.transaction() as conn:
-            row=conn.execute("""SELECT COUNT(*) total,SUM(status='gemist') missed,SUM(callback_status='open') callbacks,
-                SUM(customer_id IS NULL) unknown FROM call_events""").fetchone()
+            row=conn.execute("""SELECT COUNT(*) total,
+                SUM(CASE WHEN status='gemist' THEN 1 ELSE 0 END) missed,
+                SUM(CASE WHEN callback_status='open' THEN 1 ELSE 0 END) callbacks,
+                SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) unknown FROM call_events""").fetchone()
         return {key:int(row[key] or 0) for key in ("total","missed","callbacks","unknown")}
 
     def customer_briefing(self, customer_id: int | None) -> dict:
