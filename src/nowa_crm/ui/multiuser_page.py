@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from PySide6.QtCore import QUrl
@@ -16,7 +15,7 @@ class MultiUserPage(QWidget):
         content=QWidget();root=QVBoxLayout(content);root.setContentsMargins(28,24,28,24);root.setSpacing(14)
         scroll.setWidget(content);outer.addWidget(scroll)
         title=QLabel("Multi-user en Synology");title.setObjectName("Title");root.addWidget(title)
-        sub=QLabel("Laat Ã©Ã©n vaste computer de centrale database beheren en verbind andere werkplekken veilig met persoonlijke aanmeldingen.")
+        sub=QLabel("Laat één vaste computer de centrale database beheren en verbind andere werkplekken veilig met persoonlijke aanmeldingen.")
         sub.setObjectName("Subtitle");sub.setWordWrap(True);root.addWidget(sub)
 
         users=QFrame();users.setObjectName("Card");box=QVBoxLayout(users);head=QHBoxLayout()
@@ -110,9 +109,9 @@ class MultiUserPage(QWidget):
             "Aantallen worden gecontroleerd voordat activeren mogelijk is.\n\nDoorgaan?")!=QMessageBox.StandardButton.Yes:return
         try:
             result=self.service.migrate_to_postgres()
-            self.pg_status.setText(f"Migratie gecontroleerd Â· {result['tables']} tabellen Â· {result['rows']} rijen")
+            self.pg_status.setText(f"Migratie gecontroleerd · {result['tables']} tabellen · {result['rows']} rijen")
             QMessageBox.information(self,"Migratie voltooid",
-                f"Alle gegevens zijn gecontroleerd overgezet.\n\n{result['tables']} tabellen Â· {result['rows']} rijen\n"
+                f"Alle gegevens zijn gecontroleerd overgezet.\n\n{result['tables']} tabellen · {result['rows']} rijen\n"
                 f"Lokale herstelkopie:\n{result['backup']}\n\nKlik nu op PostgreSQL activeren.")
         except Exception as exc:QMessageBox.critical(self,"Migratie niet geactiveerd",
             f"{exc}\n\nDe lokale database is actief gebleven.")
@@ -134,7 +133,7 @@ class MultiUserPage(QWidget):
             "Doorgaan?")!=QMessageBox.StandardButton.Yes:return
         try:
             result=self.service.import_sqlite_to_postgres(source)
-            self.pg_status.setText(f"Handmatige import gecontroleerd Â· {result['tables']} tabellen Â· {result['rows']} rijen")
+            self.pg_status.setText(f"Handmatige import gecontroleerd · {result['tables']} tabellen · {result['rows']} rijen")
             QMessageBox.information(self,"Handmatige import voltooid",
                 f"De oude database is volledig gecontroleerd overgezet.\n\n"
                 f"Bron: {result['source']}\nKlanten: {result['source_customers']}\n"
@@ -158,4 +157,3 @@ class MultiUserPage(QWidget):
         if row<0:QMessageBox.information(self,"Gebruikers","Selecteer eerst een gebruiker.");return
         try:self.service.set_user_active(int(self.table.item(row,5).text()),self.table.item(row,3).text()!="Ja");self.reload()
         except Exception as exc:QMessageBox.warning(self,"Gebruikers",str(exc))
-
