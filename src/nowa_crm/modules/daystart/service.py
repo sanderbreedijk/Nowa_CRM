@@ -30,7 +30,7 @@ class DaystartService:
                 MAX(ce.priority) priority,MAX(ce.assigned_to) assigned_to,MIN(ce.callback_due) due_at,
                 CASE WHEN COUNT(*)>1 THEN COUNT(*)||' oproepen wachten op terugbellen' ELSE 'Terugbellen vereist' END detail
                 FROM call_events ce LEFT JOIN customers c ON c.id=ce.customer_id WHERE ce.callback_status='open'
-                GROUP BY ce.customer_id,ce.normalized_number,date(ce.callback_due)""").fetchall())
+                GROUP BY ce.customer_id,c.name,ce.normalized_number,ce.phone_number,date(ce.callback_due)""").fetchall())
             self._add(rows, "Ticket", conn.execute("""SELECT t.id,t.customer_id,c.name customer_name,t.number||' · '||t.subject title,
                 t.priority,t.owner assigned_to,t.sla_due_at due_at,t.status detail FROM service_tickets t JOIN customers c ON c.id=t.customer_id
                 WHERE t.status NOT IN ('Opgelost','Gesloten') AND (t.priority IN ('Hoog','Kritiek') OR t.sla_due_at='' OR datetime(t.sla_due_at)<=datetime('now','localtime','+8 hours'))""").fetchall())
@@ -88,3 +88,4 @@ class DaystartService:
     def summary(self) -> dict:
         items=self.items();return {"total":len(items),"overdue":sum(x["overdue"] for x in items),
             "urgent":sum(x["priority"] in ("Hoog","Kritiek") for x in items),"customers":len({x["customer_id"] for x in items if x["customer_id"]})}
+
