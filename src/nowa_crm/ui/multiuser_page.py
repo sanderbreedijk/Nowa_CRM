@@ -62,7 +62,13 @@ class MultiUserPage(QWidget):
         self.pg_host.setText(settings.get("host",""));self.pg_port.setValue(int(settings.get("port",55432)))
         self.pg_database.setText(settings.get("database","nowa_crm"));self.pg_user.setText(settings.get("postgres_user","nowa_crm"))
         self.pg_ssl.setCurrentText(settings.get("sslmode","prefer"))
-        if settings.get("mode")=="postgres":self.pg_status.setText("PostgreSQL is actief op de Synology NAS.")
+        if settings.get("mode")=="postgres":
+            try:
+                counts=self.service.database_contents(self.service.db)
+                self.pg_status.setText(
+                    f"PostgreSQL actief · {counts['customers']} klanten ({counts['active_customers']} actief) · "
+                    f"{counts['proposals']} offertes · {counts['proposal_lines']} offerteregels")
+            except Exception as exc:self.pg_status.setText(f"PostgreSQL ingesteld, inhoudscontrole mislukt: {exc}")
         elif settings.get("postgres_password"):self.pg_status.setText("Instellingen opgeslagen; klaar voor verbindingstest of migratie.")
         rows=self.service.users();self.table.setRowCount(len(rows))
         for r,item in enumerate(rows):
@@ -137,6 +143,8 @@ class MultiUserPage(QWidget):
             QMessageBox.information(self,"Handmatige import voltooid",
                 f"De oude database is volledig gecontroleerd overgezet.\n\n"
                 f"Bron: {result['source']}\nKlanten: {result['source_customers']}\n"
+                f"In PostgreSQL: {result['target_customers']} klanten ({result['target_active_customers']} actief), "
+                f"{result['target_proposals']} offertes en {result['target_proposal_lines']} offerteregels\n"
                 f"Tabellen: {result['tables']}\nRijen: {result['rows']}\n"
                 f"Centrale gebruikers behouden: {result['central_users_preserved']}\n\n"
                 f"Lokale herstelkopie:\n{result['backup']}\n\n"
